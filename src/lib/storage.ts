@@ -72,6 +72,7 @@ import {
 import { DEFAULT_SAMPLE_STAFF_LIST } from './staffFileImporter';
 import { UserAccount, ModuleApprovalRecord, ApprovalStatus } from '../types/auth';
 import { DEFAULT_USER_ACCOUNTS } from './authDefaults';
+import { firestoreGet, firestoreSet, firestoreSubscribe, DEFAULT_SCHOOL_ID } from './firebase';
 
 export const DEFAULT_STAFF_DETAILS: StaffDetailRecord[] = DEFAULT_SAMPLE_STAFF_LIST;
 
@@ -105,7 +106,16 @@ export const db = {
   async get<T>(key: string): Promise<T | null> {
     try {
       const res = await (window as any).storage.get(key);
-      return res?.value ? JSON.parse(res.value) : null;
+      if (res?.value) {
+        return JSON.parse(res.value);
+      }
+      // Fallback to Cloud Firestore if missing locally
+      const cloudVal = await firestoreGet<T>(key);
+      if (cloudVal !== null && cloudVal !== undefined) {
+        await (window as any).storage.set(key, JSON.stringify(cloudVal));
+        return cloudVal;
+      }
+      return null;
     } catch (err) {
       console.error(`Error reading storage key ${key}:`, err);
       return null;
@@ -114,6 +124,10 @@ export const db = {
   async set<T>(key: string, value: T): Promise<boolean> {
     try {
       await (window as any).storage.set(key, JSON.stringify(value));
+      // Asynchronously push update to Cloud Firestore
+      firestoreSet(key, value).catch(err => {
+        console.warn(`[Firestore] Sync failed for ${key}:`, err);
+      });
       return true;
     } catch (err) {
       console.error(`Error writing storage key ${key}:`, err);
@@ -123,6 +137,9 @@ export const db = {
   async remove(key: string): Promise<boolean> {
     try {
       await (window as any).storage.delete(key);
+      firestoreSet(key, null).catch(err => {
+        console.warn(`[Firestore] Cloud remove failed for ${key}:`, err);
+      });
       return true;
     } catch (err) {
       console.error(`Error removing storage key ${key}:`, err);
@@ -7462,7 +7479,71 @@ export async function getAllAvailableTags(teacherCode?: string): Promise<TaskTag
   return Array.from(allMap.values());
 }
 
+// ============================================================================
+// FIREBASE CLOUD FIRESTORE CENTRAL DATA SYNCHRONIZATION
+// ============================================================================
 
+/**
+ * Pushes all current workspace data (timetables, 19 teachers, students, etc.) to Firebase Cloud Firestore.
+ */
+export async function syncAllToCloud(): Promise<{ success: boolean; count: number }> {
+  try {
+    const currentState = await getCurrentWorkspaceState();
+    let count = 0;
+    for (const [key, val] of Object.entries(currentState)) {
+      if (val !== undefined && val !== null) {
+        await firestoreSet(key, val);
+        count++;
+      }
+    }
+    return { success: true, count };
+  } catch (err) {
+    console.error('[Firestore] Failed to push all to cloud:', err);
+    return { success: false, count: 0 };
+  }
+}
 
+/**
+ * Pulls the latest centralized data from Firebase Cloud Firestore into local storage.
+ */
+export async function syncAllFromCloud(): Promise<{ success: boolean; updatedCount: number }> {
+  try {
+    let updatedCount = 0;
+    for (const k of STORAGE_KEYS) {
+      const cloudVal = await firestoreGet(k);
+      if (cloudVal !== null && cloudVal !== undefined) {
+        await (window as any).storage.set(k, JSON.stringify(cloudVal));
+        updatedCount++;
+      }
+    }
+    return { success: true, updatedCount };
+  } catch (err) {
+    console.error('[Firestore] Failed to pull all from cloud:', err);
+    return { success: false, updatedCount: 0 };
+  }
+}
 
+/**
+ * Startup synchronization engine:
+ * 1. Checks if Cloud Firestore has saved data.
+ * 2. If Cloud Firestore has data, hydrates local cache.
+ * 3. If local has customized timetable (e.g. 19 teachers on localhost) and Cloud is empty, automatically seeds Cloud!
+ */
+export async function initCloudSync(): Promise<void> {
+  try {
+    const cloudTimetable = await firestoreGet<TimetableSlot[]>('setup:timetable');
+    const localTimetable = await db.get<TimetableSlot[]>('setup:timetable');
 
+    if (cloudTimetable && cloudTimetable.length > 0) {
+      // Cloud has existing data -> pull updates into local storage
+      console.log(`[Firestore] Syncing ${cloudTimetable.length} timetable slots from Cloud...`);
+      await syncAllFromCloud();
+    } else if (localTimetable && localTimetable.length > 0) {
+      // Local has data -> push to initialize cloud database
+      console.log(`[Firestore] Seeding Cloud Firestore with ${localTimetable.length} local timetable slots...`);
+      await syncAllToCloud();
+    }
+  } catch (err) {
+    console.warn('[Firestore] Initial cloud sync notice:', err);
+  }
+}

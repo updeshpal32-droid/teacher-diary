@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
-import { db, initializeDatabaseIfEmpty, TEMPLATE_PAGES_MAP, TEMPLATE_PAGES_MAP_FOUNDATIONAL } from './lib/storage';
+import { db, initializeDatabaseIfEmpty, initCloudSync, TEMPLATE_PAGES_MAP, TEMPLATE_PAGES_MAP_FOUNDATIONAL } from './lib/storage';
+import { CloudSyncBadge } from './components/CloudSyncBadge';
 import { SchoolSessionForm } from './components/SchoolSessionForm';
 import { TeacherProfileForm } from './components/TeacherProfileForm';
 import { StudentProfileManager } from './components/StudentProfileManager';
@@ -282,6 +283,7 @@ export default function App() {
   }, [theme]);
 
   const initApp = async () => {
+    await initCloudSync();
     await initializeDatabaseIfEmpty();
     const savedTheme = await db.get<'dark' | 'light'>('settings:theme');
     if (savedTheme === 'light' || savedTheme === 'dark') {
@@ -601,6 +603,9 @@ export default function App() {
               {devMode ? 'ON' : 'OFF'}
             </span>
           </button>
+
+          {/* Real-time Firebase Cloud Sync Badge */}
+          <CloudSyncBadge theme={theme} isFoundational={isFoundational} />
 
           {/* Version History & Snapshots Trigger */}
           <button

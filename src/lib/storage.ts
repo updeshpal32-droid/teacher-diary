@@ -6841,6 +6841,7 @@ export const STORAGE_KEYS = [
   'setup:subjects',
   'setup:timetable',
   'setup:period_timings',
+  'setup:staff_details',
   'setup:calendar',
   'setup:exams',
   'setup:syllabus',
@@ -6856,6 +6857,11 @@ export const STORAGE_KEYS = [
   'setup:practical_attendance',
   'setup:scholastic_scores_vi_viii',
   'setup:scholastic_scores_ix_x',
+  'setup:scores_class_x_17f',
+  'setup:scores_class_xi_17g',
+  'setup:scores_class_xii_17h',
+  'setup:notebook_submissions_17j',
+  'setup:practical_attendance_17i',
   'setup:monitoring_cum_reporting',
   'setup:late_bloomer_progress',
   'setup:nipun_meetings',
@@ -6870,24 +6876,39 @@ export const STORAGE_KEYS = [
   'setup:joyful_learning_29',
   'setup:competency_tests_30',
   'setup:teacher_innovation_31a',
-  'setup:teacher_best_practices_31b'
+  'setup:teacher_best_practices_31b',
+  'auth:users_list',
+  'auth:custom_roles'
 ] as const;
 
 export async function getCurrentWorkspaceState(): Promise<Record<string, any>> {
   const dataMap: Record<string, any> = {};
+  if (typeof window !== 'undefined' && window.localStorage) {
+    for (let i = 0; i < localStorage.length; i++) {
+      const key = localStorage.key(i);
+      if (key && (key.startsWith('setup:') || key.startsWith('auth:') || key.startsWith('settings:'))) {
+        const val = await db.get(key);
+        if (val !== null && val !== undefined) {
+          dataMap[key] = val;
+        }
+      }
+    }
+  }
   for (const k of STORAGE_KEYS) {
-    const val = await db.get(k);
-    if (val !== null && val !== undefined) {
-      dataMap[k] = val;
+    if (dataMap[k] === undefined) {
+      const val = await db.get(k);
+      if (val !== null && val !== undefined) {
+        dataMap[k] = val;
+      }
     }
   }
   return dataMap;
 }
 
 export async function loadWorkspaceState(dataMap: Record<string, any>): Promise<void> {
-  for (const k of STORAGE_KEYS) {
-    if (dataMap[k] !== undefined) {
-      await db.set(k, dataMap[k]);
+  for (const [k, v] of Object.entries(dataMap)) {
+    if (v !== undefined && v !== null) {
+      await db.set(k, v);
     }
   }
 }
@@ -7013,6 +7034,9 @@ export async function importBackupJSON(jsonContent: string): Promise<{ success: 
       if (!exists) {
         await db.set('history_snapshots', [parsed, ...history]);
       }
+      if (parsed.data && typeof parsed.data === 'object') {
+        await loadWorkspaceState(parsed.data);
+      }
       return { success: true, importedSnapshotsCount: 1 };
     }
 
@@ -7026,7 +7050,21 @@ export async function importBackupJSON(jsonContent: string): Promise<{ success: 
         await db.set('history_snapshots', parsed.historySnapshots);
         snapshotCount = parsed.historySnapshots.length;
       }
-      return { success: true, importedSnapshotsCount: snapshotCount };
+      return { success: true, importedSnapshotsCount: snapshotCount || 1 };
+    }
+
+    // Flat key format like { "setup:school": ..., "setup:timetable": ... }
+    let count = 0;
+    for (const [key, val] of Object.entries(parsed)) {
+      if (typeof key === 'string' && (key.startsWith('setup:') || key.startsWith('auth:') || key.startsWith('settings:'))) {
+        if (val !== undefined && val !== null) {
+          await db.set(key, val);
+          count++;
+        }
+      }
+    }
+    if (count > 0) {
+      return { success: true, importedSnapshotsCount: count };
     }
 
     return { success: false, importedSnapshotsCount: 0, error: "Unrecognized JSON format. Must be a valid snapshot or full backup file." };

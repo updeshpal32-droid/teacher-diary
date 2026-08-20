@@ -33,7 +33,7 @@ import {
   Globe,
   X
 } from 'lucide-react';
-import { db, resetDatabaseToDefaults, initializeDatabaseIfEmpty } from '../lib/storage';
+import { db, resetDatabaseToDefaults, initializeDatabaseIfEmpty, exportAllHistoryJSON, importBackupJSON } from '../lib/storage';
 import { DevModeBadge } from './DevModeBadge';
 import { SchoolDetails, TeacherProfile } from '../types/academic';
 import { UserAccount, getRoleBadgeInfo } from '../types/auth';
@@ -240,32 +240,7 @@ export const SettingsManager: React.FC<SettingsManagerProps> = ({
   // Data Export & Import Handlers
   const handleExportBackup = async () => {
     try {
-      const keys = [
-        'setup:school',
-        'setup:teacher',
-        'setup:classes',
-        'setup:timetable',
-        'setup:calendar',
-        'setup:syllabus',
-        'setup:lesson_plans',
-        'setup:assessments',
-        'setup:inspections'
-      ];
-
-      const backupObj: Record<string, any> = {};
-      for (const k of keys) {
-        backupObj[k] = await db.get(k);
-      }
-
-      const jsonString = JSON.stringify(backupObj, null, 2);
-      const blob = new Blob([jsonString], { type: 'application/json' });
-      const url = URL.createObjectURL(blob);
-      const link = document.createElement('a');
-      link.href = url;
-      link.download = `KVS_Teachers_Diary_Backup_${new Date().toISOString().split('T')[0]}.json`;
-      link.click();
-      URL.revokeObjectURL(url);
-
+      await exportAllHistoryJSON();
       setDataMsg({ type: 'success', text: 'Full Teacher\'s Diary backup JSON file exported successfully!' });
       setTimeout(() => setDataMsg(null), 5000);
     } catch (err: any) {
@@ -280,16 +255,15 @@ export const SettingsManager: React.FC<SettingsManagerProps> = ({
 
     reader.onload = async () => {
       try {
-        const parsed = JSON.parse(reader.result as string);
-        for (const [key, val] of Object.entries(parsed)) {
-          if (key.startsWith('setup:')) {
-            await db.set(key, val);
-          }
+        const res = await importBackupJSON(reader.result as string);
+        if (res.success) {
+          setDataMsg({ type: 'success', text: `Backup "${file.name}" imported successfully! Refreshing view...` });
+          setTimeout(() => {
+            window.location.reload();
+          }, 1200);
+        } else {
+          setDataMsg({ type: 'error', text: res.error || 'Invalid JSON file format. Could not import backup.' });
         }
-        setDataMsg({ type: 'success', text: `Backup "${file.name}" imported successfully! Refreshing view...` });
-        setTimeout(() => {
-          window.location.reload();
-        }, 1500);
       } catch (err: any) {
         setDataMsg({ type: 'error', text: 'Invalid JSON file format. Could not import backup.' });
       }

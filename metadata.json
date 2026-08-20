@@ -1,0 +1,6 @@
+{
+  "name": "Teacher Diary",
+  "description": "An offline-first productivity app for teachers to manage student profiles across Foundational (1-2), Preparatory (3-5), Middle (6-8), and Secondary stages, log activities, attendance, and generate reports.",
+  "requestFramePermissions": ["camera", "microphone"],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

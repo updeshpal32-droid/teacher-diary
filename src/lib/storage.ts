@@ -61,7 +61,27 @@ import {
   TeacherBestPractice31bRecord,
   StaffDetailRecord,
   CustomRoleDefinition,
-  AppDataSnapshot
+  AppDataSnapshot,
+  TeacherAttendanceRecord,
+  LeaveApplication,
+  OnDutyRecord,
+  LeaveBalance,
+  StudentAttendanceRecord,
+  ClassDailyAttendanceRecord,
+  TransferCertificateRecord,
+  MonthlyEnrollmentSnapshot,
+  ProxyDutyAssignment,
+  LeaveSettingsConfig,
+  Ticket,
+  TicketEvidence,
+  TicketCategory,
+  TicketPriority,
+  TicketStatus,
+  PortfolioTemplate,
+  PortfolioAssignment,
+  ResponsibilityDelegation,
+  ResponsibilityRequest,
+  PortfolioSuggestion
 } from '../types/academic';
 import {
   DEFAULT_STUDENTS,
@@ -69,6 +89,13 @@ import {
   DEFAULT_SCHOLASTIC_SCORES_VI_VIII,
   DEFAULT_SCHOLASTIC_SCORES_IX_X
 } from './studentDefaults';
+import {
+  DEFAULT_PORTFOLIO_TEMPLATES,
+  DEFAULT_PORTFOLIO_ASSIGNMENTS,
+  DEFAULT_RESPONSIBILITY_DELEGATIONS,
+  DEFAULT_RESPONSIBILITY_REQUESTS,
+  DEFAULT_PORTFOLIO_SUGGESTIONS
+} from './portfolioDefaults';
 import { DEFAULT_SAMPLE_STAFF_LIST } from './staffFileImporter';
 import { UserAccount, ModuleApprovalRecord, ApprovalStatus } from '../types/auth';
 import { DEFAULT_USER_ACCOUNTS } from './authDefaults';
@@ -378,33 +405,50 @@ export const DEFAULT_SUBJECTS: SubjectItem[] = [
 
 export const DEFAULT_TIMETABLE: TimetableSlot[] = [
   // Monday
-  { id: 'tt-mon-1a', day: 'Monday', period: 1, className: 'X-A', subjectName: 'Mathematics', roomNo: 'Room 24', teacherName: 'Mr. Updesh Kumar (PGT)' },
-  { id: 'tt-mon-1b', day: 'Monday', period: 1, className: 'VI-A', subjectName: 'Science', roomNo: 'Room 16', teacherName: 'Mrs. Sunita Verma (TGT)' },
-  { id: 'tt-mon-1c', day: 'Monday', period: 1, className: 'IV-A', subjectName: 'Environmental Studies (EVS)', roomNo: 'Room 10', teacherName: 'Mrs. Anjali Deshmukh (PRT)' },
-  { id: 'tt-mon-2a', day: 'Monday', period: 2, className: 'XII-A', subjectName: 'Mathematics', roomNo: 'Room 32', teacherName: 'Mr. Updesh Kumar (PGT)' },
-  { id: 'tt-mon-2b', day: 'Monday', period: 2, className: 'VIII-A', subjectName: 'Science', roomNo: 'Room 20', teacherName: 'Mrs. Sunita Verma (TGT)' },
-  { id: 'tt-mon-3a', day: 'Monday', period: 3, className: 'XI-B', subjectName: 'Mathematics', roomNo: 'Lab 2', teacherName: 'Mr. Updesh Kumar (PGT)' },
-  { id: 'tt-mon-3b', day: 'Monday', period: 3, className: 'V-A', subjectName: 'English', roomNo: 'Room 12', teacherName: 'Mrs. Anjali Deshmukh (PRT)' },
-  { id: 'tt-mon-4a', day: 'Monday', period: 4, className: 'X-A', subjectName: 'Maths Practical / Lab', roomNo: 'Math Lab', teacherName: 'Mr. Updesh Kumar (PGT)' },
-  { id: 'tt-mon-4b', day: 'Monday', period: 4, className: 'XI-B', subjectName: 'Biology', roomNo: 'Bio Lab', teacherName: 'Mrs. Sunita Verma (TGT)' },
-  { id: 'tt-mon-5a', day: 'Monday', period: 5, className: 'XII-A', subjectName: 'Mathematics', roomNo: 'Room 32', teacherName: 'Mr. Updesh Kumar (PGT)' },
-  { id: 'tt-mon-5b', day: 'Monday', period: 5, className: 'VII-A', subjectName: 'Science', roomNo: 'Room 19', teacherName: 'Mrs. Sunita Verma (TGT)' },
-  { id: 'tt-mon-6a', day: 'Monday', period: 6, className: 'IX-B', subjectName: 'Mathematics Support', roomNo: 'Room 18', teacherName: 'Mr. Updesh Kumar (PGT)' },
-  { id: 'tt-mon-6b', day: 'Monday', period: 6, className: 'VI-B', subjectName: 'English', roomNo: 'Room 15', teacherName: 'Mrs. Anjali Deshmukh (PRT)' },
-  { id: 'tt-mon-7a', day: 'Monday', period: 7, className: 'Free / Planning', subjectName: 'Lesson Plan Preparation', roomNo: 'Staff Room', teacherName: 'Mr. Updesh Kumar (PGT)' },
-  { id: 'tt-mon-8a', day: 'Monday', period: 8, className: 'X-A', subjectName: 'Class Teacher Hour', roomNo: 'Room 24', teacherName: 'Mr. Updesh Kumar (PGT)' },
-  { id: 'tt-mon-9a', day: 'Monday', period: 9, className: 'X-A', subjectName: 'Remedial Class / Extra Time', roomNo: 'Room 24', teacherName: 'Mr. Updesh Kumar (PGT)' },
+  { id: 'tt-mon-1a', day: 'Monday', period: 1, className: 'X-A', subjectName: 'Mathematics', roomNo: 'Room 24', teacherName: 'UPDESH SINGH PAL' },
+  { id: 'tt-mon-1b', day: 'Monday', period: 1, className: 'VI-A', subjectName: 'Science', roomNo: 'Room 16', teacherName: 'A GAYATRI' },
+  { id: 'tt-mon-1c', day: 'Monday', period: 1, className: 'IV-A', subjectName: 'Environmental Studies (EVS)', roomNo: 'Room 10', teacherName: 'SANTWANA DASH' },
+  { id: 'tt-mon-sr-1', day: 'Monday', period: 1, className: 'VI-A', subjectName: 'Art Education', roomNo: 'Art Room', teacherName: 'SAMYA RAHA', teacherId: '106020' },
+  { id: 'tt-mon-sk-1', day: 'Monday', period: 1, className: 'VII-A', subjectName: 'English', roomNo: 'Room 19', teacherName: 'SANJUKTA KUJUR', teacherId: '106019' },
+  { id: 'tt-mon-2a', day: 'Monday', period: 2, className: 'XII-A', subjectName: 'Mathematics', roomNo: 'Room 32', teacherName: 'UPDESH SINGH PAL' },
+  { id: 'tt-mon-2b', day: 'Monday', period: 2, className: 'VIII-A', subjectName: 'Science', roomNo: 'Room 20', teacherName: 'A GAYATRI' },
+  { id: 'tt-mon-pp-2', day: 'Monday', period: 2, className: 'VI-A', subjectName: 'Hindi', roomNo: 'Room 16', teacherName: 'PRIYABRATA PADHAN', teacherId: '76958' },
+  { id: 'tt-mon-3a', day: 'Monday', period: 3, className: 'XI-B', subjectName: 'Mathematics', roomNo: 'Lab 2', teacherName: 'UPDESH SINGH PAL' },
+  { id: 'tt-mon-3b', day: 'Monday', period: 3, className: 'V-A', subjectName: 'English', roomNo: 'Room 12', teacherName: 'SANTWANA DASH' },
+  { id: 'tt-mon-sr-3', day: 'Monday', period: 3, className: 'VII-A', subjectName: 'Art Education', roomNo: 'Art Room', teacherName: 'SAMYA RAHA', teacherId: '106020' },
+  { id: 'tt-mon-dm-3', day: 'Monday', period: 3, className: 'IX-A', subjectName: 'Library Science', roomNo: 'Library', teacherName: 'DIPANWITA MANDAL', teacherId: '102725' },
+  { id: 'tt-mon-4a', day: 'Monday', period: 4, className: 'X-A', subjectName: 'Maths Practical / Lab', roomNo: 'Math Lab', teacherName: 'UPDESH SINGH PAL' },
+  { id: 'tt-mon-4b', day: 'Monday', period: 4, className: 'XI-B', subjectName: 'Biology', roomNo: 'Bio Lab', teacherName: 'A GAYATRI' },
+  { id: 'tt-mon-sk-4', day: 'Monday', period: 4, className: 'IX-A', subjectName: 'English Language & Literature', roomNo: 'Room 18', teacherName: 'SANJUKTA KUJUR', teacherId: '106019' },
+  { id: 'tt-mon-5a', day: 'Monday', period: 5, className: 'XII-A', subjectName: 'Mathematics', roomNo: 'Room 32', teacherName: 'UPDESH SINGH PAL' },
+  { id: 'tt-mon-5b', day: 'Monday', period: 5, className: 'VII-A', subjectName: 'Science', roomNo: 'Room 19', teacherName: 'A GAYATRI' },
+  { id: 'tt-mon-sr-5', day: 'Monday', period: 5, className: 'VIII-A', subjectName: 'Art Education', roomNo: 'Art Room', teacherName: 'SAMYA RAHA', teacherId: '106020' },
+  { id: 'tt-mon-dm-5', day: 'Monday', period: 5, className: 'VI-A', subjectName: 'Library Science', roomNo: 'Library', teacherName: 'DIPANWITA MANDAL', teacherId: '102725' },
+  { id: 'tt-mon-6a', day: 'Monday', period: 6, className: 'IX-B', subjectName: 'Mathematics Support', roomNo: 'Room 18', teacherName: 'UPDESH SINGH PAL' },
+  { id: 'tt-mon-jkd-2', day: 'Monday', period: 2, className: 'IX-A', subjectName: 'Work Education (W.E.)', roomNo: 'Room 18', teacherName: 'JYOTI KUMARI DHUMA', teacherId: '51951' },
+  { id: 'tt-mon-jkd-4', day: 'Monday', period: 4, className: 'VII-A', subjectName: 'Work Education (W.E.)', roomNo: 'Room 19', teacherName: 'JYOTI KUMARI DHUMA', teacherId: '51951' },
+  { id: 'tt-mon-jkd-6', day: 'Monday', period: 6, className: 'VI-A', subjectName: 'Work Education (W.E.)', roomNo: 'Room 16', teacherName: 'JYOTI KUMARI DHUMA', teacherId: '51951' },
+  { id: 'tt-mon-6b', day: 'Monday', period: 6, className: 'VI-B', subjectName: 'English', roomNo: 'Room 15', teacherName: 'SANTWANA DASH' },
+  { id: 'tt-mon-7a', day: 'Monday', period: 7, className: 'Free / Planning', subjectName: 'Lesson Plan Preparation', roomNo: 'Staff Room', teacherName: 'UPDESH SINGH PAL' },
+  { id: 'tt-mon-8a', day: 'Monday', period: 8, className: 'X-A', subjectName: 'Class Teacher Hour', roomNo: 'Room 24', teacherName: 'UPDESH SINGH PAL' },
+  { id: 'tt-mon-9a', day: 'Monday', period: 9, className: 'X-A', subjectName: 'Remedial Class / Extra Time', roomNo: 'Room 24', teacherName: 'UPDESH SINGH PAL' },
 
   // Tuesday
-  { id: 'tt-tue-1a', day: 'Tuesday', period: 1, className: 'XII-A', subjectName: 'Mathematics', roomNo: 'Room 32', teacherName: 'Mr. Updesh Kumar (PGT)' },
-  { id: 'tt-tue-1b', day: 'Tuesday', period: 1, className: 'VI-A', subjectName: 'Science', roomNo: 'Room 16', teacherName: 'Mrs. Sunita Verma (TGT)' },
-  { id: 'tt-tue-1c', day: 'Tuesday', period: 1, className: 'V-A', subjectName: 'English', roomNo: 'Room 12', teacherName: 'Mrs. Anjali Deshmukh (PRT)' },
+  { id: 'tt-tue-1a', day: 'Tuesday', period: 1, className: 'XII-A', subjectName: 'Mathematics', roomNo: 'Room 32', teacherName: 'UPDESH SINGH PAL' },
+  { id: 'tt-tue-jkd-1', day: 'Tuesday', period: 1, className: 'VIII-A', subjectName: 'Work Education (W.E.)', roomNo: 'Room 20', teacherName: 'JYOTI KUMARI DHUMA', teacherId: '51951' },
+  { id: 'tt-tue-1b', day: 'Tuesday', period: 1, className: 'VI-A', subjectName: 'Science', roomNo: 'Room 16', teacherName: 'A GAYATRI' },
+  { id: 'tt-tue-1c', day: 'Tuesday', period: 1, className: 'V-A', subjectName: 'English', roomNo: 'Room 12', teacherName: 'SANTWANA DASH' },
+  { id: 'tt-tue-sk-1', day: 'Tuesday', period: 1, className: 'VI-A', subjectName: 'English', roomNo: 'Room 16', teacherName: 'SANJUKTA KUJUR', teacherId: '106019' },
   
-  { id: 'tt-tue-2a', day: 'Tuesday', period: 2, className: 'X-A', subjectName: 'Mathematics', roomNo: 'Room 24', teacherName: 'Mr. Updesh Kumar (PGT)' },
-  { id: 'tt-tue-2b', day: 'Tuesday', period: 2, className: 'VIII-A', subjectName: 'Science', roomNo: 'Room 20', teacherName: 'Mrs. Sunita Verma (TGT)' },
-  { id: 'tt-tue-2c', day: 'Tuesday', period: 2, className: 'IV-A', subjectName: 'Environmental Studies (EVS)', roomNo: 'Room 10', teacherName: 'Mrs. Anjali Deshmukh (PRT)' },
+  { id: 'tt-tue-2a', day: 'Tuesday', period: 2, className: 'X-A', subjectName: 'Mathematics', roomNo: 'Room 24', teacherName: 'UPDESH SINGH PAL' },
+  { id: 'tt-tue-2b', day: 'Tuesday', period: 2, className: 'VIII-A', subjectName: 'Science', roomNo: 'Room 20', teacherName: 'A GAYATRI' },
+  { id: 'tt-tue-2c', day: 'Tuesday', period: 2, className: 'IV-A', subjectName: 'Environmental Studies (EVS)', roomNo: 'Room 10', teacherName: 'SANTWANA DASH' },
+  { id: 'tt-tue-sr-2', day: 'Tuesday', period: 2, className: 'IX-A', subjectName: 'Art Education', roomNo: 'Art Room', teacherName: 'SAMYA RAHA', teacherId: '106020' },
+  { id: 'tt-tue-dm-2', day: 'Tuesday', period: 2, className: 'VII-A', subjectName: 'Library Science', roomNo: 'Library', teacherName: 'DIPANWITA MANDAL', teacherId: '102725' },
 
-  { id: 'tt-tue-3a', day: 'Tuesday', period: 3, className: 'XI-B', subjectName: 'Mathematics', roomNo: 'Lab 2', teacherName: 'Mr. Updesh Kumar (PGT)' },
+  { id: 'tt-tue-3a', day: 'Tuesday', period: 3, className: 'XI-B', subjectName: 'Mathematics', roomNo: 'Lab 2', teacherName: 'UPDESH SINGH PAL' },
+  { id: 'tt-tue-jkd-3', day: 'Tuesday', period: 3, className: 'X-A', subjectName: 'Work Education (W.E.)', roomNo: 'Room 24', teacherName: 'JYOTI KUMARI DHUMA', teacherId: '51951' },
+  { id: 'tt-tue-pp-3', day: 'Tuesday', period: 3, className: 'VIII-A', subjectName: 'Hindi', roomNo: 'Room 20', teacherName: 'PRIYABRATA PADHAN', teacherId: '76958' },
   {
     id: 'tt-tue-3b',
     day: 'Tuesday',
@@ -412,64 +456,100 @@ export const DEFAULT_TIMETABLE: TimetableSlot[] = [
     className: 'IX-A',
     subjectName: 'Mathematics (Practice Drill)',
     roomNo: 'Room 18',
-    teacherName: 'Mrs. Anjali Deshmukh (PRT)',
+    teacherName: 'SANTWANA DASH',
     isArrangement: true,
-    originalTeacherName: 'Mr. Updesh Kumar (PGT)',
-    arrangementTeacherName: 'Mrs. Anjali Deshmukh (PRT)',
+    originalTeacherName: 'UPDESH SINGH PAL',
+    arrangementTeacherName: 'SANTWANA DASH',
     arrangementReason: 'Regular Teacher on External School Inspection Duty'
   },
-  { id: 'tt-tue-3c', day: 'Tuesday', period: 3, className: 'VI-A', subjectName: 'General Science', roomNo: 'Room 16', teacherName: 'Mrs. Sunita Verma (TGT)' },
+  { id: 'tt-tue-3c', day: 'Tuesday', period: 3, className: 'VI-A', subjectName: 'General Science', roomNo: 'Room 16', teacherName: 'A GAYATRI' },
 
-  { id: 'tt-tue-4a', day: 'Tuesday', period: 4, className: 'IX-B', subjectName: 'Mathematics', roomNo: 'Room 18', teacherName: 'Mr. Updesh Kumar (PGT)' },
-  { id: 'tt-tue-4b', day: 'Tuesday', period: 4, className: 'XI-B', subjectName: 'Biology', roomNo: 'Bio Lab', teacherName: 'Mrs. Sunita Verma (TGT)' },
-  { id: 'tt-tue-4c', day: 'Tuesday', period: 4, className: 'VI-B', subjectName: 'English Reading', roomNo: 'Room 15', teacherName: 'Mrs. Anjali Deshmukh (PRT)' },
+  { id: 'tt-tue-4a', day: 'Tuesday', period: 4, className: 'IX-B', subjectName: 'Mathematics', roomNo: 'Room 18', teacherName: 'UPDESH SINGH PAL' },
+  { id: 'tt-tue-4b', day: 'Tuesday', period: 4, className: 'XI-B', subjectName: 'Biology', roomNo: 'Bio Lab', teacherName: 'A GAYATRI' },
+  { id: 'tt-tue-4c', day: 'Tuesday', period: 4, className: 'VI-B', subjectName: 'English Reading', roomNo: 'Room 15', teacherName: 'SANTWANA DASH' },
+  { id: 'tt-tue-sr-4', day: 'Tuesday', period: 4, className: 'X-A', subjectName: 'Art Education', roomNo: 'Art Room', teacherName: 'SAMYA RAHA', teacherId: '106020' },
+  { id: 'tt-tue-dm-4', day: 'Tuesday', period: 4, className: 'VIII-A', subjectName: 'Library Science', roomNo: 'Library', teacherName: 'DIPANWITA MANDAL', teacherId: '102725' },
 
-  { id: 'tt-tue-5a', day: 'Tuesday', period: 5, className: 'X-A', subjectName: 'Remedial Class', roomNo: 'Room 24', teacherName: 'Mr. Updesh Kumar (PGT)' },
-  { id: 'tt-tue-5b', day: 'Tuesday', period: 5, className: 'VII-A', subjectName: 'Science', roomNo: 'Room 19', teacherName: 'Mrs. Sunita Verma (TGT)' },
+  { id: 'tt-tue-5a', day: 'Tuesday', period: 5, className: 'X-A', subjectName: 'Remedial Class', roomNo: 'Room 24', teacherName: 'UPDESH SINGH PAL' },
+  { id: 'tt-tue-jkd-5', day: 'Tuesday', period: 5, className: 'IX-A', subjectName: 'Work Education (W.E.)', roomNo: 'Room 18', teacherName: 'JYOTI KUMARI DHUMA', teacherId: '51951' },
+  { id: 'tt-tue-5b', day: 'Tuesday', period: 5, className: 'VII-A', subjectName: 'Science', roomNo: 'Room 19', teacherName: 'A GAYATRI' },
 
-  { id: 'tt-tue-6a', day: 'Tuesday', period: 6, className: 'XII-A', subjectName: 'Maths Lab / Project', roomNo: 'Math Lab', teacherName: 'Mr. Updesh Kumar (PGT)' },
-  { id: 'tt-tue-6b', day: 'Tuesday', period: 6, className: 'VIII-A', subjectName: 'Science Practical', roomNo: 'Physics Lab', teacherName: 'Mrs. Sunita Verma (TGT)' },
+  { id: 'tt-tue-6a', day: 'Tuesday', period: 6, className: 'XII-A', subjectName: 'Maths Lab / Project', roomNo: 'Math Lab', teacherName: 'UPDESH SINGH PAL' },
+  { id: 'tt-tue-6b', day: 'Tuesday', period: 6, className: 'VIII-A', subjectName: 'Science Practical', roomNo: 'Physics Lab', teacherName: 'A GAYATRI' },
+  { id: 'tt-tue-sr-6', day: 'Tuesday', period: 6, className: 'VI-A', subjectName: 'Art Education', roomNo: 'Art Room', teacherName: 'SAMYA RAHA', teacherId: '106020' },
 
-  { id: 'tt-tue-7a', day: 'Tuesday', period: 7, className: 'Free / Duty', subjectName: 'Academic Planning & Record Updating', roomNo: 'Staff Room', teacherName: 'Mr. Updesh Kumar (PGT)' },
-  { id: 'tt-tue-7b', day: 'Tuesday', period: 7, className: 'V-A', subjectName: 'Activity & Joyful Learning', roomNo: 'Room 12', teacherName: 'Mrs. Anjali Deshmukh (PRT)' },
+  { id: 'tt-tue-7a', day: 'Tuesday', period: 7, className: 'Free / Duty', subjectName: 'Academic Planning & Record Updating', roomNo: 'Staff Room', teacherName: 'UPDESH SINGH PAL' },
+  { id: 'tt-tue-7b', day: 'Tuesday', period: 7, className: 'V-A', subjectName: 'Activity & Joyful Learning', roomNo: 'Room 12', teacherName: 'SANTWANA DASH' },
 
-  { id: 'tt-tue-8a', day: 'Tuesday', period: 8, className: 'XI-B', subjectName: 'Mathematics', roomNo: 'Lab 2', teacherName: 'Mr. Updesh Kumar (PGT)' },
-  { id: 'tt-tue-8b', day: 'Tuesday', period: 8, className: 'VI-A', subjectName: 'Science Revision', roomNo: 'Room 16', teacherName: 'Mrs. Sunita Verma (TGT)' },
+  { id: 'tt-tue-8a', day: 'Tuesday', period: 8, className: 'XI-B', subjectName: 'Mathematics', roomNo: 'Lab 2', teacherName: 'UPDESH SINGH PAL' },
+  { id: 'tt-tue-8b', day: 'Tuesday', period: 8, className: 'VI-A', subjectName: 'Science Revision', roomNo: 'Room 16', teacherName: 'A GAYATRI' },
 
-  { id: 'tt-tue-9a', day: 'Tuesday', period: 9, className: 'IX-A', subjectName: 'Extra Class / Slow Learners', roomNo: 'Room 18', teacherName: 'Mr. Updesh Kumar (PGT)' },
+  { id: 'tt-tue-9a', day: 'Tuesday', period: 9, className: 'IX-A', subjectName: 'Extra Class / Slow Learners', roomNo: 'Room 18', teacherName: 'UPDESH SINGH PAL' },
 
   // Wednesday
-  { id: 'tt-wed-1', day: 'Wednesday', period: 1, className: 'X-A', subjectName: 'Mathematics', roomNo: 'Room 24', teacherName: 'Mr. Updesh Kumar (PGT)' },
-  { id: 'tt-wed-2', day: 'Wednesday', period: 2, className: 'XI-B', subjectName: 'Mathematics', roomNo: 'Lab 2', teacherName: 'Mr. Updesh Kumar (PGT)' },
-  { id: 'tt-wed-3', day: 'Wednesday', period: 3, className: 'XII-A', subjectName: 'Mathematics', roomNo: 'Room 32', teacherName: 'Mr. Updesh Kumar (PGT)' },
-  { id: 'tt-wed-4', day: 'Wednesday', period: 4, className: 'IX-B', subjectName: 'Mathematics', roomNo: 'Room 18', teacherName: 'Mr. Updesh Kumar (PGT)' },
-  { id: 'tt-wed-5', day: 'Wednesday', period: 5, className: 'Co-Curricular', subjectName: 'House Activity / CCA', roomNo: 'Assembly Hall', teacherName: 'Mrs. Sunita Verma (TGT)' },
-  { id: 'tt-wed-6', day: 'Wednesday', period: 6, className: 'X-A', subjectName: 'Mathematics', roomNo: 'Room 24', teacherName: 'Mr. Updesh Kumar (PGT)' },
-  { id: 'tt-wed-9', day: 'Wednesday', period: 9, className: 'XI-A', subjectName: 'Remedial & Doubt Clearing', roomNo: 'Room 32', teacherName: 'Mr. Updesh Kumar (PGT)' },
+  { id: 'tt-wed-1', day: 'Wednesday', period: 1, className: 'X-A', subjectName: 'Mathematics', roomNo: 'Room 24', teacherName: 'UPDESH SINGH PAL' },
+  { id: 'tt-wed-sr-1', day: 'Wednesday', period: 1, className: 'VII-A', subjectName: 'Art Education', roomNo: 'Art Room', teacherName: 'SAMYA RAHA', teacherId: '106020' },
+  { id: 'tt-wed-dm-1', day: 'Wednesday', period: 1, className: 'X-A', subjectName: 'Library Science', roomNo: 'Library', teacherName: 'DIPANWITA MANDAL', teacherId: '102725' },
+  { id: 'tt-wed-jkd-2', day: 'Wednesday', period: 2, className: 'VI-A', subjectName: 'Work Education (W.E.)', roomNo: 'Room 16', teacherName: 'JYOTI KUMARI DHUMA', teacherId: '51951' },
+  { id: 'tt-wed-2', day: 'Wednesday', period: 2, className: 'XI-B', subjectName: 'Mathematics', roomNo: 'Lab 2', teacherName: 'UPDESH SINGH PAL' },
+  { id: 'tt-wed-3', day: 'Wednesday', period: 3, className: 'XII-A', subjectName: 'Mathematics', roomNo: 'Room 32', teacherName: 'UPDESH SINGH PAL' },
+  { id: 'tt-wed-sr-3', day: 'Wednesday', period: 3, className: 'VIII-A', subjectName: 'Art Education', roomNo: 'Art Room', teacherName: 'SAMYA RAHA', teacherId: '106020' },
+  { id: 'tt-wed-4', day: 'Wednesday', period: 4, className: 'IX-B', subjectName: 'Mathematics', roomNo: 'Room 18', teacherName: 'UPDESH SINGH PAL' },
+  { id: 'tt-wed-jkd-4', day: 'Wednesday', period: 4, className: 'VII-A', subjectName: 'Work Education (W.E.)', roomNo: 'Room 19', teacherName: 'JYOTI KUMARI DHUMA', teacherId: '51951' },
+  { id: 'tt-wed-dm-4', day: 'Wednesday', period: 4, className: 'VI-A', subjectName: 'Library Science', roomNo: 'Library', teacherName: 'DIPANWITA MANDAL', teacherId: '102725' },
+  { id: 'tt-wed-5', day: 'Wednesday', period: 5, className: 'Co-Curricular', subjectName: 'House Activity / CCA', roomNo: 'Assembly Hall', teacherName: 'A GAYATRI' },
+  { id: 'tt-wed-sr-5', day: 'Wednesday', period: 5, className: 'IX-A', subjectName: 'Art Education', roomNo: 'Art Room', teacherName: 'SAMYA RAHA', teacherId: '106020' },
+  { id: 'tt-wed-6', day: 'Wednesday', period: 6, className: 'X-A', subjectName: 'Mathematics', roomNo: 'Room 24', teacherName: 'UPDESH SINGH PAL' },
+  { id: 'tt-wed-jkd-6', day: 'Wednesday', period: 6, className: 'VIII-A', subjectName: 'Work Education (W.E.)', roomNo: 'Room 20', teacherName: 'JYOTI KUMARI DHUMA', teacherId: '51951' },
+  { id: 'tt-wed-9', day: 'Wednesday', period: 9, className: 'XI-A', subjectName: 'Remedial & Doubt Clearing', roomNo: 'Room 32', teacherName: 'UPDESH SINGH PAL' },
 
   // Thursday
-  { id: 'tt-thu-1', day: 'Thursday', period: 1, className: 'XII-A', subjectName: 'Mathematics', roomNo: 'Room 32', teacherName: 'Mr. Updesh Kumar (PGT)' },
-  { id: 'tt-thu-2', day: 'Thursday', period: 2, className: 'X-A', subjectName: 'Mathematics', roomNo: 'Room 24', teacherName: 'Mr. Updesh Kumar (PGT)' },
-  { id: 'tt-thu-3', day: 'Thursday', period: 3, className: 'XI-B', subjectName: 'Mathematics', roomNo: 'Lab 2', teacherName: 'Mr. Updesh Kumar (PGT)' },
-  { id: 'tt-thu-4', day: 'Thursday', period: 4, className: 'IX-B', subjectName: 'Mathematics', roomNo: 'Room 18', teacherName: 'Mr. Updesh Kumar (PGT)' },
-  { id: 'tt-thu-5', day: 'Thursday', period: 5, className: 'XII-A', subjectName: 'Problem Solving Session', roomNo: 'Room 32', teacherName: 'Mr. Updesh Kumar (PGT)' },
-  { id: 'tt-thu-6', day: 'Thursday', period: 6, className: 'X-A', subjectName: 'Art Integrated Math Project', roomNo: 'Room 24', teacherName: 'Mr. Updesh Kumar (PGT)' },
-  { id: 'tt-thu-9', day: 'Thursday', period: 9, className: 'X-A', subjectName: 'Extra Time / Competency Prep', roomNo: 'Room 24', teacherName: 'Mr. Updesh Kumar (PGT)' },
+  { id: 'tt-thu-1', day: 'Thursday', period: 1, className: 'XII-A', subjectName: 'Mathematics', roomNo: 'Room 32', teacherName: 'UPDESH SINGH PAL' },
+  { id: 'tt-thu-jkd-1', day: 'Thursday', period: 1, className: 'X-A', subjectName: 'Work Education (W.E.)', roomNo: 'Room 24', teacherName: 'JYOTI KUMARI DHUMA', teacherId: '51951' },
+  { id: 'tt-thu-2', day: 'Thursday', period: 2, className: 'X-A', subjectName: 'Mathematics', roomNo: 'Room 24', teacherName: 'UPDESH SINGH PAL' },
+  { id: 'tt-thu-sr-2', day: 'Thursday', period: 2, className: 'X-A', subjectName: 'Art Education', roomNo: 'Art Room', teacherName: 'SAMYA RAHA', teacherId: '106020' },
+  { id: 'tt-thu-3', day: 'Thursday', period: 3, className: 'XI-B', subjectName: 'Mathematics', roomNo: 'Lab 2', teacherName: 'UPDESH SINGH PAL' },
+  { id: 'tt-thu-jkd-3', day: 'Thursday', period: 3, className: 'IX-A', subjectName: 'Work Education (W.E.)', roomNo: 'Room 18', teacherName: 'JYOTI KUMARI DHUMA', teacherId: '51951' },
+  { id: 'tt-thu-dm-3', day: 'Thursday', period: 3, className: 'VII-A', subjectName: 'Library Science', roomNo: 'Library', teacherName: 'DIPANWITA MANDAL', teacherId: '102725' },
+  { id: 'tt-thu-4', day: 'Thursday', period: 4, className: 'IX-B', subjectName: 'Mathematics', roomNo: 'Room 18', teacherName: 'UPDESH SINGH PAL' },
+  { id: 'tt-thu-sr-4', day: 'Thursday', period: 4, className: 'VI-A', subjectName: 'Art Education', roomNo: 'Art Room', teacherName: 'SAMYA RAHA', teacherId: '106020' },
+  { id: 'tt-thu-5', day: 'Thursday', period: 5, className: 'XII-A', subjectName: 'Problem Solving Session', roomNo: 'Room 32', teacherName: 'UPDESH SINGH PAL' },
+  { id: 'tt-thu-jkd-5', day: 'Thursday', period: 5, className: 'VI-A', subjectName: 'Work Education (W.E.)', roomNo: 'Room 16', teacherName: 'JYOTI KUMARI DHUMA', teacherId: '51951' },
+  { id: 'tt-thu-dm-5', day: 'Thursday', period: 5, className: 'VIII-A', subjectName: 'Library Science', roomNo: 'Library', teacherName: 'DIPANWITA MANDAL', teacherId: '102725' },
+  { id: 'tt-thu-6', day: 'Thursday', period: 6, className: 'X-A', subjectName: 'Art Integrated Math Project', roomNo: 'Room 24', teacherName: 'UPDESH SINGH PAL' },
+  { id: 'tt-thu-sr-6', day: 'Thursday', period: 6, className: 'VII-A', subjectName: 'Art Education', roomNo: 'Art Room', teacherName: 'SAMYA RAHA', teacherId: '106020' },
+  { id: 'tt-thu-9', day: 'Thursday', period: 9, className: 'X-A', subjectName: 'Extra Time / Competency Prep', roomNo: 'Room 24', teacherName: 'UPDESH SINGH PAL' },
 
   // Friday
-  { id: 'tt-fri-1', day: 'Friday', period: 1, className: 'X-A', subjectName: 'Mathematics', roomNo: 'Room 24', teacherName: 'Mr. Updesh Kumar (PGT)' },
-  { id: 'tt-fri-2', day: 'Friday', period: 2, className: 'XII-A', subjectName: 'Mathematics', roomNo: 'Room 32', teacherName: 'Mr. Updesh Kumar (PGT)' },
-  { id: 'tt-fri-3', day: 'Friday', period: 3, className: 'XI-B', subjectName: 'Mathematics', roomNo: 'Lab 2', teacherName: 'Mr. Updesh Kumar (PGT)' },
-  { id: 'tt-fri-4', day: 'Friday', period: 4, className: 'IX-B', subjectName: 'Mathematics', roomNo: 'Room 18', teacherName: 'Mr. Updesh Kumar (PGT)' },
+  { id: 'tt-fri-1', day: 'Friday', period: 1, className: 'X-A', subjectName: 'Mathematics', roomNo: 'Room 24', teacherName: 'UPDESH SINGH PAL' },
+  { id: 'tt-fri-jkd-1', day: 'Friday', period: 1, className: 'IX-A', subjectName: 'Work Education (W.E.)', roomNo: 'Room 18', teacherName: 'JYOTI KUMARI DHUMA', teacherId: '51951' },
+  { id: 'tt-fri-2', day: 'Friday', period: 2, className: 'XII-A', subjectName: 'Mathematics', roomNo: 'Room 32', teacherName: 'UPDESH SINGH PAL' },
+  { id: 'tt-fri-sr-2', day: 'Friday', period: 2, className: 'VIII-A', subjectName: 'Art Education', roomNo: 'Art Room', teacherName: 'SAMYA RAHA', teacherId: '106020' },
+  { id: 'tt-fri-dm-2', day: 'Friday', period: 2, className: 'VI-A', subjectName: 'Library Science', roomNo: 'Library', teacherName: 'DIPANWITA MANDAL', teacherId: '102725' },
+  { id: 'tt-fri-3', day: 'Friday', period: 3, className: 'XI-B', subjectName: 'Mathematics', roomNo: 'Lab 2', teacherName: 'UPDESH SINGH PAL' },
+  { id: 'tt-fri-jkd-3', day: 'Friday', period: 3, className: 'VII-A', subjectName: 'Work Education (W.E.)', roomNo: 'Room 19', teacherName: 'JYOTI KUMARI DHUMA', teacherId: '51951' },
+  { id: 'tt-fri-4', day: 'Friday', period: 4, className: 'IX-B', subjectName: 'Mathematics', roomNo: 'Room 18', teacherName: 'UPDESH SINGH PAL' },
+  { id: 'tt-fri-sr-4', day: 'Friday', period: 4, className: 'IX-A', subjectName: 'Art Education', roomNo: 'Art Room', teacherName: 'SAMYA RAHA', teacherId: '106020' },
+  { id: 'tt-fri-dm-4', day: 'Friday', period: 4, className: 'VII-A', subjectName: 'Library Science', roomNo: 'Library', teacherName: 'DIPANWITA MANDAL', teacherId: '102725' },
+  { id: 'tt-fri-jkd-4', day: 'Friday', period: 4, className: 'VIII-A', subjectName: 'Work Education (W.E.)', roomNo: 'Room 20', teacherName: 'JYOTI KUMARI DHUMA', teacherId: '51951' },
   { id: 'tt-fri-5', day: 'Friday', period: 5, className: 'Staff Meeting', subjectName: 'Weekly Subject Committee', roomNo: 'Conference Hall', teacherName: 'Shri Hemananda Barik (Principal I/c)' },
-  { id: 'tt-fri-6', day: 'Friday', period: 6, className: 'X-A', subjectName: 'Competency Test', roomNo: 'Room 24', teacherName: 'Mr. Updesh Kumar (PGT)' },
-  { id: 'tt-fri-9', day: 'Friday', period: 9, className: 'VI-A', subjectName: 'Remedial / P&HE Extra Practice', roomNo: 'Ground', teacherName: 'Mrs. Sunita Verma (TGT)' },
+  { id: 'tt-fri-sr-5', day: 'Friday', period: 5, className: 'X-A', subjectName: 'Art Education', roomNo: 'Art Room', teacherName: 'SAMYA RAHA', teacherId: '106020' },
+  { id: 'tt-fri-jkd-6', day: 'Friday', period: 6, className: 'X-A', subjectName: 'Work Education (W.E.)', roomNo: 'Room 24', teacherName: 'JYOTI KUMARI DHUMA', teacherId: '51951' },
+  { id: 'tt-fri-dm-6', day: 'Friday', period: 6, className: 'IX-A', subjectName: 'Library Science', roomNo: 'Library', teacherName: 'DIPANWITA MANDAL', teacherId: '102725' },
+  { id: 'tt-fri-jkd-8', day: 'Friday', period: 8, className: 'VI-A', subjectName: 'Work Education (W.E.)', roomNo: 'Room 16', teacherName: 'JYOTI KUMARI DHUMA', teacherId: '51951' },
+  { id: 'tt-fri-9', day: 'Friday', period: 9, className: 'VI-A', subjectName: 'Remedial / P&HE Extra Practice', roomNo: 'Ground', teacherName: 'A GAYATRI' },
 
   // Saturday
-  { id: 'tt-sat-1', day: 'Saturday', period: 1, className: 'XII-A', subjectName: 'Mathematics', roomNo: 'Room 32', teacherName: 'Mr. Updesh Kumar (PGT)' },
-  { id: 'tt-sat-2', day: 'Saturday', period: 2, className: 'X-A', subjectName: 'Mathematics', roomNo: 'Room 24', teacherName: 'Mr. Updesh Kumar (PGT)' },
-  { id: 'tt-sat-3', day: 'Saturday', period: 3, className: 'XI-B', subjectName: 'Mathematics', roomNo: 'Lab 2', teacherName: 'Mr. Updesh Kumar (PGT)' },
-  { id: 'tt-sat-4', day: 'Saturday', period: 4, className: 'Clubs / Scouts', subjectName: 'Guide Captain / Club Activity', roomNo: 'Ground', teacherName: 'Mr. Vikram Mehta (Data Entry)' },
+  { id: 'tt-sat-1', day: 'Saturday', period: 1, className: 'XII-A', subjectName: 'Mathematics', roomNo: 'Room 32', teacherName: 'UPDESH SINGH PAL' },
+  { id: 'tt-sat-sr-1', day: 'Saturday', period: 1, className: 'VII-A', subjectName: 'Art Integrated Project', roomNo: 'Art Room', teacherName: 'SAMYA RAHA', teacherId: '106020' },
+  { id: 'tt-sat-2', day: 'Saturday', period: 2, className: 'X-A', subjectName: 'Mathematics', roomNo: 'Room 24', teacherName: 'UPDESH SINGH PAL' },
+  { id: 'tt-sat-jkd-2', day: 'Saturday', period: 2, className: 'VIII-A', subjectName: 'Work Education (W.E.)', roomNo: 'Room 20', teacherName: 'JYOTI KUMARI DHUMA', teacherId: '51951' },
+  { id: 'tt-sat-dm-2', day: 'Saturday', period: 2, className: 'X-A', subjectName: 'Library Science', roomNo: 'Library', teacherName: 'DIPANWITA MANDAL', teacherId: '102725' },
+  { id: 'tt-sat-3', day: 'Saturday', period: 3, className: 'XI-B', subjectName: 'Mathematics', roomNo: 'Lab 2', teacherName: 'UPDESH SINGH PAL' },
+  { id: 'tt-sat-sr-3', day: 'Saturday', period: 3, className: 'IX-A', subjectName: 'Sculpture & Clay Modelling', roomNo: 'Art Room', teacherName: 'SAMYA RAHA', teacherId: '106020' },
+  { id: 'tt-sat-dm-3', day: 'Saturday', period: 3, className: 'VIII-A', subjectName: 'Library Science', roomNo: 'Library', teacherName: 'DIPANWITA MANDAL', teacherId: '102725' },
+  { id: 'tt-sat-4', day: 'Saturday', period: 4, className: 'Clubs / Scouts', subjectName: 'Guide Captain / Club Activity', roomNo: 'Ground', teacherName: 'JYOTI KUMARI DHUMA' },
+  { id: 'tt-sat-jkd-4', day: 'Saturday', period: 4, className: 'X-A', subjectName: 'Work Education (W.E.)', roomNo: 'Room 24', teacherName: 'JYOTI KUMARI DHUMA', teacherId: '51951' },
   { id: 'tt-sat-9', day: 'Saturday', period: 9, className: 'All Classes', subjectName: 'Extra Time / Remedial Coaching', roomNo: 'Resource Room', teacherName: 'All Teachers' }
 ];
 
@@ -1842,8 +1922,18 @@ export async function initializeDatabaseIfEmpty() {
   }
 
   const existingStaff = await db.get<StaffDetailRecord[]>('setup:staff_details');
-  if (!existingStaff || existingStaff.length === 0) {
-    await db.set('setup:staff_details', DEFAULT_STAFF_DETAILS);
+  if (!existingStaff || existingStaff.length < DEFAULT_STAFF_DETAILS.length) {
+    const staffMap = new Map<string, StaffDetailRecord>();
+    DEFAULT_STAFF_DETAILS.forEach(s => {
+      if (s.name) staffMap.set(s.name.trim().toUpperCase(), s);
+    });
+    if (existingStaff && existingStaff.length > 0) {
+      existingStaff.forEach(s => {
+        if (s.name) staffMap.set(s.name.trim().toUpperCase(), s);
+      });
+    }
+    const mergedStaff = Array.from(staffMap.values()).map((s, idx) => ({ ...s, serialNo: idx + 1 }));
+    await db.set('setup:staff_details', mergedStaff);
   }
 
   const existingSessions = await db.get<AcademicSession[]>('setup:sessions');
@@ -1878,8 +1968,37 @@ export async function initializeDatabaseIfEmpty() {
   }
 
   const existingTimetable = await db.get<TimetableSlot[]>('setup:timetable');
-  if (!existingTimetable) {
+  if (!existingTimetable || existingTimetable.length === 0) {
     await db.set('setup:timetable', DEFAULT_TIMETABLE);
+  } else {
+    // Purge legacy dummy/conflicting entries and normalize teacher names
+    const cleansedTT = existingTimetable
+      .filter(
+        s => s.id !== 'tt-fri-6' &&
+             s.id !== 'tt-fri-sr-7' &&
+             !(s.day === 'Friday' && s.period === 6 && s.subjectName === 'Competency Test') &&
+             !(s.day === 'Friday' && s.period === 7 && s.className === 'VI-A' && s.subjectName.includes('Art Education')) &&
+             !(s.teacherName && (s.teacherName.includes('Vikram Mehta') || s.teacherName.includes('Data Entry')))
+      )
+      .map(s => {
+        let tName = s.teacherName || '';
+        let tId = s.teacherId;
+        if (tName.includes('Updesh Kumar') || tName.includes('UPDESH SINGH PAL')) {
+          tName = 'UPDESH SINGH PAL';
+          tId = '108894';
+        } else if (tName.includes('Sunita Verma')) {
+          tName = 'A GAYATRI';
+          tId = 'CS.107859';
+        } else if (tName.includes('Anjali Deshmukh')) {
+          tName = 'SANTWANA DASH';
+          tId = '106024';
+        }
+        return { ...s, teacherName: tName, teacherId: tId };
+      });
+    const existingIds = new Set(cleansedTT.map(s => s.id));
+    const missingSlots = DEFAULT_TIMETABLE.filter(s => !existingIds.has(s.id));
+    const mergedTT = [...cleansedTT, ...missingSlots];
+    await db.set('setup:timetable', mergedTT);
   }
 
   const existingTimings = await db.get<Record<number, { time: string; label: string }>>('setup:period_timings');
@@ -2609,6 +2728,411 @@ export const DEFAULT_TASKS: TeacherTask[] = [
     updatedAt: '2026-08-09T14:00:00.000Z'
   }
 ];
+
+export const DEFAULT_TEACHER_ATTENDANCE: TeacherAttendanceRecord[] = [
+  {
+    id: 'att-staff-108894-2026-08-20',
+    employeeCode: '108894',
+    teacherName: 'UPDESH SINGH PAL',
+    designation: 'TGT (P&HE)',
+    employmentType: 'Regular',
+    date: new Date().toISOString().split('T')[0],
+    status: 'Present',
+    inTime: '07:32 AM',
+    markedBy: 'Self / Biometric',
+    markedAt: new Date().toISOString()
+  },
+  {
+    id: 'att-staff-108990-2026-08-20',
+    employeeCode: '108990',
+    teacherName: 'MANISH KUMAR YADAV',
+    designation: 'PRT',
+    employmentType: 'Regular',
+    date: new Date().toISOString().split('T')[0],
+    status: 'Leave',
+    leaveType: 'CL',
+    remarks: 'Family emergency / urgent personal work',
+    markedBy: 'Principal / Admin',
+    markedAt: new Date().toISOString(),
+    verifiedByPrincipal: true
+  },
+  {
+    id: 'att-staff-104992-2026-08-20',
+    employeeCode: '104992',
+    teacherName: 'PRIYANKA SHARMA',
+    designation: 'TGT English (Contractual)',
+    employmentType: 'Contractual',
+    date: new Date().toISOString().split('T')[0],
+    status: 'Present',
+    inTime: '07:40 AM',
+    markedBy: 'Biometric',
+    markedAt: new Date().toISOString()
+  }
+];
+
+export const DEFAULT_LEAVE_APPLICATIONS: LeaveApplication[] = [
+  {
+    id: 'la-2026-08-01',
+    employeeCode: '108990',
+    teacherName: 'MANISH KUMAR YADAV',
+    designation: 'PRT',
+    employmentType: 'Regular',
+    leaveType: 'CL',
+    fromDate: new Date().toISOString().split('T')[0],
+    toDate: new Date().toISOString().split('T')[0],
+    totalDays: 1,
+    reason: 'Urgent domestic work at hometown',
+    stationLeavingPermission: false,
+    status: 'Sanctioned',
+    appliedAt: new Date().toISOString(),
+    sanctionedBy: 'Shri Hemananda Barik (Principal I/c)',
+    sanctionedAt: new Date().toISOString(),
+    principalRemarks: 'Sanctioned. Ensure proxy arrangements are in place.',
+    proxyArrangementsConfirmed: true
+  }
+];
+
+export const DEFAULT_ON_DUTY_RECORDS: OnDutyRecord[] = [
+  {
+    id: 'od-2026-08-15',
+    employeeCode: '108894',
+    teacherName: 'UPDESH SINGH PAL',
+    designation: 'TGT (P&HE)',
+    purpose: 'National Sports Meet (NSM)',
+    description: 'Deputed as Team Manager & Contingent Leader for KVS Regional Athletics Contingent at National Sports Meet.',
+    venue: 'KV No. 1 Bhubaneswar',
+    officialOrderNo: 'KVS/RO/BBSR/SPORTS/2026/894',
+    fromDate: '2026-08-25',
+    toDate: '2026-08-28',
+    totalDays: 4,
+    affectedPeriods: [
+      { day: 'Tuesday', period: 1, className: 'VI-A', subjectName: 'Physical & Health Education' },
+      { day: 'Tuesday', period: 3, className: 'VII-A', subjectName: 'Physical & Health Education' },
+      { day: 'Wednesday', period: 2, className: 'VIII-A', subjectName: 'Physical & Health Education' }
+    ],
+    sanctionedByPrincipal: true,
+    sanctionedDate: '2026-08-18',
+    createdAt: new Date().toISOString()
+  }
+];
+
+export const DEFAULT_TRANSFER_CERTIFICATES: TransferCertificateRecord[] = [
+  {
+    id: 'tc-2026-001',
+    tcNumber: 'TC/2026-27/001',
+    bookNo: 'Vol-XV',
+    studentId: 'KV-2025-1088',
+    studentName: 'AARAV MOHANTY',
+    admissionNo: '1088',
+    penNo: 'PEN2025091244',
+    apaarId: 'APAAR-9812-4412-09',
+    fatherName: 'RAJESH MOHANTY',
+    motherName: 'PRIYA MOHANTY',
+    nationality: 'Indian',
+    socialCategory: 'GEN',
+    className: 'VIII',
+    section: 'A',
+    admissionDateInSchool: '01/04/2021',
+    dateOfLeaving: '2026-08-10',
+    dateOfIssueTc: '2026-08-12',
+    reasonForLeaving: 'Parent Transfer',
+    destinationSchoolName: 'KV MEG & Centre Bangalore',
+    totalWorkingDays: 68,
+    daysPresent: 64,
+    conductAndBehaviour: 'Very Good',
+    duesCleared: true,
+    issuedByPrincipalName: 'Shri Hemananda Barik (Principal I/c)',
+    status: 'Issued',
+    createdAt: '2026-08-12T10:00:00.000Z',
+    updatedAt: '2026-08-12T10:00:00.000Z'
+  }
+];
+
+export const DEFAULT_MONTHLY_ENROLLMENT_SNAPSHOTS: MonthlyEnrollmentSnapshot[] = [
+  {
+    id: 'enroll-ro-2026-07',
+    month: 'July',
+    year: 2026,
+    monthYearStr: '2026-07',
+    generatedAt: '2026-07-31T17:00:00.000Z',
+    generatedBy: 'UPDESH SINGH PAL (Data Entry Manager)',
+    verifiedByPrincipal: 'Shri Hemananda Barik (Principal I/c)',
+    schoolName: 'KENDRIYA VIDYALAYA KUTRA',
+    kvCode: '1628',
+    region: 'BHUBANESWAR',
+    classesData: [
+      {
+        className: 'VI',
+        section: 'A',
+        boysCount: 22,
+        girlsCount: 18,
+        transgenderCount: 0,
+        totalStudents: 40,
+        categoryBreakdown: {
+          gen: { boys: 8, girls: 6, total: 14 },
+          obc: { boys: 7, girls: 6, total: 13 },
+          sc: { boys: 4, girls: 3, total: 7 },
+          st: { boys: 3, girls: 3, total: 6 },
+          ewsOrBpl: { boys: 2, girls: 1, total: 3 },
+          minority: { boys: 1, girls: 1, total: 2 },
+          singleGirlChild: 4,
+          rte: 10,
+          differentlyAbled: 0
+        },
+        admissionsInMonth: 2,
+        tcIssuedInMonth: 0,
+        netEnrollment: 40
+      },
+      {
+        className: 'VII',
+        section: 'A',
+        boysCount: 20,
+        girlsCount: 19,
+        transgenderCount: 0,
+        totalStudents: 39,
+        categoryBreakdown: {
+          gen: { boys: 7, girls: 7, total: 14 },
+          obc: { boys: 6, girls: 6, total: 12 },
+          sc: { boys: 4, girls: 3, total: 7 },
+          st: { boys: 3, girls: 3, total: 6 },
+          ewsOrBpl: { boys: 1, girls: 2, total: 3 },
+          minority: { boys: 1, girls: 0, total: 1 },
+          singleGirlChild: 3,
+          rte: 8,
+          differentlyAbled: 0
+        },
+        admissionsInMonth: 1,
+        tcIssuedInMonth: 1,
+        netEnrollment: 39
+      },
+      {
+        className: 'VIII',
+        section: 'A',
+        boysCount: 21,
+        girlsCount: 19,
+        transgenderCount: 0,
+        totalStudents: 40,
+        categoryBreakdown: {
+          gen: { boys: 8, girls: 7, total: 15 },
+          obc: { boys: 6, girls: 6, total: 12 },
+          sc: { boys: 4, girls: 3, total: 7 },
+          st: { boys: 3, girls: 3, total: 6 },
+          ewsOrBpl: { boys: 1, girls: 1, total: 2 },
+          minority: { boys: 1, girls: 1, total: 2 },
+          singleGirlChild: 2,
+          rte: 6,
+          differentlyAbled: 0
+        },
+        admissionsInMonth: 0,
+        tcIssuedInMonth: 0,
+        netEnrollment: 40
+      },
+      {
+        className: 'IX',
+        section: 'A',
+        boysCount: 24,
+        girlsCount: 18,
+        transgenderCount: 0,
+        totalStudents: 42,
+        categoryBreakdown: {
+          gen: { boys: 9, girls: 6, total: 15 },
+          obc: { boys: 8, girls: 6, total: 14 },
+          sc: { boys: 4, girls: 3, total: 7 },
+          st: { boys: 3, girls: 3, total: 6 },
+          ewsOrBpl: { boys: 2, girls: 1, total: 3 },
+          minority: { boys: 1, girls: 1, total: 2 },
+          singleGirlChild: 3,
+          rte: 0,
+          differentlyAbled: 1
+        },
+        admissionsInMonth: 1,
+        tcIssuedInMonth: 0,
+        netEnrollment: 42
+      },
+      {
+        className: 'X',
+        section: 'A',
+        boysCount: 23,
+        girlsCount: 17,
+        transgenderCount: 0,
+        totalStudents: 40,
+        categoryBreakdown: {
+          gen: { boys: 9, girls: 6, total: 15 },
+          obc: { boys: 7, girls: 5, total: 12 },
+          sc: { boys: 4, girls: 3, total: 7 },
+          st: { boys: 3, girls: 3, total: 6 },
+          ewsOrBpl: { boys: 1, girls: 1, total: 2 },
+          minority: { boys: 1, girls: 0, total: 1 },
+          singleGirlChild: 2,
+          rte: 0,
+          differentlyAbled: 0
+        },
+        admissionsInMonth: 0,
+        tcIssuedInMonth: 1,
+        netEnrollment: 40
+      }
+    ],
+    grandTotals: {
+      totalBoys: 110,
+      totalGirls: 91,
+      totalStudents: 201,
+      totalGen: 73,
+      totalObc: 63,
+      totalSc: 35,
+      totalSt: 30,
+      totalEws: 13,
+      totalMinority: 8,
+      totalSgc: 14,
+      totalRte: 24,
+      totalDifferentlyAbled: 1,
+      totalTcIssued: 2,
+      totalNewAdmissions: 4
+    },
+    roSubmissionStatus: 'Submitted to RO',
+    submissionDate: '2026-08-01',
+    roDispatchNumber: 'KVK/RO-RET/2026/07-12'
+  }
+];
+
+export const DEFAULT_STUDENT_ATTENDANCE: StudentAttendanceRecord[] = [
+  {
+    id: 'att-std-1049-2026-08-20',
+    studentId: 'KV-2025-1049',
+    studentName: 'AAYUSH PATEL',
+    rollNo: 1,
+    className: 'VI',
+    section: 'A',
+    date: new Date().toISOString().split('T')[0],
+    status: 'P',
+    markedAt: new Date().toISOString()
+  }
+];
+
+export const DEFAULT_CLASS_DAILY_ATTENDANCE: ClassDailyAttendanceRecord[] = [
+  {
+    id: 'att-cls-I-2026-04-01',
+    date: '2026-04-01',
+    className: 'I',
+    section: 'A',
+    totalStudents: 40,
+    presentCount: 32,
+    absentCount: 2,
+    absentRollNos: [6, 32],
+    markedByTeacherName: 'Aarti Kisan',
+    markedAt: '2026-04-01T08:30:00.000Z'
+  },
+  {
+    id: 'att-cls-II-2026-04-01',
+    date: '2026-04-01',
+    className: 'II',
+    section: 'A',
+    totalStudents: 40,
+    presentCount: 31,
+    absentCount: 7,
+    absentRollNos: [11, 12, 13, 15, 31, 34, 39],
+    markedByTeacherName: 'Santwana Dash',
+    markedAt: '2026-04-01T08:30:00.000Z'
+  }
+];
+
+export const DEFAULT_PROXY_DUTIES: ProxyDutyAssignment[] = [
+  {
+    id: 'proxy-2026-08-20-p2-viia',
+    date: new Date().toISOString().split('T')[0],
+    dayOfWeek: 'Thursday',
+    periodNumber: 2,
+    timeSlot: '08:30 - 09:10',
+    className: 'VII',
+    section: 'A',
+    subjectName: 'Hindi',
+    roomNo: 'Room 102',
+    absentTeacherCode: '108990',
+    absentTeacherName: 'MANISH KUMAR YADAV',
+    absenceReason: 'CL',
+    substituteTeacherCode: '108894',
+    substituteTeacherName: 'UPDESH SINGH PAL',
+    substituteDesignation: 'TGT (P&HE)',
+    isFreePeriod: true,
+    assignedBy: 'Time-Table Committee / Principal',
+    assignedAt: new Date().toISOString(),
+    status: 'Assigned',
+    syncedToTaskSystem: true,
+    notes: 'Supervise Hindi reading & notebook revision'
+  }
+];
+
+export const DEFAULT_LEAVE_SETTINGS: LeaveSettingsConfig = {
+  contractualMinServiceMonths: 1,
+  contractualMaxClPerMonth: 1,
+  remedialVacationDutyMonths: ['2026-05', '2026-06'],
+  regularClAnnualEntitlement: 8,
+  regularElAnnualEntitlement: 10,
+  regularHplAnnualEntitlement: 20,
+  regularCclAnnualEntitlement: 730
+};
+
+export const DEFAULT_TICKETS: Ticket[] = [
+  {
+    id: 'tkt-1001',
+    title: 'Excel Export formatting for Monthly Leave Statement',
+    category: 'Feedback',
+    priority: 'Medium',
+    description: 'The monthly leave statement export works smoothly. Please ensure whole-school loss of pay days are highlighted in bold for accounts verification.',
+    moduleOrPage: 'Teacher Attendance',
+    status: 'Resolved',
+    evidence: [],
+    raisedBy: '108894',
+    raisedByName: 'UPDESH SINGH PAL',
+    raisedAt: '2026-08-19T09:30:00.000Z',
+    assignedTo: 'admin',
+    assignedToName: 'Principal / Admin',
+    principalOrDevRemarks: 'Implemented in the latest version with dedicated whole-school summary totals row.',
+    resolvedAt: '2026-08-20T10:00:00.000Z',
+    updatedAt: '2026-08-20T10:00:00.000Z'
+  },
+  {
+    id: 'tkt-1002',
+    title: 'Automatic arrangement duty notification in TaskManager',
+    category: 'Feature Request',
+    priority: 'High',
+    description: 'When proxy duty is assigned to a teacher, please auto-create an urgent task in TaskManager so they receive priority alert.',
+    moduleOrPage: 'Timetable Planner',
+    status: 'Resolved',
+    evidence: [],
+    raisedBy: '104822',
+    raisedByName: 'Mrs. S. Mohapatra',
+    raisedAt: '2026-08-19T14:15:00.000Z',
+    assignedTo: 'admin',
+    assignedToName: 'Principal / Admin',
+    principalOrDevRemarks: 'Configured and live. Tasks are created under Arrangement / Proxy Duty category with Do First priority.',
+    resolvedAt: '2026-08-20T11:30:00.000Z',
+    updatedAt: '2026-08-20T11:30:00.000Z'
+  },
+  {
+    id: 'tkt-1003',
+    title: 'Student photo preview in attendance grid',
+    category: 'UI/UX Issue',
+    priority: 'Low',
+    description: 'Would like to view student thumbnail avatar when hovering over student roll numbers in daily attendance register.',
+    moduleOrPage: 'Student Enrollment',
+    status: 'Open',
+    evidence: [],
+    raisedBy: '109241',
+    raisedByName: 'Mr. P. K. Dash',
+    raisedAt: '2026-08-20T08:00:00.000Z',
+    updatedAt: '2026-08-20T08:00:00.000Z'
+  }
+];
+
+export {
+  DEFAULT_PORTFOLIO_TEMPLATES,
+  DEFAULT_PORTFOLIO_ASSIGNMENTS,
+  DEFAULT_RESPONSIBILITY_DELEGATIONS,
+  DEFAULT_RESPONSIBILITY_REQUESTS,
+  DEFAULT_PORTFOLIO_SUGGESTIONS
+};
+
+export { THEME_CALENDAR_2026_27, THEME_FOR_THE_YEAR } from './themeCalendar2026';
 
 export const DEFAULT_TASK_LISTS: TaskList[] = [
   {
@@ -6894,6 +7418,21 @@ export const STORAGE_KEYS = [
   'setup:competency_tests_30',
   'setup:teacher_innovation_31a',
   'setup:teacher_best_practices_31b',
+  'setup:teacher_attendance',
+  'setup:leave_applications',
+  'setup:on_duty_records',
+  'setup:proxy_duty_assignments',
+  'setup:leave_settings',
+  'setup:student_attendance',
+  'setup:class_daily_attendance',
+  'setup:transfer_certificates',
+  'setup:monthly_enrollment_snapshots',
+  'setup:tickets',
+  'setup:portfolio_templates',
+  'setup:portfolio_assignments',
+  'setup:responsibility_delegations',
+  'setup:responsibility_requests',
+  'setup:portfolio_suggestions',
   'auth:users_list',
   'auth:custom_roles'
 ] as const;

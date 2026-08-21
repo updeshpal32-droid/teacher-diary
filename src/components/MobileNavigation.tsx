@@ -34,7 +34,9 @@ import {
   CheckCircle2,
   Plus,
   ChevronRight,
-  Target
+  Target,
+  HelpCircle,
+  Briefcase
 } from 'lucide-react';
 
 interface MobileNavigationProps {
@@ -127,7 +129,23 @@ export const MobileNavigation: React.FC<MobileNavigationProps> = ({
         icon: <Clock className="w-4 h-4 text-cyan-400" />
       },
 
+      {
+        key: 'my_portfolios',
+        title: 'My Roles & Duties',
+        subtitle: 'In-charge roles, memberships & delegated tasks',
+        pageRef: 'P-3 & 4',
+        category: 'daily',
+        icon: <Award className="w-4 h-4 text-purple-400" />
+      },
       // Admin & Setup
+      {
+        key: 'portfolios',
+        title: 'Roles & Committees',
+        subtitle: 'In-charge assignments & responsibility delegation',
+        pageRef: 'P-1 & 52',
+        category: 'admin',
+        icon: <Briefcase className="w-4 h-4 text-amber-400" />
+      },
       {
         key: 'school',
         title: 'School & Session Setup',
@@ -341,6 +359,14 @@ export const MobileNavigation: React.FC<MobileNavigationProps> = ({
         pageRef: isFoundational ? 'P-1 to 34' : 'P-1 to 52',
         category: 'reports',
         icon: <Printer className="w-4 h-4 text-amber-300" />
+      },
+      {
+        key: 'tickets',
+        title: 'Feedback & Ticket Desk',
+        subtitle: 'Raise tickets, report bugs, request features & feedback',
+        pageRef: 'Desk',
+        category: 'admin',
+        icon: <HelpCircle className="w-4 h-4 text-cyan-300" />
       },
       {
         key: 'settings',

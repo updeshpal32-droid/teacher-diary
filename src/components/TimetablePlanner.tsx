@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { TimetableSlot, DayOfWeek, TeacherRecord } from '../types/academic';
-import { db, DEFAULT_TIMETABLE, DEFAULT_PERIOD_TIMINGS } from '../lib/storage';
+import { TimetableSlot, DayOfWeek, TeacherRecord, StaffDetailRecord } from '../types/academic';
+import { db, DEFAULT_TIMETABLE, DEFAULT_PERIOD_TIMINGS, DEFAULT_STAFF_DETAILS, getUserAccounts } from '../lib/storage';
 import { DevModeBadge } from './DevModeBadge';
 import { ExcelTimetableImporter, canonicalizeClassName } from './ExcelTimetableImporter';
 import { compareClassGrades } from '../utils/csvParser';
@@ -61,6 +61,47 @@ const CLASS_OPTIONS = [
   { label: 'Class XII-B', val: 'XII-B', level: 'Senior Secondary' },
 ];
 
+
+function normalizeFacultyKey(name?: string): string {
+  if (!name) return '';
+  return name
+    .toLowerCase()
+    .replace(/^(mr|mrs|ms|dr|smt|shri|sh)\.?\s+/i, '')
+    .replace(/[^a-z0-9]/g, '')
+    .trim();
+}
+
+function resolveToRegistryName(rawName: string, registry: StaffDetailRecord[]): { name: string; id?: string } {
+  if (!rawName) return { name: '' };
+  const rawKey = normalizeFacultyKey(rawName);
+
+  // Direct special aliases
+  if (rawKey.includes('updesh') || rawKey.includes('updeshkumar') || rawKey.includes('updeshsinghpal')) {
+    const p = registry.find(s => s.employeeCode === '108894' || normalizeFacultyKey(s.name).includes('updesh'));
+    return { name: p ? p.name : 'UPDESH SINGH PAL', id: '108894' };
+  }
+  if (rawKey.includes('sunitavema') || rawKey.includes('sunitaverma')) {
+    const p = registry.find(s => normalizeFacultyKey(s.name).includes('gayatri'));
+    if (p) return { name: p.name, id: p.employeeCode };
+  }
+  if (rawKey.includes('anjalideshmukh') || rawKey.includes('anjali')) {
+    const p = registry.find(s => normalizeFacultyKey(s.name).includes('santwana'));
+    if (p) return { name: p.name, id: p.employeeCode };
+  }
+
+  // Find in registry
+  const match = registry.find(s => {
+    const sKey = normalizeFacultyKey(s.name);
+    return sKey === rawKey || sKey.includes(rawKey) || rawKey.includes(sKey);
+  });
+
+  if (match) {
+    return { name: match.name, id: match.employeeCode };
+  }
+
+  return { name: rawName };
+}
+
 export const TimetablePlanner: React.FC<TimetablePlannerProps> = ({ devMode, onSaved }) => {
   const [timetable, setTimetable] = useState<TimetableSlot[]>(DEFAULT_TIMETABLE);
   const [periodTimings, setPeriodTimings] = useState<Record<number, { time: string; label: string }>>(DEFAULT_PERIOD_TIMINGS);
@@ -114,24 +155,18 @@ export const TimetablePlanner: React.FC<TimetablePlannerProps> = ({ devMode, onS
     ];
   }, [dynamicClassesInSchedule]);
 
+  const [staffRegistry, setStaffRegistry] = useState<StaffDetailRecord[]>(DEFAULT_STAFF_DETAILS);
   const [storedTeachers, setStoredTeachers] = useState<TeacherRecord[]>([]);
 
-  // Dynamically extract all unique teacher names from timetable
-  const dynamicTeachersInSchedule = useMemo(() => {
-    const set = new Set<string>();
-    timetable.forEach(s => {
-      if (s.teacherName && s.teacherName.trim()) {
-        set.add(s.teacherName.trim());
-      }
-    });
-    return Array.from(set).sort((a, b) => a.localeCompare(b));
-  }, [timetable]);
-
+  // Build authoritative faculty list matching "All Staff Details & Faculty Master Registry"
   const allTeachers = useMemo(() => {
-    const storedNames = storedTeachers.map(t => t.teacherName.trim()).filter(Boolean);
-    const combined = new Set([...dynamicTeachersInSchedule, ...storedNames]);
-    return Array.from(combined).sort((a, b) => a.localeCompare(b));
-  }, [dynamicTeachersInSchedule, storedTeachers]);
+    const registry = staffRegistry.length > 0 ? staffRegistry : DEFAULT_STAFF_DETAILS;
+    // Extract unique teacher names from the official Faculty Master Registry
+    const teacherNames = registry
+      .map(s => s.name.trim())
+      .filter(Boolean);
+    return Array.from(new Set(teacherNames)).sort((a, b) => a.localeCompare(b));
+  }, [staffRegistry]);
 
   useEffect(() => {
     if (allTeachers.length > 0 && (!selectedTeacher || !allTeachers.includes(selectedTeacher))) {
@@ -141,16 +176,26 @@ export const TimetablePlanner: React.FC<TimetablePlannerProps> = ({ devMode, onS
 
   const teacherPeriodCounts = useMemo(() => {
     const counts: Record<string, number> = {};
+    allTeachers.forEach(t => { counts[t] = 0; });
+
     timetable.forEach(s => {
-      if (s.teacherName && s.teacherName.trim()) {
-        const norm = s.teacherName.trim();
-        const match = allTeachers.find(t => t.toLowerCase() === norm.toLowerCase()) || norm;
-        counts[match] = (counts[match] || 0) + 1;
+      if (s.teacherName && s.teacherName.trim() && !s.isBreak) {
+        const sKey = normalizeFacultyKey(s.teacherName);
+        const match = allTeachers.find(t => {
+          const tKey = normalizeFacultyKey(t);
+          return tKey === sKey || tKey.includes(sKey) || sKey.includes(tKey);
+        });
+        if (match) {
+          counts[match] = (counts[match] || 0) + 1;
+        }
       }
     });
     return counts;
   }, [timetable, allTeachers]);
 
+  const activeTeachersCount = useMemo(() => {
+    return allTeachers.filter(t => (teacherPeriodCounts[t] || 0) > 0).length;
+  }, [allTeachers, teacherPeriodCounts]);
   // Excel Importer State & Handler
   const [isExcelImporterOpen, setIsExcelImporterOpen] = useState(false);
 
@@ -243,13 +288,92 @@ export const TimetablePlanner: React.FC<TimetablePlannerProps> = ({ devMode, onS
 
   const loadData = async () => {
     setLoading(true);
-    const saved = await db.get<TimetableSlot[]>('setup:timetable');
-    if (saved) setTimetable(saved);
+    const [savedTT, savedStaff, userAccounts, savedTeachers, savedTimings] = await Promise.all([
+      db.get<TimetableSlot[]>('setup:timetable'),
+      db.get<StaffDetailRecord[]>('setup:staff_details'),
+      getUserAccounts(),
+      db.get<TeacherRecord[]>('setup:teachersList'),
+      db.get<Record<number, { time: string; label: string }>>('setup:period_timings')
+    ]);
 
-    const savedTeachers = await db.get<TeacherRecord[]>('setup:teachersList');
+    // Build Master Staff Registry matching "All Staff Details & Faculty Master Registry"
+    const staffMap = new Map<string, StaffDetailRecord>();
+    DEFAULT_STAFF_DETAILS.forEach(s => {
+      if (s.employeeCode) staffMap.set(s.employeeCode, s);
+    });
+    if (savedStaff && savedStaff.length > 0) {
+      savedStaff.forEach(s => {
+        if (s.employeeCode) staffMap.set(s.employeeCode, s);
+      });
+    }
+    if (userAccounts && userAccounts.length > 0) {
+      userAccounts.forEach(u => {
+        if (u.employeeCode) {
+          const existing = staffMap.get(u.employeeCode);
+          if (existing) {
+            staffMap.set(u.employeeCode, {
+              ...existing,
+              name: u.name || existing.name,
+              designation: u.designation || existing.designation
+            });
+          } else {
+            staffMap.set(u.employeeCode, {
+              id: u.id,
+              serialNo: staffMap.size + 1,
+              name: u.name,
+              employeeCode: u.employeeCode,
+              designation: u.designation || 'Teacher',
+              employmentType: 'Regular',
+              socialCategory: 'GENERAL',
+              dob: '',
+              joiningDateKVSWithDesignation: '',
+              joiningDatePresentKVWithDesignation: '',
+              bankAccountNo: '',
+              ifscCode: '',
+              bankName: '',
+              highestAcademicAndProfessionalQual: '',
+              permanentPostalAddress: '',
+              email: u.email,
+              phoneCalls: '',
+              phoneWhatsapp: '',
+              aadharNo: '',
+              pranOrPanNo: '',
+              isMinority: 'No',
+              seniorityNumber: '',
+              approvalStatus: 'Verified & Approved'
+            });
+          }
+        }
+      });
+    }
+
+    const regList = Array.from(staffMap.values());
+    setStaffRegistry(regList);
     if (savedTeachers) setStoredTeachers(savedTeachers);
 
-    const savedTimings = await db.get<Record<number, { time: string; label: string }>>('setup:period_timings');
+    // Normalize and cleanse timetable
+    const raw = savedTT && savedTT.length > 0 ? savedTT : DEFAULT_TIMETABLE;
+    const cleansedTT: TimetableSlot[] = raw
+      .filter(s => {
+        if (s.id === 'tt-fri-6' || s.id === 'tt-fri-sr-7') return false;
+        if (s.day === 'Friday' && s.period === 6 && s.subjectName === 'Competency Test') return false;
+        if (s.day === 'Friday' && s.period === 7 && s.className === 'VI-A' && s.subjectName.includes('Art Education')) return false;
+        if (s.teacherName && (s.teacherName.toLowerCase().includes('vikram mehta') || s.teacherName.toLowerCase().includes('data entry'))) return false;
+        return true;
+      })
+      .map(s => {
+        if (!s.teacherName) return s;
+        const res = resolveToRegistryName(s.teacherName, regList);
+        return {
+          ...s,
+          teacherName: res.name,
+          teacherId: res.id || s.teacherId
+        };
+      });
+
+    setTimetable(cleansedTT);
+    await db.set('setup:timetable', cleansedTT);
+
     if (savedTimings) {
       setPeriodTimings(savedTimings);
       setTempTimings(savedTimings);
@@ -259,15 +383,15 @@ export const TimetablePlanner: React.FC<TimetablePlannerProps> = ({ devMode, onS
     }
     setLoading(false);
   };
-
   const getSlot = (day: DayOfWeek, period: number): TimetableSlot | undefined => {
     if (viewMode === 'teacher') {
       if (!selectedTeacher) return undefined;
-      const normSelected = selectedTeacher.trim().toLowerCase();
+      const targetKey = normalizeFacultyKey(selectedTeacher);
       return timetable.find(s => {
         if (s.day !== day || s.period !== period) return false;
         if (!s.teacherName) return false;
-        return s.teacherName.trim().toLowerCase() === normSelected;
+        const sKey = normalizeFacultyKey(s.teacherName);
+        return sKey === targetKey || sKey.includes(targetKey) || targetKey.includes(sKey);
       });
     }
     // viewMode === 'class'
@@ -283,7 +407,6 @@ export const TimetablePlanner: React.FC<TimetablePlannerProps> = ({ devMode, onS
       return sCanonical === targetCanonical || sBase === targetBase || sCanonical.startsWith(targetBase + '-');
     });
   };
-
   const handleCellClick = (day: DayOfWeek, period: number) => {
     const key = `${day}-${period}`;
     if (isGridSelectMode) {
@@ -851,9 +974,9 @@ export const TimetablePlanner: React.FC<TimetablePlannerProps> = ({ devMode, onS
                   <Users className="w-3.5 h-3.5 text-purple-400" />
                   <span>Select Faculty Member ({allTeachers.length} Teachers Registered):</span>
                 </div>
-                {dynamicTeachersInSchedule.length > 0 && (
+                {activeTeachersCount > 0 && (
                   <span className="text-[10px] text-emerald-300 bg-emerald-500/20 px-2 py-0.5 rounded-full border border-emerald-500/30">
-                    ✓ {dynamicTeachersInSchedule.length} teacher(s) with active schedule
+                    ✓ {activeTeachersCount} teacher(s) with active schedule
                   </span>
                 )}
               </div>
@@ -1372,12 +1495,25 @@ export const TimetablePlanner: React.FC<TimetablePlannerProps> = ({ devMode, onS
                 </div>
                 <div>
                   <label>Assigned Teacher / Faculty</label>
-                  <input
-                    type="text"
+                  <select
                     value={activeSlot.teacherName || ''}
-                    onChange={e => setActiveSlot({ ...activeSlot, teacherName: e.target.value })}
-                    placeholder="e.g. Mr. R. K. Sharma"
-                  />
+                    onChange={e => {
+                      const val = e.target.value;
+                      const matched = staffRegistry.find(s => s.name === val);
+                      setActiveSlot({
+                        ...activeSlot,
+                        teacherName: val,
+                        teacherId: matched?.employeeCode || activeSlot.teacherId
+                      });
+                    }}
+                  >
+                    <option value="">-- Select Faculty Member --</option>
+                    {allTeachers.map(t => (
+                      <option key={t} value={t}>
+                        {t}
+                      </option>
+                    ))}
+                  </select>
                 </div>
               </div>
 

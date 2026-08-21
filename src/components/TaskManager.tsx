@@ -17,10 +17,14 @@ import {
   HourlyCategory,
   DutyPreset,
   TaskList,
-  TaskTagDefinition
+  TaskTagDefinition,
+  TimetableSlot,
+  TeacherProfile,
+  StaffDetailRecord
 } from '../types/academic';
 import { UserAccount } from '../types/auth';
 import { parseSmartDate, ParsedDateResult } from '../lib/smartDateParser';
+import { getTeacherScopedStorageKey, getActiveInspectedTeacher } from '../lib/teacherContext';
 import {
   CheckSquare,
   Plus,
@@ -174,20 +178,51 @@ export const TaskManager: React.FC<TaskManagerProps> = ({ devMode, currentUser, 
   const quickDescInputRef = useRef<HTMLTextAreaElement>(null);
   const quickAddContainerRef = useRef<HTMLFormElement>(null);
 
+  const [activeInspectedTeacher, setActiveInspectedTeacher] = useState<StaffDetailRecord | null>(null);
   const teacherCode = currentUser?.employeeCode;
   const isAdmin = currentUser?.role === 'admin';
 
   useEffect(() => {
-    loadTasks();
-    loadPresets();
-    loadTaskLists();
-    loadSmartSettings();
-    loadAvailableTags();
+    const initData = async () => {
+      const inspected = await getActiveInspectedTeacher();
+      setActiveInspectedTeacher(inspected);
+      const code = inspected?.employeeCode || currentUser?.employeeCode || '108894';
+      await loadTasks(code);
+      await loadPresets();
+      await loadTaskLists();
+      await loadSmartSettings();
+      await loadAvailableTags(code);
+    };
+    initData();
+
+    const handleTimetableUpdate = async () => {
+      const inspected = await getActiveInspectedTeacher();
+      await loadTasks(inspected?.employeeCode || currentUser?.employeeCode || '108894');
+    };
+
+    const handleTeacherChanged = async (e: any) => {
+      const inspected = e.detail || (await getActiveInspectedTeacher());
+      setActiveInspectedTeacher(inspected);
+      const code = inspected?.employeeCode || currentUser?.employeeCode || '108894';
+      await loadTasks(code);
+      await loadAvailableTags(code);
+    };
+
+    window.addEventListener('kvs-timetable-updated', handleTimetableUpdate);
+    window.addEventListener('kvs-auth-changed', handleTimetableUpdate);
+    window.addEventListener('kvs-active-teacher-changed', handleTeacherChanged);
+
+    return () => {
+      window.removeEventListener('kvs-timetable-updated', handleTimetableUpdate);
+      window.removeEventListener('kvs-auth-changed', handleTimetableUpdate);
+      window.removeEventListener('kvs-active-teacher-changed', handleTeacherChanged);
+    };
   }, [teacherCode]);
 
-  const loadAvailableTags = async () => {
+  const loadAvailableTags = async (overrideTeacherCode?: string) => {
     try {
-      const tags = await getAllAvailableTags(teacherCode);
+      const codeToUse = overrideTeacherCode || activeInspectedTeacher?.employeeCode || teacherCode;
+      const tags = await getAllAvailableTags(codeToUse);
       setAvailableTags(tags);
     } catch (err) {
       console.error('Error loading tags:', err);
@@ -601,24 +636,227 @@ export const TaskManager: React.FC<TaskManagerProps> = ({ devMode, currentUser, 
     }
   };
 
-  const loadTasks = async () => {
+  const loadTasks = async (targetEmpCode?: string) => {
     try {
-      const stored = await db.get<TeacherTask[]>('setup:tasks');
-      if (stored && stored.length > 0) {
-        setTasks(stored);
+      const inspected = await getActiveInspectedTeacher();
+      const currentEmpCode = targetEmpCode || inspected?.employeeCode || currentUser?.employeeCode || '108894';
+      const scopedTaskKey = getTeacherScopedStorageKey('setup:tasks', currentEmpCode);
+
+      const [storedScoped, globalStored, timetable, teacherProfile, defaultTimetable] = await Promise.all([
+        db.get<TeacherTask[]>(scopedTaskKey),
+        db.get<TeacherTask[]>('setup:tasks'),
+        db.get<TimetableSlot[]>('setup:timetable'),
+        db.get<TeacherProfile>(currentEmpCode ? `setup:teacher_${currentEmpCode}` : 'setup:teacher'),
+        db.get<TeacherProfile>('setup:teacher')
+      ]);
+
+      let baseTasks: TeacherTask[] = [];
+
+      if (storedScoped && Array.isArray(storedScoped)) {
+        baseTasks = storedScoped;
+      } else if (currentEmpCode === '108894' && globalStored && globalStored.length > 0) {
+        // Updesh Singh Pal inherits existing tasks
+        baseTasks = globalStored;
+        await db.set(scopedTaskKey, globalStored);
       } else {
-        await db.set('setup:tasks', DEFAULT_TASKS);
-        setTasks(DEFAULT_TASKS);
+        // Other teachers start fresh with isolated task list
+        baseTasks = [];
+        await db.set(scopedTaskKey, []);
+      }
+
+      // Determine today's day of week & date
+      const days = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+      const todayObj = new Date();
+      const currentDayName = days[todayObj.getDay()];
+      const todayDateStr = todayObj.toISOString().split('T')[0];
+
+      // Current teacher's identity matchers
+      const currentTeacherName = (
+        inspected?.name ||
+        currentUser?.name ||
+        teacherProfile?.name ||
+        defaultTimetable?.name ||
+        ''
+      ).trim().toLowerCase();
+
+      const assignedClassesList = (
+        currentUser?.assignedClasses ||
+        ['VI-A', 'VII-A', 'VIII-A', 'IX-A', 'X-A', 'XI-A', 'XII-A']
+      ).map(c => c.toLowerCase());
+
+      const teacherSubjectLower = (
+        teacherProfile?.primarySubject ||
+        teacherProfile?.classesAndSubjectsTaught ||
+        inspected?.designation ||
+        currentUser?.department ||
+        'Physical & Health Education'
+      ).toLowerCase();
+
+      const allSlots = timetable || [];
+      const daySlots = allSlots.filter(t => (t.dayOfWeek || t.day) === (currentDayName !== 'Sunday' ? currentDayName : 'Monday'));
+
+      // 1. Identify Regular Teaching Periods scheduled for this teacher
+      const matchingTeachingSlots = daySlots.filter(slot => {
+        const slotTeacher = (slot.teacherName || '').toLowerCase();
+        const slotSubject = (slot.subjectName || '').toLowerCase();
+        const slotClass = (slot.className || '').trim().toLowerCase();
+
+        // If it's explicitly an arrangement where someone else takes over, don't generate regular task
+        if (slot.isArrangement && slot.originalTeacherName && slot.originalTeacherName.toLowerCase().includes(currentTeacherName)) {
+          return false;
+        }
+
+        // Direct name match or code match
+        if (slotTeacher && currentTeacherName && (slotTeacher.includes(currentTeacherName) || currentTeacherName.includes(slotTeacher))) {
+          return true;
+        }
+        if (slot.teacherId && currentEmpCode && slot.teacherId === currentEmpCode) {
+          return true;
+        }
+
+        return false;
+      });
+
+      // Strict single-class-per-period deduplication
+      const singleClassMap = new Map<number, TimetableSlot>();
+      for (const slot of matchingTeachingSlots) {
+        const pNum = slot.period || slot.periodNumber || 1;
+        const slotTeacher = (slot.teacherName || '').toLowerCase();
+        const isDirect = slotTeacher && currentTeacherName && slotTeacher.includes(currentTeacherName);
+        if (!singleClassMap.has(pNum)) {
+          singleClassMap.set(pNum, slot);
+        } else if (isDirect) {
+          singleClassMap.set(pNum, slot);
+        }
+      }
+      const myTeachingSlots = Array.from(singleClassMap.values()).sort((a, b) => (a.period || 1) - (b.period || 1));
+
+      // 2. Identify Proxy Duty / Arrangement Slots assigned to this teacher
+      const myProxySlots = daySlots.filter(slot => {
+        if (!slot.isArrangement) return false;
+        const arrTeacher = (slot.arrangementTeacherName || '').toLowerCase();
+        if (arrTeacher && currentTeacherName && (arrTeacher.includes(currentTeacherName) || currentTeacherName.includes(arrTeacher))) {
+          return true;
+        }
+        return false;
+      });
+
+      // Period Timing Lookup
+      const periodTimings: Record<number, string> = {
+        1: '07:50',
+        2: '08:30',
+        3: '09:10',
+        4: '09:50',
+        5: '11:00',
+        6: '11:40',
+        7: '12:20',
+        8: '13:00',
+        9: '13:40'
+      };
+
+      // Map to deterministic Tasks
+      const generatedTimetableTasks: TeacherTask[] = [];
+
+      // Add Regular Teaching Periods
+      for (const slot of myTeachingSlots) {
+        const pNum = slot.period || slot.periodNumber || 1;
+        const deterministicId = `tt-period-${slot.id || `p${pNum}-${slot.className}`}-${todayDateStr}`;
+        const existing = baseTasks.find(t => t.id === deterministicId);
+
+        if (existing) {
+          generatedTimetableTasks.push(existing);
+        } else {
+          generatedTimetableTasks.push({
+            id: deterministicId,
+            title: `Period ${pNum} Class ${slot.className}${slot.section ? `-${slot.section}` : ''}: ${slot.subjectName}`,
+            description: `Scheduled daily teaching period in Room ${slot.roomNo || 'Classroom'}. Deliver curriculum lesson objectives.`,
+            category: 'Teaching',
+            priority: 'Do First (Urgent & Important)',
+            status: 'Pending',
+            dueDate: todayDateStr,
+            dueTime: periodTimings[pNum] || '08:00',
+            listId: 'inbox',
+            estimatedMinutes: 40,
+            subtasks: [
+              { id: `st-tt-1-${deterministicId}`, title: 'Conduct roll-call & student attendance', completed: false },
+              { id: `st-tt-2-${deterministicId}`, title: 'Deliver lesson activities & concept practice', completed: false },
+              { id: `st-tt-3-${deterministicId}`, title: 'Assign homework & log teacher diary entry', completed: false }
+            ],
+            tags: ['Timetable Period', `Class ${slot.className}`, `Period ${pNum}`],
+            assignedBy: 'Master Timetable',
+            assignedByRole: 'Self',
+            isTopPriority: false,
+            overloadImpact: false,
+            linkedClass: slot.className ? `Class ${slot.className}` : undefined,
+            linkedSubject: slot.subjectName,
+            createdAt: new Date().toISOString(),
+            updatedAt: new Date().toISOString()
+          });
+        }
+      }
+
+      // Add Proxy Duties / Arrangements
+      for (const slot of myProxySlots) {
+        const pNum = slot.period || slot.periodNumber || 1;
+        const deterministicId = `proxy-duty-${slot.id || `proxy-p${pNum}-${slot.className}`}-${todayDateStr}`;
+        const existing = baseTasks.find(t => t.id === deterministicId);
+
+        if (existing) {
+          generatedTimetableTasks.push(existing);
+        } else {
+          generatedTimetableTasks.push({
+            id: deterministicId,
+            title: `🚨 Proxy Duty: Period ${pNum} Class ${slot.className}${slot.section ? `-${slot.section}` : ''} (${slot.subjectName})`,
+            description: `⚠️ Substitution arrangement assigned by Principal/Incharge for absent teacher ${slot.originalTeacherName || 'Staff on Leave'}. Reason: ${slot.arrangementReason || 'Leave Coverage'}.`,
+            category: 'Assembly & Duty',
+            priority: 'Do First (Urgent & Important)',
+            status: 'Pending',
+            dueDate: todayDateStr,
+            dueTime: periodTimings[pNum] || '08:00',
+            listId: 'inbox',
+            estimatedMinutes: 40,
+            subtasks: [
+              { id: `st-pr-1-${deterministicId}`, title: 'Report to assigned classroom & maintain discipline', completed: false },
+              { id: `st-pr-2-${deterministicId}`, title: 'Engage students in revision / reading activity', completed: false },
+              { id: `st-pr-3-${deterministicId}`, title: 'Sign substitution register in Principal office', completed: false }
+            ],
+            tags: ['Proxy Duty', 'Arrangement', `Class ${slot.className}`, 'Priority Duty'],
+            assignedBy: 'Principal / Academic Incharge',
+            assignedByRole: 'Principal',
+            isTopPriority: true,
+            overloadImpact: true,
+            linkedClass: slot.className ? `Class ${slot.className}` : undefined,
+            linkedSubject: slot.subjectName,
+            createdAt: new Date().toISOString(),
+            updatedAt: new Date().toISOString()
+          });
+        }
+      }
+
+      // Merge: non-timetable tasks + generated tasks
+      const nonTimetableTasks = baseTasks.filter(t => !t.id.startsWith('tt-period-') && !t.id.startsWith('proxy-duty-'));
+      const mergedAllTasks = [...generatedTimetableTasks, ...nonTimetableTasks];
+
+      setTasks(mergedAllTasks);
+      await db.set(scopedTaskKey, mergedAllTasks);
+      if (currentEmpCode === '108894') {
+        await db.set('setup:tasks', mergedAllTasks);
       }
     } catch (err) {
-      console.error('Error loading tasks:', err);
-      setTasks(DEFAULT_TASKS);
+      console.error('Error loading tasks with timetable sync:', err);
+      setTasks([]);
     }
   };
 
   const saveTasks = async (updated: TeacherTask[]) => {
     setTasks(updated);
-    await db.set('setup:tasks', updated);
+    const inspected = await getActiveInspectedTeacher();
+    const currentEmpCode = inspected?.employeeCode || currentUser?.employeeCode || '108894';
+    const scopedTaskKey = getTeacherScopedStorageKey('setup:tasks', currentEmpCode);
+    await db.set(scopedTaskKey, updated);
+    if (currentEmpCode === '108894') {
+      await db.set('setup:tasks', updated);
+    }
   };
 
   const loadPresets = async () => {
@@ -3289,6 +3527,18 @@ const ListTaskCard: React.FC<{
               >
                 {task.title}
               </h4>
+              {task.id.startsWith('proxy-duty-') && (
+                <span className="px-2 py-0.5 rounded-full bg-rose-500/20 border border-rose-500/50 text-rose-300 text-[10px] font-black tracking-wide flex items-center gap-1 animate-pulse" title="Proxy Substitution Duty assigned by Principal / Incharge">
+                  <AlertTriangle className="w-3 h-3 text-rose-400" />
+                  <span>⚠️ PROXY DUTY</span>
+                </span>
+              )}
+              {task.id.startsWith('tt-period-') && (
+                <span className="px-2 py-0.5 rounded-full bg-indigo-500/20 border border-indigo-500/40 text-indigo-300 text-[10px] font-bold font-mono flex items-center gap-1">
+                  <Clock className="w-3 h-3 text-indigo-400" />
+                  <span>Timetable Period</span>
+                </span>
+              )}
               {task.isSmartRecognized && (
                 <span className="px-1.5 py-0.2 rounded-full bg-blue-950/80 border border-blue-800 text-blue-300 text-[10px] font-mono flex items-center gap-1" title={task.originalTitle ? `Parsed from: "${task.originalTitle}"` : 'Smart Recognized'}>
                   <Sparkles className="w-2.5 h-2.5 text-blue-400" />

@@ -302,6 +302,23 @@ export const AdminTeacherContextBar: React.FC<AdminTeacherContextBarProps> = ({
                   <span className="text-[9px] text-slate-400 font-mono">2026-27</span>
                 </div>
 
+                {/* Committees Directory Direct Quick-Jump */}
+                <button
+                  type="button"
+                  onClick={() => {
+                    setIsAssignRolesOpen(false);
+                    onNavigateTab('portfolios');
+                  }}
+                  className="w-full text-left px-3 py-2 rounded-xl bg-gradient-to-r from-emerald-700 to-teal-700 hover:from-emerald-600 hover:to-teal-600 text-white text-xs font-bold transition-all flex items-center justify-between shadow-sm cursor-pointer border border-emerald-400/40"
+                  title="Open Official Responsibilities & Committees Directory (50 Portfolios)"
+                >
+                  <span className="flex items-center gap-2">
+                    <Building2 className="w-4 h-4 text-emerald-200" />
+                    <span>📂 Official Committees Directory</span>
+                  </span>
+                  <span className="px-1.5 py-0.2 rounded bg-emerald-950 text-emerald-200 text-[10px] font-mono">50</span>
+                </button>
+
                 {/* Core Roles */}
                 <div className="text-[10px] font-bold text-slate-400 px-2 pt-1 uppercase">Core Academic:</div>
                 <button

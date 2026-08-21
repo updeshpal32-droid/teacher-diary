@@ -75,7 +75,7 @@ const DESIGNATIONS: TeacherDesignation[] = [
 ];
 
 interface UserAccountManagerProps {
-  currentUserId: string;
+  currentUserId?: string;
 }
 
 export function UserAccountManager({ currentUserId }: UserAccountManagerProps) {

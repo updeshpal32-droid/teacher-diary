@@ -50,6 +50,7 @@ export interface UserAccount {
   phone?: string;
   avatarUrl?: string;
   isActive: boolean;
+  activePersona?: 'admin' | 'data_entry_manager' | 'teacher'; // Optional runtime active persona switch for dual-role users
   createdAt: string;
   lastLoginAt?: string;
 }
@@ -99,17 +100,21 @@ export function getStageCategory(className: string): StageCategory {
   return 'senior_secondary';
 }
 
-// Check whether a user has permission to access a specific tab/feature
-export function canAccessTab(role: UserRole, tabKey: string): boolean {
-  if (role === 'admin') {
+// Check whether a user has permission to access a specific tab/feature based on active persona
+export function canAccessTab(role: UserRole, tabKey: string, activePersona?: UserRole): boolean {
+  const effectiveRole = activePersona || role;
+
+  if (effectiveRole === 'admin') {
     // Admin has access to everything
     return true;
   }
 
-  if (role === 'data_entry_manager') {
+  if (effectiveRole === 'data_entry_manager') {
     // Data Entry Manager can manage master data, rosters, syllabi, timetables, calendars, marks
     const allowedTabs = [
       'dashboard',
+      'teacher_attendance',
+      'student_enrollment',
       'students',
       'classes',
       'timetable',
@@ -126,17 +131,22 @@ export function canAccessTab(role: UserRole, tabKey: string): boolean {
       'scholastic_3_5_t2',
       'result_analysis',
       'reports',
+      'tickets',
+      'my_portfolios',
       'settings'
     ];
     return allowedTabs.includes(tabKey);
   }
 
-  if (role === 'teacher') {
+  if (effectiveRole === 'teacher') {
     // Teachers have access to all diary modules relevant to teaching & documentation
     const allowedTabs = [
       'dashboard',
       'taskmanager',
       'workload',
+      'teacher_attendance',
+      'student_enrollment',
+      'my_portfolios',
       'teacher',
       'students',
       'classes',
@@ -163,6 +173,7 @@ export function canAccessTab(role: UserRole, tabKey: string): boolean {
       'pedagogical_28_30',
       'inspection',
       'reports',
+      'tickets',
       'settings',
       // Foundational-specific routes
       'monitoring',

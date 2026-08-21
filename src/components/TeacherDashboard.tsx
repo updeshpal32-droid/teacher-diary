@@ -12,7 +12,13 @@ import {
   LessonEvidenceItem,
   TeacherTask,
   StaffDetailRecord,
-  ProfileChangeRequest
+  ProfileChangeRequest,
+  TeacherAttendanceRecord,
+  LeaveApplication,
+  ProxyDutyAssignment,
+  LeaveBalance,
+  PortfolioTemplate,
+  PortfolioAssignment
 } from '../types/academic';
 import {
   db,
@@ -28,14 +34,21 @@ import {
   DEFAULT_PERIOD_TIMINGS,
   DEFAULT_TASKS,
   DEFAULT_STAFF_DETAILS,
+  DEFAULT_TEACHER_ATTENDANCE,
+  DEFAULT_LEAVE_APPLICATIONS,
+  DEFAULT_PROXY_DUTIES,
+  DEFAULT_PORTFOLIO_TEMPLATES,
+  DEFAULT_PORTFOLIO_ASSIGNMENTS,
   getCurrentUser
 } from '../lib/storage';
 import { compareClassGrades } from '../utils/csvParser';
 import { getTeacherScopedStorageKey } from '../lib/teacherContext';
 import { getStaffEmploymentType } from '../lib/staffFileImporter';
+import { getLeaveBalance } from '../lib/leaveEngine';
 import { UserAccount } from '../types/auth';
 import { DevModeBadge } from './DevModeBadge';
 import { ProfileChangeRequestsModal } from './ProfileChangeRequestsModal';
+import { DutyAndProxyManager } from './DutyAndProxyManager';
 import {
   LayoutDashboard,
   Clock,
@@ -63,6 +76,7 @@ import {
   FileText,
   ListTodo,
   Coffee,
+  DoorOpen,
   UserCheck,
   UserX,
   MapPin,
@@ -86,13 +100,15 @@ import {
   Star,
   Target,
   CheckCheck,
-  Users2
+  Users2,
+  Activity
 } from 'lucide-react';
 
 interface TeacherDashboardProps {
   devMode: boolean;
   onNavigateTab: (tab: string) => void;
   currentUser?: UserAccount | null;
+  onSwitchPersona?: (persona: 'teacher' | 'data_entry_manager' | 'admin') => void;
 }
 
 const DEFAULT_RECESS_DUTY_ROSTER: Record<string, { time: string; duties: { name: string; designation: string; location: string; role: string }[] }> = {
@@ -424,7 +440,12 @@ function detectCurrentActivePeriod(timings: Record<number, { time: string }>): {
   };
 }
 
-export const TeacherDashboard: React.FC<TeacherDashboardProps> = ({ devMode, onNavigateTab, currentUser: propUser }) => {
+export const TeacherDashboard: React.FC<TeacherDashboardProps> = ({
+  devMode,
+  onNavigateTab,
+  currentUser: propUser,
+  onSwitchPersona
+}) => {
   const [school, setSchool] = useState<SchoolDetails>(DEFAULT_SCHOOL);
   const [teacher, setTeacher] = useState<TeacherProfile>(DEFAULT_TEACHER);
   const [classes, setClasses] = useState<ClassSection[]>(DEFAULT_CLASSES);
@@ -460,11 +481,15 @@ export const TeacherDashboard: React.FC<TeacherDashboardProps> = ({ devMode, onN
   // Tasks Management State
   const [tasks, setTasks] = useState<TeacherTask[]>(DEFAULT_TEACHER_DASHBOARD_TASKS);
   const [isProfileRequestsModalOpen, setIsProfileRequestsModalOpen] = useState(false);
+  const [isDutyProxyModalOpen, setIsDutyProxyModalOpen] = useState(false);
   const [profileRequests, setProfileRequests] = useState<ProfileChangeRequest[]>([]);
   const [taskTab, setTaskTab] = useState<'all' | 'assigned_by_superiors' | 'self'>('all');
   const [showNewTaskModal, setShowNewTaskModal] = useState(false);
   const [newTaskTitle, setNewTaskTitle] = useState('');
   const [staffList, setStaffList] = useState<StaffDetailRecord[]>(DEFAULT_STAFF_DETAILS);
+  const [attendanceRecords, setAttendanceRecords] = useState<TeacherAttendanceRecord[]>(DEFAULT_TEACHER_ATTENDANCE);
+  const [leaveApplications, setLeaveApplications] = useState<LeaveApplication[]>(DEFAULT_LEAVE_APPLICATIONS);
+  const [proxyAssignments, setProxyAssignments] = useState<ProxyDutyAssignment[]>(DEFAULT_PROXY_DUTIES);
   const [newTaskPriority, setNewTaskPriority] = useState<string>('Do First (Urgent & Important)');
   const [newTaskAssignedBy, setNewTaskAssignedBy] = useState<'Self' | 'Principal' | 'Incharge'>('Self');
   const [newTaskDueTime, setNewTaskDueTime] = useState('15:00');
@@ -499,6 +524,9 @@ export const TeacherDashboard: React.FC<TeacherDashboardProps> = ({ devMode, onN
     window.addEventListener('kvs-auth-changed', handleAuthChange);
     window.addEventListener('kvs-active-teacher-changed', handleAuthChange);
     window.addEventListener('kvs-profile-request-resolved', handleAuthChange);
+    window.addEventListener('kvs-teacher-attendance-updated', handleAuthChange);
+    window.addEventListener('kvs-timetable-updated', handleAuthChange);
+    window.addEventListener('kvs-portfolios-updated', handleAuthChange);
 
     return () => {
       window.removeEventListener('kvs-school-updated', handleSchoolUpdate);
@@ -506,6 +534,9 @@ export const TeacherDashboard: React.FC<TeacherDashboardProps> = ({ devMode, onN
       window.removeEventListener('kvs-auth-changed', handleAuthChange);
       window.removeEventListener('kvs-active-teacher-changed', handleAuthChange);
       window.removeEventListener('kvs-profile-request-resolved', handleAuthChange);
+      window.removeEventListener('kvs-teacher-attendance-updated', handleAuthChange);
+      window.removeEventListener('kvs-timetable-updated', handleAuthChange);
+      window.removeEventListener('kvs-portfolios-updated', handleAuthChange);
     };
   }, [propUser]);
 
@@ -527,8 +558,32 @@ export const TeacherDashboard: React.FC<TeacherDashboardProps> = ({ devMode, onN
       const scopedKey = u?.employeeCode
         ? getTeacherScopedStorageKey('setup:teacher', u.employeeCode)
         : 'setup:teacher';
+      const scopedTaskKey = u?.employeeCode
+        ? getTeacherScopedStorageKey('setup:tasks', u.employeeCode)
+        : 'setup:tasks';
 
-      const [s, scopedTeacher, defaultTeacher, c, tt, cal, syl, lp, asst, insp, pt, savedTasks, savedStaff, savedProfileReqs] = await Promise.all([
+      const [
+        s,
+        scopedTeacher,
+        defaultTeacher,
+        c,
+        tt,
+        cal,
+        syl,
+        lp,
+        asst,
+        insp,
+        pt,
+        savedScopedTasks,
+        globalTasks,
+        savedStaff,
+        savedProfileReqs,
+        savedAtt,
+        savedLeaves,
+        savedProxies,
+        savedTemplates,
+        savedAssignments
+      ] = await Promise.all([
         db.get<SchoolDetails>('setup:school'),
         db.get<TeacherProfile>(scopedKey),
         db.get<TeacherProfile>('setup:teacher'),
@@ -540,11 +595,21 @@ export const TeacherDashboard: React.FC<TeacherDashboardProps> = ({ devMode, onN
         db.get<AssessmentProgressRecord[]>('setup:assessments'),
         db.get<InspectionReviewRecord[]>('setup:inspections'),
         db.get<Record<number, { time: string; label: string }>>('setup:period_timings'),
+        db.get<TeacherTask[]>(scopedTaskKey),
         db.get<TeacherTask[]>('setup:tasks'),
         db.get<StaffDetailRecord[]>('setup:staff_details'),
-        db.get<ProfileChangeRequest[]>('profile:change_requests')
+        db.get<ProfileChangeRequest[]>('profile:change_requests'),
+        db.get<TeacherAttendanceRecord[]>('setup:teacher_attendance'),
+        db.get<LeaveApplication[]>('setup:leave_applications'),
+        db.get<ProxyDutyAssignment[]>('setup:proxy_duty_assignments'),
+        db.get<PortfolioTemplate[]>('setup:portfolio_templates'),
+        db.get<PortfolioAssignment[]>('setup:portfolio_assignments')
       ]);
       setProfileRequests(savedProfileReqs || []);
+      if (savedStaff && savedStaff.length > 0) setStaffList(savedStaff);
+      if (savedAtt && savedAtt.length > 0) setAttendanceRecords(savedAtt);
+      if (savedLeaves && savedLeaves.length > 0) setLeaveApplications(savedLeaves);
+      if (savedProxies && savedProxies.length > 0) setProxyAssignments(savedProxies);
 
       if (s) setSchool(s);
 
@@ -588,6 +653,49 @@ export const TeacherDashboard: React.FC<TeacherDashboardProps> = ({ devMode, onN
         }
       }
 
+      // Merge Official Portfolio Assignments from Committees Directory (setup:portfolio_assignments)
+      const activeTemplates = (savedTemplates && savedTemplates.length > 0) ? savedTemplates : DEFAULT_PORTFOLIO_TEMPLATES;
+      const activeAssignments = (savedAssignments && savedAssignments.length > 0) ? savedAssignments : DEFAULT_PORTFOLIO_ASSIGNMENTS;
+
+      const myAssignments = activeAssignments.filter(a => {
+        if (a.status !== 'Active') return false;
+        if (u?.employeeCode && a.teacherEmployeeCode && a.teacherEmployeeCode.toLowerCase() === u.employeeCode.toLowerCase()) return true;
+        if (u?.name && a.teacherName && a.teacherName.trim().toLowerCase() === u.name.trim().toLowerCase()) return true;
+        if (u?.name && a.teacherName) {
+          const cleanU = u.name.toLowerCase().replace(/^(mr|mrs|ms|dr|smt|shri)\.?\s+/i, '').replace(/[^a-z0-9]/g, '');
+          const cleanA = a.teacherName.toLowerCase().replace(/^(mr|mrs|ms|dr|smt|shri)\.?\s+/i, '').replace(/[^a-z0-9]/g, '');
+          if (cleanU && cleanA && (cleanU === cleanA || cleanU.includes(cleanA) || cleanA.includes(cleanU))) return true;
+        }
+        return false;
+      });
+
+      myAssignments.forEach(asgn => {
+        const template = activeTemplates.find(t => t.id === asgn.portfolioTemplateId);
+        const dutyName = template ? template.name : asgn.portfolioTemplateId;
+        const roleName = asgn.role === 'In-charge' ? 'In-Charge' : 'Member';
+
+        const exists = mergedResponsibilities.find(
+          r => r.dutyName.toLowerCase() === dutyName.toLowerCase() ||
+               (template && r.dutyName.toLowerCase().includes(template.name.toLowerCase())) ||
+               (template && template.name.toLowerCase().includes(r.dutyName.toLowerCase()))
+        );
+
+        if (exists) {
+          exists.dutyName = dutyName;
+          exists.role = roleName as any;
+          exists.keyOutcomes = template?.description || exists.keyOutcomes;
+        } else {
+          mergedResponsibilities.push({
+            id: `port-${asgn.id}`,
+            dutyName: dutyName,
+            role: roleName as any,
+            levelOrClass: template?.category || 'School Wide',
+            academicYear: '2026-27',
+            keyOutcomes: template?.description || 'Official Vidyalaya Institutional Portfolio'
+          });
+        }
+      });
+
       // Construct accurate teacher profile
       const effectiveTeacher: TeacherProfile = {
         ...(defaultTeacher || DEFAULT_TEACHER),
@@ -600,9 +708,42 @@ export const TeacherDashboard: React.FC<TeacherDashboardProps> = ({ devMode, onN
         academicResponsibilities: mergedResponsibilities
       };
 
+      if (u && (scopedTeacher?.name || staffMatch?.name)) {
+        const approvedName = scopedTeacher?.name || staffMatch?.name;
+        if (approvedName && u.name !== approvedName) {
+          u.name = approvedName;
+          setCurrentUser({ ...u });
+        }
+      }
+
       setTeacher(effectiveTeacher);
       if (c) setClasses(c);
-      if (tt) setTimetable(tt);
+      if (tt) {
+        const cleansed = tt
+          .filter(
+            s => s.id !== 'tt-fri-6' &&
+                 s.id !== 'tt-fri-sr-7' &&
+                 !(s.day === 'Friday' && s.period === 6 && s.subjectName === 'Competency Test') &&
+                 !(s.day === 'Friday' && s.period === 7 && s.className === 'VI-A' && s.subjectName.includes('Art Education')) &&
+                 !(s.teacherName && (s.teacherName.includes('Vikram Mehta') || s.teacherName.includes('Data Entry')))
+          )
+          .map(s => {
+            let tName = s.teacherName || '';
+            let tId = s.teacherId;
+            if (tName.includes('Updesh Kumar') || tName.includes('UPDESH SINGH PAL')) {
+              tName = 'UPDESH SINGH PAL';
+              tId = '108894';
+            } else if (tName.includes('Sunita Verma')) {
+              tName = 'A GAYATRI';
+              tId = 'CS.107859';
+            } else if (tName.includes('Anjali Deshmukh')) {
+              tName = 'SANTWANA DASH';
+              tId = '106024';
+            }
+            return { ...s, teacherName: tName, teacherId: tId };
+          });
+        setTimetable(cleansed);
+      }
       if (cal) setCalendar(cal);
       if (syl) setSyllabus(syl);
       if (lp) setLessonPlans(lp);
@@ -613,8 +754,14 @@ export const TeacherDashboard: React.FC<TeacherDashboardProps> = ({ devMode, onN
         const detect = detectCurrentActivePeriod(pt);
         setActivePeriodInfo(detect);
       }
-      if (savedTasks && savedTasks.length > 0) {
-        setTasks(savedTasks);
+      if (savedScopedTasks && Array.isArray(savedScopedTasks) && savedScopedTasks.length > 0) {
+        setTasks(savedScopedTasks);
+      } else if (u?.employeeCode === '108894' && globalTasks && globalTasks.length > 0) {
+        setTasks(globalTasks);
+      } else if (savedScopedTasks && Array.isArray(savedScopedTasks)) {
+        setTasks(savedScopedTasks);
+      } else {
+        setTasks([]);
       }
       if (savedStaff && savedStaff.length > 0) {
         setStaffList(savedStaff);
@@ -626,94 +773,125 @@ export const TeacherDashboard: React.FC<TeacherDashboardProps> = ({ devMode, onN
     }
   };
 
-    // Helper for faculty rendering with Regular (Sky) vs Contractual (Amber) badge
+  // Helper for faculty rendering with Regular (Sky) vs Contractual (Amber) badge
   const renderFacultyPill = (name?: string) => {
     if (!name) return <span className="text-slate-400 font-medium truncate">Assigned Faculty</span>;
-    const empType = getStaffEmploymentType(name, staffList);
-    const isContractual = empType === 'Contractual';
-
+    const isPrincipal = name.toLowerCase().includes('principal') || name.toLowerCase().includes('hemananda');
+    const isRegular = !isPrincipal && !name.toLowerCase().includes('contractual');
     return (
-      <span className="inline-flex items-center gap-1.5 flex-wrap">
-        <span className={`font-semibold truncate max-w-[130px] ${isContractual ? 'text-amber-300' : 'text-sky-200'}`}>
-          {name}
+      <span className="flex items-center gap-1.5 min-w-0">
+        <span className="truncate">{name}</span>
+        <span
+          className={`px-1.5 py-0.2 rounded text-[9px] font-bold tracking-tight shrink-0 border ${
+            isPrincipal
+              ? 'bg-purple-950/80 text-purple-300 border-purple-500/40'
+              : isRegular
+              ? 'bg-sky-950/80 text-sky-300 border-sky-500/40'
+              : 'bg-amber-950/80 text-amber-300 border-amber-500/40'
+          }`}
+        >
+          {isPrincipal ? 'Principal' : isRegular ? 'Regular' : 'Contract'}
         </span>
-        {isContractual ? (
-          <span className="px-1 py-0.2 rounded text-[8px] font-black bg-amber-500/20 text-amber-300 border border-amber-500/30">
-            ⚡ Cont.
-          </span>
-        ) : (
-          <span className="px-1 py-0.2 rounded text-[8px] font-black bg-sky-500/20 text-sky-300 border border-sky-500/30">
-            🛡️ Reg.
-          </span>
-        )}
       </span>
     );
   };
 
-  // Toggle Task Completion
-  const handleToggleTask = async (taskId: string) => {
-    const updated = tasks.map(t => {
-      if (t.id === taskId) {
-        const nextStatus = t.status === 'Completed' ? 'Pending' : 'Completed';
-        return { ...t, status: nextStatus as 'Pending' | 'Completed' };
-      }
-      return t;
-    });
-    setTasks(updated);
-    await db.set('setup:tasks', updated);
+  const handlePeriodClick = (pNum: number) => {
+    if (selectedPeriods.length === 1 && selectedPeriods[0] === pNum) {
+      setSelectedPeriods([0]);
+    } else {
+      setSelectedPeriods([pNum]);
+    }
   };
 
-  // Delete Task
+  const handleSelectAllPeriods = () => {
+    setSelectedPeriods([0]);
+  };
+
+  const handleToggleTask = async (taskId: string) => {
+    const updated = tasks.map(t =>
+      t.id === taskId
+        ? {
+            ...t,
+            status: (t.status === 'Completed' ? 'Pending' : 'Completed') as 'Pending' | 'Completed',
+            updatedAt: new Date().toISOString()
+          }
+        : t
+    );
+    setTasks(updated);
+    const u = currentUser;
+    const scopedTaskKey = u?.employeeCode
+      ? getTeacherScopedStorageKey('setup:tasks', u.employeeCode)
+      : 'setup:tasks';
+    await db.set(scopedTaskKey, updated);
+    if (u?.employeeCode === '108894') {
+      await db.set('setup:tasks', updated);
+    }
+  };
+
   const handleDeleteTask = async (taskId: string) => {
     const updated = tasks.filter(t => t.id !== taskId);
     setTasks(updated);
-    await db.set('setup:tasks', updated);
+    const u = currentUser;
+    const scopedTaskKey = u?.employeeCode
+      ? getTeacherScopedStorageKey('setup:tasks', u.employeeCode)
+      : 'setup:tasks';
+    await db.set(scopedTaskKey, updated);
+    if (u?.employeeCode === '108894') {
+      await db.set('setup:tasks', updated);
+    }
   };
 
-  // Create New Task
   const handleCreateTask = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!newTaskTitle.trim()) return;
-
-    const task: TeacherTask = {
-      id: `tsk-${Date.now()}`,
+    const newTask: TeacherTask = {
+      id: `task-${Date.now()}`,
       title: newTaskTitle.trim(),
-      category: 'Teacher Diary Docs',
+      category: 'Teaching' as any,
       priority: newTaskPriority as any,
       status: 'Pending',
       dueDate: new Date().toISOString().split('T')[0],
       dueTime: newTaskDueTime,
-      subtasks: [],
-      tags: [newTaskAssignedBy === 'Self' ? 'Self Created' : 'Assigned by Superior'],
-      assignedBy: newTaskAssignedBy === 'Principal'
-        ? `Principal ${school.principalName || ''}`.trim()
-        : newTaskAssignedBy === 'Incharge'
-        ? 'Academic Incharge'
-        : 'Self',
-      assignedByRole: newTaskAssignedBy,
-      isTopPriority: newTaskPriority.includes('Urgent'),
       linkedClass: newTaskClass,
-      linkedSubject: 'Mathematics (041)',
+      assignedBy: newTaskAssignedBy === 'Self' ? 'Self' : (school.principalName ? `Principal ${school.principalName}` : 'Principal'),
+      assignedByRole: newTaskAssignedBy as any,
+      subtasks: [],
+      tags: [newTaskClass, newTaskPriority.split(' ')[0]],
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString()
     };
-
-    const updated = [task, ...tasks];
+    const updated = [newTask, ...tasks];
     setTasks(updated);
-    await db.set('setup:tasks', updated);
+    const u = currentUser;
+    const scopedTaskKey = u?.employeeCode
+      ? getTeacherScopedStorageKey('setup:tasks', u.employeeCode)
+      : 'setup:tasks';
+    await db.set(scopedTaskKey, updated);
+    if (u?.employeeCode === '108894') {
+      await db.set('setup:tasks', updated);
+    }
     setNewTaskTitle('');
     setShowNewTaskModal(false);
   };
 
   // Current Teacher's identity
-  const currentTeacherName = currentUser?.name || teacher.name || 'Updesh Kumar';
-  const assignedClassesList = currentUser?.assignedClasses || ['X-A', 'XII-A', 'XI-B', 'IX-B', 'IX-A'];
+  const currentTeacherName = teacher.name || currentUser?.name || 'Teacher';
+  const assignedClassesList = currentUser?.assignedClasses || ['VI-A', 'VII-A', 'VIII-A', 'IX-A', 'X-A'];
 
   // Teacher's own scheduled classes for the selected day (Guaranteed single class per period)
   const myTodayClasses = useMemo(() => {
     const daySlots = timetable.filter(t => (t.dayOfWeek || t.day) === selectedDay);
-    const teacherNameLower = currentTeacherName.trim().toLowerCase();
-    const teacherSubjectLower = (teacher.primarySubject || teacher.classesAndSubjectsTaught || 'Mathematics').toLowerCase();
+    const teacherNameLower = (currentTeacherName || '').trim().toLowerCase();
+    const teacherSubjectLower = (teacher.primarySubject || teacher.classesAndSubjectsTaught || '').toLowerCase();
+    const empCode = currentUser?.employeeCode || teacher.employeeCode;
+
+    const nameTokens = teacherNameLower
+      .replace(/^(mr|mrs|ms|dr|smt|shri)\.?\s+/i, '')
+      .split(/[^a-z0-9]+/)
+      .filter(t => t.length > 2);
+
+    const cleanTeacherName = teacherNameLower.replace(/^(mr|mrs|ms|dr|smt|shri)\.?\s+/i, '').replace(/[^a-z0-9]/g, '');
 
     // 1. Filter slots belonging to this teacher
     const matchingSlots = daySlots.filter(slot => {
@@ -722,17 +900,37 @@ export const TeacherDashboard: React.FC<TeacherDashboardProps> = ({ devMode, onN
       const slotSubject = (slot.subjectName || '').toLowerCase();
       const slotClass = (slot.className || '').trim();
 
-      // Priority A: Direct teacherName match
+      // Priority 0: Direct Employee Code match
+      if (empCode && (slot.teacherId === empCode || (slot as any).teacherEmployeeCode === empCode)) {
+        return true;
+      }
+
+      // Priority A: Direct or Substring match
       if (slotTeacher && teacherNameLower && (slotTeacher.includes(teacherNameLower) || teacherNameLower.includes(slotTeacher))) {
         return true;
       }
 
-      // Priority B: Proxy arrangement assigned to this teacher
-      if (slot.isArrangement && arrangementTeacher && teacherNameLower && (arrangementTeacher.includes(teacherNameLower) || teacherNameLower.includes(arrangementTeacher))) {
+      // Priority B: Clean normalized match & token overlap (e.g., "Dhuma" in both "J.K. Dhuma" and "Jyoti Kumari Dhuma")
+      const cleanSlotTeacher = slotTeacher.replace(/^(mr|mrs|ms|dr|smt|shri)\.?\s+/i, '').replace(/[^a-z0-9]/g, '');
+      if (cleanTeacherName && cleanSlotTeacher && (cleanTeacherName === cleanSlotTeacher || cleanSlotTeacher.includes(cleanTeacherName) || cleanTeacherName.includes(cleanSlotTeacher))) {
         return true;
       }
 
-      // Priority C: If slot has no specific teacher or generic name, match only if BOTH class AND subject match
+      const slotTokens = slotTeacher.replace(/^(mr|mrs|ms|dr|smt|shri)\.?\s+/i, '').split(/[^a-z0-9]+/).filter(t => t.length > 2);
+      const hasSignificantTokenMatch = nameTokens.some(tok => slotTokens.includes(tok));
+      if (hasSignificantTokenMatch) {
+        return true;
+      }
+
+      // Priority C: Proxy arrangement assigned to this teacher
+      if (slot.isArrangement && arrangementTeacher) {
+        if (empCode && (slot as any).arrangementTeacherCode === empCode) return true;
+        if (teacherNameLower && (arrangementTeacher.includes(teacherNameLower) || teacherNameLower.includes(arrangementTeacher))) return true;
+        const cleanArr = arrangementTeacher.replace(/^(mr|mrs|ms|dr|smt|shri)\.?\s+/i, '').replace(/[^a-z0-9]/g, '');
+        if (cleanTeacherName && cleanArr && (cleanTeacherName === cleanArr || cleanArr.includes(cleanTeacherName) || cleanTeacherName.includes(cleanArr))) return true;
+      }
+
+      // Priority D: If slot has no specific teacher or generic name, match only if BOTH class AND subject match
       const isClassAssigned = assignedClassesList.some(c => c.toLowerCase() === slotClass.toLowerCase());
       const isSubjectMatched = teacherSubjectLower && (slotSubject.includes(teacherSubjectLower) || teacherSubjectLower.includes(slotSubject));
 
@@ -749,12 +947,14 @@ export const TeacherDashboard: React.FC<TeacherDashboardProps> = ({ devMode, onN
     for (const slot of matchingSlots) {
       const pNum = slot.period || slot.periodNumber || 1;
       const slotTeacher = (slot.teacherName || '').toLowerCase();
-      const isDirectMatch = slotTeacher.includes(teacherNameLower) || (slot.isArrangement && (slot.arrangementTeacherName || '').toLowerCase().includes(teacherNameLower));
+      const isDirectMatch =
+        (empCode && slot.teacherId === empCode) ||
+        slotTeacher.includes(teacherNameLower) ||
+        (slot.isArrangement && (slot.arrangementTeacherName || '').toLowerCase().includes(teacherNameLower));
 
       if (!singleClassPerPeriodMap.has(pNum)) {
         singleClassPerPeriodMap.set(pNum, slot);
       } else if (isDirectMatch) {
-        // Direct named teacher assignment takes precedence over generic class matches
         singleClassPerPeriodMap.set(pNum, slot);
       }
     }
@@ -767,11 +967,32 @@ export const TeacherDashboard: React.FC<TeacherDashboardProps> = ({ devMode, onN
       const periodB = b.period || b.periodNumber || 1;
       return sortOrder === 'asc' ? periodA - periodB : periodB - periodA;
     });
-  }, [timetable, selectedDay, currentTeacherName, teacher.primarySubject, teacher.classesAndSubjectsTaught, assignedClassesList, sortOrder]);
+  }, [timetable, selectedDay, currentTeacherName, teacher.primarySubject, teacher.classesAndSubjectsTaught, teacher.employeeCode, currentUser?.employeeCode, assignedClassesList, sortOrder]);
 
-  const isAdmin = currentUser?.role === 'admin' || currentUser?.role === 'data_entry_manager';
+  // Determine active persona context:
+  // If activePersona is explicitly set, use it. Otherwise, if role is data_entry_manager, default to 'teacher' workspace unless selected.
+  const activePersona = currentUser?.activePersona || (currentUser?.role === 'admin' ? 'admin' : 'teacher');
+  const isAdmin = activePersona === 'admin' || currentUser?.role === 'admin';
+  const isDataEntry = activePersona === 'data_entry_manager';
+  const isTeacher = activePersona === 'teacher';
 
-  // For Admin / School-Wide View: Group classes period by period
+  const isTimetableOrDutyIncharge = useMemo(() => {
+    if (isAdmin) return true;
+    return (teacher.academicResponsibilities || []).some(r => {
+      const d = (r.dutyName || '').toLowerCase();
+      return (
+        d.includes('timetable') ||
+        d.includes('proxy') ||
+        d.includes('gate') ||
+        d.includes('assembly') ||
+        d.includes('discipline') ||
+        d.includes('recess') ||
+        d.includes('duty')
+      );
+    });
+  }, [teacher.academicResponsibilities, isAdmin]);
+
+  // For Admin & Data Entry Manager / School-Wide View: Group classes period by period
   const periodWiseSchedule = useMemo(() => {
     const daySlots = timetable.filter(t => (t.dayOfWeek || t.day) === selectedDay);
     const allPeriodNumbers = [1, 2, 3, 4, 5, 6, 7, 8, 9];
@@ -885,6 +1106,66 @@ export const TeacherDashboard: React.FC<TeacherDashboardProps> = ({ devMode, onN
 
   const proxySlotsCount = allTodaySlots.filter(s => s.isArrangement).length;
 
+  const todayDateStr = useMemo(() => new Date().toISOString().split('T')[0], []);
+
+  // Current user's matching staff record
+  const currentStaffRecord = useMemo(() => {
+    if (!currentUser) return null;
+    return staffList.find(
+      s => s.employeeCode === currentUser.employeeCode || (currentUser.name && s.name.toLowerCase() === currentUser.name.toLowerCase())
+    ) || null;
+  }, [staffList, currentUser]);
+
+  // Today's attendance record for current logged-in teacher
+  const myAttendanceToday = useMemo(() => {
+    if (!currentUser) return null;
+    return attendanceRecords.find(
+      r => r.date === todayDateStr && (
+        r.employeeCode === currentUser.employeeCode ||
+        (currentUser.name && r.teacherName.toLowerCase().includes(currentUser.name.toLowerCase()))
+      )
+    ) || null;
+  }, [attendanceRecords, currentUser, todayDateStr]);
+
+  // Leave balance for current logged-in teacher
+  const myLeaveBalance = useMemo((): LeaveBalance | null => {
+    if (!currentStaffRecord) return null;
+    return getLeaveBalance(currentStaffRecord, leaveApplications, todayDateStr);
+  }, [currentStaffRecord, leaveApplications, todayDateStr]);
+
+  // Assigned proxy duties today for current logged-in teacher
+  const myAssignedProxiesToday = useMemo(() => {
+    if (!currentUser) return [];
+    return proxyAssignments.filter(
+      p => p.date === todayDateStr && (
+        p.substituteTeacherCode === currentUser.employeeCode ||
+        (currentUser.name && p.substituteTeacherName.toLowerCase().includes(currentUser.name.toLowerCase()))
+      )
+    );
+  }, [proxyAssignments, currentUser, todayDateStr]);
+
+  // School-wide Attendance summary for Principal / Admin
+  const schoolAttendanceOverview = useMemo(() => {
+    const todayAtt = attendanceRecords.filter(r => r.date === todayDateStr);
+    const present = todayAtt.filter(r => r.status === 'Present').length;
+    const leave = todayAtt.filter(r => r.status === 'Leave').length;
+    const od = todayAtt.filter(r => r.status === 'OD').length;
+    const absent = todayAtt.filter(r => r.status === 'Absent').length;
+    const totalStaff = staffList.length || 23;
+    const proxiesToday = proxyAssignments.filter(p => p.date === todayDateStr).length;
+
+    return {
+      totalStaff,
+      present,
+      leave,
+      od,
+      absent,
+      unmarked: Math.max(0, totalStaff - (present + leave + od + absent)),
+      attendanceRate: totalStaff > 0 ? Math.round(((present + od) / totalStaff) * 100) : 0,
+      proxiesToday
+    };
+  }, [attendanceRecords, staffList, proxyAssignments, todayDateStr]);
+
   if (loading) {
     return (
       <div className="flex items-center justify-center min-h-[400px]">
@@ -906,15 +1187,49 @@ export const TeacherDashboard: React.FC<TeacherDashboardProps> = ({ devMode, onN
           <div className="space-y-1.5">
             <div className="flex items-center gap-2 flex-wrap">
               {isAdmin ? (
-                <span className="px-3 py-1 rounded-full text-xs font-black tracking-wider bg-amber-500/20 text-amber-300 border border-amber-500/40 uppercase flex items-center gap-1.5">
-                  <Crown className="w-3.5 h-3.5 text-amber-400" />
+                <span className="px-3 py-1 rounded-full text-xs font-black tracking-wider bg-rose-500/20 text-rose-300 border border-rose-500/40 uppercase flex items-center gap-1.5">
+                  <Crown className="w-3.5 h-3.5 text-rose-400" />
                   <span>Principal & Administration Oversight</span>
+                </span>
+              ) : isDataEntry ? (
+                <span className="px-3 py-1 rounded-full text-xs font-black tracking-wider bg-amber-500/20 text-amber-300 border border-amber-500/40 uppercase flex items-center gap-1.5">
+                  <Sparkles className="w-3.5 h-3.5 text-amber-400" />
+                  <span>Data Center & Master Data Entry Manager</span>
                 </span>
               ) : (
                 <span className="px-3 py-1 rounded-full text-xs font-black tracking-wider bg-purple-500/20 text-purple-300 border border-purple-500/30 uppercase">
                   👨‍🏫 Teacher Workspace & Personal Diary
                 </span>
               )}
+
+              {/* Persona Quick Switcher for Dual-Role Users */}
+              {(currentUser?.role === 'data_entry_manager' || (currentUser?.role === 'admin' && currentUser?.assignments?.length > 0)) && onSwitchPersona && (
+                <div className="inline-flex items-center rounded-xl bg-slate-950 p-0.5 border border-slate-700 shadow-inner">
+                  <button
+                    type="button"
+                    onClick={() => onSwitchPersona('teacher')}
+                    className={`px-2.5 py-0.5 rounded-lg text-[10px] font-bold transition-all cursor-pointer ${
+                      isTeacher
+                        ? 'bg-purple-600 text-white shadow-sm'
+                        : 'text-slate-400 hover:text-slate-200'
+                    }`}
+                  >
+                    Teacher Mode
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => onSwitchPersona(currentUser.role === 'admin' ? 'admin' : 'data_entry_manager')}
+                    className={`px-2.5 py-0.5 rounded-lg text-[10px] font-bold transition-all cursor-pointer ${
+                      !isTeacher
+                        ? 'bg-amber-600 text-white shadow-sm'
+                        : 'text-slate-400 hover:text-slate-200'
+                    }`}
+                  >
+                    {currentUser.role === 'admin' ? 'Principal Mode' : 'Data Entry Mode'}
+                  </button>
+                </div>
+              )}
+
               <span className="px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-slate-800 text-slate-300 border border-slate-700">
                 {school.schoolName || 'Kendriya Vidyalaya'}
               </span>
@@ -922,9 +1237,19 @@ export const TeacherDashboard: React.FC<TeacherDashboardProps> = ({ devMode, onN
             </div>
 
             <h2 className="text-2xl font-black text-white tracking-tight flex items-center gap-2">
-              <span>{isAdmin ? (school.principalName || currentUser?.name || 'Principal') : currentTeacherName}</span>
+              <span>
+                {isAdmin
+                  ? (school.principalName || currentUser?.name || 'Principal')
+                  : isDataEntry
+                  ? (currentUser?.name || 'Data Entry Manager')
+                  : currentTeacherName}
+              </span>
               <span className="text-sm font-semibold text-purple-400 font-mono">
-                ({isAdmin ? (school.principalDesignation || currentUser?.designation || 'Principal / Checking Authority') : (teacher.designation || 'PGT Mathematics')})
+                ({isAdmin
+                  ? (school.principalDesignation || currentUser?.designation || 'Principal / Checking Authority')
+                  : isDataEntry
+                  ? 'Data Entry Manager / TGT (P&HE)'
+                  : (teacher.designation || currentUser?.designation || 'TGT (P&HE)')})
               </span>
             </h2>
 
@@ -937,9 +1262,17 @@ export const TeacherDashboard: React.FC<TeacherDashboardProps> = ({ devMode, onN
                   <span>•</span>
                   <span>Total Scheduled Classes: <strong className="text-amber-300">{allTodaySlots.length} Periods</strong></span>
                 </>
+              ) : isDataEntry ? (
+                <>
+                  <span>Emp ID: <strong className="text-white">{currentUser?.employeeCode || '108894'}</strong></span>
+                  <span>•</span>
+                  <span>Role: <strong className="text-amber-300">Master Data Entry Officer</strong></span>
+                  <span>•</span>
+                  <span>Total School Slots: <strong className="text-emerald-400">{allTodaySlots.length} Periods</strong></span>
+                </>
               ) : (
                 <>
-                  <span>Emp ID: <strong className="text-white">{teacher.employeeCode || currentUser?.employeeCode || 'T-9842'}</strong></span>
+                  <span>Emp ID: <strong className="text-white">{teacher.employeeCode || currentUser?.employeeCode || '108894'}</strong></span>
                   <span>•</span>
                   <span>Assigned Classes: <strong className="text-amber-300">{assignedClassesList.join(', ') || 'None assigned'}</strong></span>
                   <span>•</span>
@@ -949,7 +1282,7 @@ export const TeacherDashboard: React.FC<TeacherDashboardProps> = ({ devMode, onN
             </p>
 
             {/* Individual Teacher's Allocated Leadership & Incharge Badges */}
-            {!isAdmin && (currentUser?.isClassTeacherOf || currentUser?.isCoClassTeacherOf || teacher.classTeacherRole || teacher.coClassTeacherRole || (teacher.academicResponsibilities && teacher.academicResponsibilities.length > 0)) && (
+            {isTeacher && (currentUser?.isClassTeacherOf || currentUser?.isCoClassTeacherOf || teacher.classTeacherRole || teacher.coClassTeacherRole || (teacher.academicResponsibilities && teacher.academicResponsibilities.length > 0)) && (
               <div className="flex items-center gap-2 flex-wrap pt-1 animate-fadeIn">
                 {(currentUser?.isClassTeacherOf || teacher.classTeacherRole) && (
                   <span className="px-2.5 py-1 rounded-xl text-xs font-black bg-amber-500/25 text-amber-300 border border-amber-500/50 flex items-center gap-1.5 shadow-xs">
@@ -1019,8 +1352,60 @@ export const TeacherDashboard: React.FC<TeacherDashboardProps> = ({ devMode, onN
                   <span>Master Reports</span>
                 </button>
               </>
+            ) : isDataEntry ? (
+              <>
+                <button
+                  onClick={() => onNavigateTab('students')}
+                  className="px-3.5 py-2 rounded-xl bg-amber-600 hover:bg-amber-500 text-white text-xs font-bold transition-all shadow-md flex items-center gap-1.5 cursor-pointer"
+                >
+                  <Users className="w-4 h-4 text-amber-100" />
+                  <span>Manage Student Rosters</span>
+                </button>
+
+                <button
+                  onClick={() => onNavigateTab('classes')}
+                  className="px-3.5 py-2 rounded-xl bg-purple-600 hover:bg-purple-500 text-white text-xs font-bold transition-all shadow-md flex items-center gap-1.5 cursor-pointer"
+                >
+                  <BookOpen className="w-4 h-4" />
+                  <span>Classes & Subjects Setup</span>
+                </button>
+
+                <button
+                  onClick={() => onNavigateTab('timetable')}
+                  className="px-3.5 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-white text-xs font-bold border border-slate-700 transition-all flex items-center gap-1.5 cursor-pointer"
+                >
+                  <Clock className="w-4 h-4 text-purple-400" />
+                  <span>Master Timetable</span>
+                </button>
+
+                <button
+                  onClick={() => onNavigateTab('exams')}
+                  className="px-3 py-2 rounded-xl bg-slate-950 hover:bg-slate-900 text-slate-300 text-xs font-bold border border-slate-800 transition-all flex items-center gap-1 cursor-pointer"
+                >
+                  <Award className="w-3.5 h-3.5 text-amber-400" />
+                  <span>Exam Schedules</span>
+                </button>
+
+                <button
+                  onClick={() => onNavigateTab('reports')}
+                  className="px-3 py-2 rounded-xl bg-slate-950 hover:bg-slate-900 text-slate-300 text-xs font-bold border border-slate-800 transition-all flex items-center gap-1 cursor-pointer"
+                >
+                  <Printer className="w-3.5 h-3.5 text-purple-400" />
+                  <span>Master Reports</span>
+                </button>
+              </>
             ) : (
               <>
+                {isTimetableOrDutyIncharge && (
+                  <button
+                    onClick={() => setIsDutyProxyModalOpen(true)}
+                    className="px-3.5 py-2 rounded-xl bg-amber-600 hover:bg-amber-500 text-white text-xs font-bold transition-all shadow-md flex items-center gap-1.5 cursor-pointer"
+                  >
+                    <Clock className="w-4 h-4 text-amber-200" />
+                    <span>Assign Proxy & Duties</span>
+                  </button>
+                )}
+
                 <button
                   onClick={() => onNavigateTab('lessonplan')}
                   className="px-3.5 py-2 rounded-xl bg-purple-600 hover:bg-purple-500 text-white text-xs font-bold transition-all shadow-md flex items-center gap-1.5 cursor-pointer"
@@ -1038,25 +1423,151 @@ export const TeacherDashboard: React.FC<TeacherDashboardProps> = ({ devMode, onN
                 </button>
 
                 <button
-                  onClick={() => onNavigateTab('attendance')}
-                  className="px-3 py-2 rounded-xl bg-slate-950 hover:bg-slate-900 text-slate-300 text-xs font-bold border border-slate-800 transition-all flex items-center gap-1 cursor-pointer"
+                  onClick={() => onNavigateTab('workload')}
+                  className="px-3 py-2 rounded-xl bg-emerald-950/80 hover:bg-emerald-900 text-emerald-200 text-xs font-bold border border-emerald-500/40 transition-all flex items-center gap-1.5 cursor-pointer"
                 >
-                  <UserCheck className="w-3.5 h-3.5 text-emerald-400" />
-                  <span>Mark Attendance</span>
+                  <Activity className="w-3.5 h-3.5 text-emerald-400" />
+                  <span>Log Hourly Activity</span>
                 </button>
 
                 <button
-                  onClick={() => onNavigateTab('assessment')}
+                  onClick={() => onNavigateTab('taskmanager')}
                   className="px-3 py-2 rounded-xl bg-slate-950 hover:bg-slate-900 text-slate-300 text-xs font-bold border border-slate-800 transition-all flex items-center gap-1 cursor-pointer"
                 >
-                  <Award className="w-3.5 h-3.5 text-amber-400" />
-                  <span>Assessments (P-17)</span>
+                  <ListTodo className="w-3.5 h-3.5 text-purple-400" />
+                  <span>My Tasks Hub</span>
                 </button>
               </>
             )}
           </div>
         </div>
       </div>
+
+      {/* Incharge Duty Desk Banner for Timetable & Proxy Incharge */}
+      {isTimetableOrDutyIncharge && isTeacher && (
+        <div className="p-4 rounded-3xl bg-gradient-to-r from-amber-950/80 via-slate-900 to-purple-950/80 border border-amber-500/40 flex flex-col md:flex-row md:items-center justify-between gap-4 shadow-xl animate-fadeIn">
+          <div className="flex items-center gap-3.5">
+            <div className="w-11 h-11 rounded-2xl bg-amber-500/20 border border-amber-500/40 flex items-center justify-center text-amber-300 shrink-0">
+              <Clock className="w-6 h-6" />
+            </div>
+            <div className="space-y-0.5">
+              <h4 className="text-sm font-black text-white m-0 flex items-center gap-2">
+                <span>Timetable & Daily Proxy Arrangement Desk</span>
+                <span className="px-2 py-0.5 rounded-md bg-amber-500/20 border border-amber-500/40 text-[10px] font-mono text-amber-300 font-bold">
+                  Official In-charge
+                </span>
+              </h4>
+              <p className="text-xs text-amber-200/80 m-0">
+                Allocate daily substitutions, assign proxy periods to free teachers, manage Recess supervision rosters, and assign Morning Gate duty.
+              </p>
+            </div>
+          </div>
+
+          <div className="flex items-center gap-2 flex-wrap">
+            <button
+              onClick={() => setIsDutyProxyModalOpen(true)}
+              className="px-3.5 py-2 rounded-xl bg-amber-600 hover:bg-amber-500 text-white font-bold text-xs flex items-center gap-1.5 cursor-pointer shadow-md shadow-amber-600/30 transition-all"
+            >
+              <Clock className="w-3.5 h-3.5" />
+              <span>Assign Proxy Period</span>
+            </button>
+
+            <button
+              onClick={() => setIsDutyProxyModalOpen(true)}
+              className="px-3.5 py-2 rounded-xl bg-purple-600 hover:bg-purple-500 text-white font-bold text-xs flex items-center gap-1.5 cursor-pointer shadow-md shadow-purple-600/30 transition-all"
+            >
+              <Coffee className="w-3.5 h-3.5" />
+              <span>Recess Duty Roster</span>
+            </button>
+
+            <button
+              onClick={() => setIsDutyProxyModalOpen(true)}
+              className="px-3.5 py-2 rounded-xl bg-sky-600 hover:bg-sky-500 text-white font-bold text-xs flex items-center gap-1.5 cursor-pointer shadow-md shadow-sky-600/30 transition-all"
+            >
+              <ShieldCheck className="w-3.5 h-3.5 text-sky-300" />
+              <span>Morning Gate Duty</span>
+            </button>
+
+            <button
+              onClick={() => setIsDutyProxyModalOpen(true)}
+              className="px-3.5 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs flex items-center gap-1.5 cursor-pointer shadow-md shadow-emerald-600/30 transition-all"
+            >
+              <DoorOpen className="w-3.5 h-3.5 text-emerald-300" />
+              <span>Afternoon Gate Duty</span>
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Executive Staff Attendance & Substitution Status Bar */}
+      {(isAdmin || isDataEntry) && (
+        <div className="p-4 rounded-2xl bg-gradient-to-r from-purple-950/60 via-slate-900 to-indigo-950/60 border border-purple-500/30 flex flex-col md:flex-row md:items-center justify-between gap-4 shadow-md">
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 rounded-xl bg-purple-600/30 border border-purple-500/50 flex items-center justify-center text-purple-300 shrink-0">
+              <UserCheck className="w-5 h-5" />
+            </div>
+            <div>
+              <div className="flex items-center gap-2">
+                <h4 className="text-sm font-bold text-white m-0">Today's Faculty Attendance & Substitutions</h4>
+                <span className="px-2 py-0.2 rounded-full bg-emerald-500/20 text-emerald-300 border border-emerald-500/40 text-[10px] font-mono font-bold">
+                  {schoolAttendanceOverview.attendanceRate}% Present
+                </span>
+              </div>
+              <p className="text-xs text-slate-300 m-0">
+                <strong className="text-emerald-400">{schoolAttendanceOverview.present}</strong> Present &bull;{' '}
+                <strong className="text-blue-400">{schoolAttendanceOverview.od}</strong> OD &bull;{' '}
+                <strong className="text-amber-400">{schoolAttendanceOverview.leave}</strong> On Leave &bull;{' '}
+                <strong className="text-rose-400">{schoolAttendanceOverview.absent}</strong> LOP/Absent &bull;{' '}
+                <span className="text-purple-300 font-bold">{schoolAttendanceOverview.proxiesToday} Active Proxy Substitutions</span>
+              </p>
+            </div>
+          </div>
+
+          <button
+            onClick={() => onNavigateTab('teacher_attendance')}
+            className="px-3.5 py-2 rounded-xl bg-purple-600 hover:bg-purple-500 text-white text-xs font-bold transition-all shadow-md shadow-purple-600/30 flex items-center gap-1.5 self-start md:self-auto cursor-pointer"
+          >
+            <Users className="w-4 h-4" />
+            <span>Open Attendance Register & Proxies</span>
+          </button>
+        </div>
+      )}
+
+      {/* Teacher's Assigned Proxy Duties Today Alert Banner */}
+      {isTeacher && myAssignedProxiesToday.length > 0 && (
+        <div className="p-4 rounded-2xl bg-gradient-to-r from-amber-950/80 via-slate-900 to-orange-950/70 border border-amber-500/50 flex flex-col md:flex-row md:items-center justify-between gap-4 shadow-lg">
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 rounded-xl bg-amber-500/30 border border-amber-500/50 flex items-center justify-center text-amber-300 shrink-0">
+              <AlertTriangle className="w-5 h-5 text-amber-400" />
+            </div>
+            <div>
+              <div className="flex items-center gap-2">
+                <h4 className="text-sm font-bold text-amber-200 m-0">
+                  🚨 Priority Arrangement Alert: {myAssignedProxiesToday.length} Proxy Duty Assigned Today
+                </h4>
+                <span className="px-2 py-0.2 rounded-full bg-amber-500 text-black text-[10px] font-bold">
+                  Active Substitution
+                </span>
+              </div>
+              <div className="text-xs text-slate-300 flex items-center gap-2 flex-wrap mt-1">
+                {myAssignedProxiesToday.map((p, idx) => (
+                  <span key={idx} className="bg-slate-950 px-2 py-0.5 rounded-lg border border-amber-500/40 text-amber-300 font-mono text-[11px]">
+                    Period {p.periodNumber} (Class {p.className}-{p.section}) for {p.absentTeacherName}
+                  </span>
+                ))}
+              </div>
+            </div>
+          </div>
+
+          <button
+            onClick={() => onNavigateTab('taskmanager')}
+            className="px-4 py-2 rounded-xl bg-amber-500 hover:bg-amber-400 text-black font-black text-xs transition-all shadow-md flex items-center gap-1.5 self-start md:self-auto cursor-pointer"
+          >
+            <span>View Task & Notes</span>
+            <ArrowRight className="w-3.5 h-3.5" />
+          </button>
+        </div>
+      )}
 
       {/* Core KPI Metrics Grid */}
       <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
@@ -1134,6 +1645,80 @@ export const TeacherDashboard: React.FC<TeacherDashboardProps> = ({ devMode, onN
               <p className="text-[10px] font-semibold text-slate-400">{completedTasksCount} Completed</p>
             </div>
           </>
+        ) : isDataEntry ? (
+          <>
+            <div
+              onClick={() => onNavigateTab('students')}
+              className="bg-slate-900 border border-slate-800 hover:border-amber-500/50 p-4 rounded-2xl cursor-pointer transition-all space-y-1 shadow-sm"
+            >
+              <div className="flex items-center justify-between">
+                <span className="text-[11px] font-extrabold uppercase text-slate-400">Staff & Students</span>
+                <Users className="w-4 h-4 text-amber-400" />
+              </div>
+              <div className="text-2xl font-black text-white font-mono">{staffList.length}</div>
+              <p className="text-[10px] font-semibold text-slate-400">Staff Records Synced</p>
+            </div>
+
+            <div
+              onClick={() => onNavigateTab('classes')}
+              className="bg-slate-900 border border-slate-800 hover:border-purple-500/50 p-4 rounded-2xl cursor-pointer transition-all space-y-1 shadow-sm"
+            >
+              <div className="flex items-center justify-between">
+                <span className="text-[11px] font-extrabold uppercase text-slate-400">Classes Setup</span>
+                <BookOpen className="w-4 h-4 text-purple-400" />
+              </div>
+              <div className="text-2xl font-black text-purple-300 font-mono">{classes.length}</div>
+              <p className="text-[10px] font-semibold text-slate-400">Active Sections Configured</p>
+            </div>
+
+            <div
+              onClick={() => onNavigateTab('timetable')}
+              className="bg-slate-900 border border-slate-800 hover:border-purple-500/50 p-4 rounded-2xl cursor-pointer transition-all space-y-1 shadow-sm"
+            >
+              <div className="flex items-center justify-between">
+                <span className="text-[11px] font-extrabold uppercase text-slate-400">Master Timetable</span>
+                <Clock className="w-4 h-4 text-purple-400" />
+              </div>
+              <div className="text-2xl font-black text-white font-mono">{allTodaySlots.length}</div>
+              <p className="text-[10px] font-semibold text-slate-400">{selectedDay} Teaching Slots</p>
+            </div>
+
+            <div
+              onClick={() => onNavigateTab('timetable')}
+              className="bg-slate-900 border border-slate-800 hover:border-amber-500/50 p-4 rounded-2xl cursor-pointer transition-all space-y-1 shadow-sm"
+            >
+              <div className="flex items-center justify-between">
+                <span className="text-[11px] font-extrabold uppercase text-slate-400">Arrangements</span>
+                <AlertTriangle className="w-4 h-4 text-amber-400" />
+              </div>
+              <div className="text-2xl font-black text-amber-400 font-mono">{proxySlotsCount}</div>
+              <p className="text-[10px] font-semibold text-slate-400">Proxy Duty Allocations</p>
+            </div>
+
+            <div
+              onClick={() => onNavigateTab('syllabus')}
+              className="bg-slate-900 border border-slate-800 hover:border-emerald-500/50 p-4 rounded-2xl cursor-pointer transition-all space-y-1 shadow-sm"
+            >
+              <div className="flex items-center justify-between">
+                <span className="text-[11px] font-extrabold uppercase text-slate-400">Syllabus Master</span>
+                <TrendingUp className="w-4 h-4 text-emerald-400" />
+              </div>
+              <div className="text-2xl font-black text-emerald-400 font-mono">{syllabus.length}</div>
+              <p className="text-[10px] font-semibold text-slate-400">Curriculum Units Mapped</p>
+            </div>
+
+            <div
+              onClick={() => onNavigateTab('reports')}
+              className="bg-slate-900 border border-slate-800 hover:border-cyan-500/50 p-4 rounded-2xl cursor-pointer transition-all space-y-1 shadow-sm"
+            >
+              <div className="flex items-center justify-between">
+                <span className="text-[11px] font-extrabold uppercase text-slate-400">Export Reports</span>
+                <Printer className="w-4 h-4 text-cyan-400" />
+              </div>
+              <div className="text-2xl font-black text-cyan-400 font-mono">52/34</div>
+              <p className="text-[10px] font-semibold text-slate-400">KVS Print Templates</p>
+            </div>
+          </>
         ) : (
           <>
             <div
@@ -1207,6 +1792,22 @@ export const TeacherDashboard: React.FC<TeacherDashboardProps> = ({ devMode, onN
               <div className="text-2xl font-black text-cyan-400 font-mono">{approvedInspections.length}</div>
               <p className="text-[10px] font-semibold text-slate-400">Principal / Incharge Stamped</p>
             </div>
+
+            <div
+              onClick={() => onNavigateTab('teacher_attendance')}
+              className="bg-slate-900 border border-slate-800 hover:border-purple-500/50 p-4 rounded-2xl cursor-pointer transition-all space-y-1 shadow-sm"
+            >
+              <div className="flex items-center justify-between">
+                <span className="text-[11px] font-extrabold uppercase text-slate-400">Attendance & Leave</span>
+                <UserCheck className="w-4 h-4 text-emerald-400" />
+              </div>
+              <div className="text-2xl font-black text-emerald-400 font-mono">
+                {myAttendanceToday?.status || 'Present'}
+              </div>
+              <p className="text-[10px] font-semibold text-slate-400">
+                {myLeaveBalance ? `${myLeaveBalance.clRemaining}/${myLeaveBalance.clTotal} CL Balance` : 'View Leave Ledger'}
+              </p>
+            </div>
           </>
         )}
       </div>
@@ -1218,8 +1819,8 @@ export const TeacherDashboard: React.FC<TeacherDashboardProps> = ({ devMode, onN
         <div className="lg:col-span-2 space-y-6">
 
           {/* SECTION 1: SCHEDULE VIEW (ROLE DEDICATED) */}
-          {isAdmin ? (
-            /* ADMIN VIEW: PERIOD-WISE BREAKDOWN OF ALL CLASSES */
+          {(isAdmin || isDataEntry) ? (
+            /* ADMIN / DATA ENTRY MANAGER VIEW: PERIOD-WISE BREAKDOWN OF ALL CLASSES */
             <div className="bg-slate-900 border border-slate-800 rounded-2xl p-5 space-y-4 shadow-sm">
               {/* Header */}
               <div className="flex flex-col md:flex-row md:items-center justify-between gap-3 border-b border-slate-800 pb-3.5">
@@ -2241,6 +2842,55 @@ export const TeacherDashboard: React.FC<TeacherDashboardProps> = ({ devMode, onN
           </div>
         </div>
       )}
+
+      {/* Duty & Proxy Management Modal */}
+      {isDutyProxyModalOpen && (
+        <div
+          onClick={e => {
+            if (e.target === e.currentTarget) setIsDutyProxyModalOpen(false);
+          }}
+          className="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center p-4 overflow-y-auto"
+        >
+          <div className="bg-slate-900 border border-slate-800 rounded-3xl w-full max-w-6xl p-6 shadow-2xl relative my-8 animate-scaleUp max-h-[92vh] overflow-y-auto">
+            {/* Top-Right Sticky Floating Close Button */}
+            <button
+              onClick={() => setIsDutyProxyModalOpen(false)}
+              className="absolute top-5 right-5 p-2 px-3 rounded-xl bg-slate-800/90 hover:bg-rose-600 border border-slate-700 text-slate-300 hover:text-white transition-all shadow-lg cursor-pointer z-30 flex items-center gap-1.5 text-xs font-bold"
+              title="Close and return to dashboard (Esc)"
+            >
+              <X className="w-4 h-4" />
+              <span>Close Desk</span>
+            </button>
+
+            <DutyAndProxyManager
+              isModal={true}
+              currentUser={currentUser}
+              devMode={devMode}
+              onClose={() => setIsDutyProxyModalOpen(false)}
+              onNavigateTab={tab => {
+                setIsDutyProxyModalOpen(false);
+                onNavigateTab(tab);
+              }}
+            />
+
+            {/* Bottom Footer Return Bar */}
+            <div className="mt-8 pt-4 border-t border-slate-800 flex flex-col sm:flex-row items-center justify-between gap-3">
+              <div className="text-xs text-slate-400">
+                All duties & substitutions are automatically saved and synced to faculty task hub.
+              </div>
+              <button
+                onClick={() => setIsDutyProxyModalOpen(false)}
+                className="px-5 py-2.5 rounded-2xl bg-slate-800 hover:bg-slate-700 text-white font-bold text-xs flex items-center gap-2 transition-all cursor-pointer shadow-md border border-slate-700"
+              >
+                <CheckCircle2 className="w-4 h-4 text-emerald-400" />
+                <span>Done & Return to Dashboard</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };
+
+

@@ -142,6 +142,20 @@ export interface StaffDetailRecord {
 
   // Linked Teacher Profile Bio-data
   profileData?: Partial<TeacherProfile>;
+  
+  // Attendance & Leave Ledger Tracking
+  leaveEntitlementOverride?: {
+    clBalance?: number;
+    elBalance?: number;
+    hplBalance?: number;
+    commutedBalance?: number;
+    specialClBalance?: number;
+    cclBalance?: number;
+  };
+  vacationRemedialDutyAssignedMonths?: string[]; // e.g. ['2026-05', '2026-06'] -> If assigned, contractual CL = 0 for that month
+  contractualJoiningDate?: string; // Date of current contract start
+  contractualTenureEndDate?: string; // Contract expiry date
+
   createdAt?: string;
   updatedAt?: string;
 }
@@ -484,6 +498,7 @@ export type HourlyCategory =
   | 'GeM Portal Admin'
   | 'Sports / RSM / NSM'
   | 'Assembly & Duty'
+  | 'Arrangement / Proxy Duty'
   | 'Parade & Pyramid'
   | 'Teacher Diary Docs'
   | 'Digital Records'
@@ -508,6 +523,7 @@ export interface ActivityEvidence {
   fileSize?: string;
   uploadedAt: string; // ISO verified timestamp
   timestampVerified: boolean;
+  gpsLocation?: string;
   caption?: string;
 }
 
@@ -527,6 +543,12 @@ export interface HourlyActivity {
   overloadReason?: string;
   evidenceIds: string[];
   kanbanColumn: 'Pending' | 'In Progress' | 'Completed' | 'Delayed';
+  // Role & Responsibility Linking (Phase 4)
+  portfolioTemplateId?: string;
+  portfolioTemplateName?: string;
+  responsibilityId?: string;
+  responsibilityTitle?: string;
+  isDelegatedWork?: boolean;
   createdAt: string;
   updatedAt: string;
 }
@@ -1766,6 +1788,508 @@ export interface ProfileChangeRequest {
   currentProfile: TeacherProfile;
   changedFields: ProfileFieldDiff[];
 }
+
+/**
+ * Official KVS & School Leave and Attendance System Types
+ */
+export type LeaveType =
+  | 'CL'      // Casual Leave (8/8 per cal yr for Regular; max 1/mo for Contractual after 1 mo continuous service)
+  | 'EL'      // Earned Leave
+  | 'HPL'     // Half Pay Leave (20 days per completed yr)
+  | 'Comm'    // Commuted Leave (on Medical Grounds against 2x HPL)
+  | 'EOL-MG'  // Extra Ordinary Leave on Medical Grounds
+  | 'EOL-PA'  // Extra Ordinary Leave on Private Affairs
+  | 'CCL'     // Child Care Leave (Female teachers / Single male parent)
+  | 'ML'      // Maternity Leave (180 days) / Paternity Leave (15 days)
+  | 'SpCL'    // Special Casual Leave (Sports events, Elections, Scout/Guide camps, Family Planning)
+  | 'Absent'  // Unauthorized / Unexcused Absence / Loss of Pay
+  | 'OD';     // Official On Duty (Deputation, CBSE Exam Centre, Sports Meet, RO Meeting, Training)
+
+export type AttendanceStatus = 'Present' | 'Leave' | 'OD' | 'Absent' | 'Holiday' | 'Vacation' | 'Sunday';
+
+export interface TeacherAttendanceRecord {
+  id: string; // e.g. "att-staff-108894-2026-08-20"
+  employeeCode: string;
+  teacherName: string;
+  designation: string;
+  employmentType: 'Regular' | 'Contractual';
+  date: string; // YYYY-MM-DD
+  status: AttendanceStatus;
+  leaveType?: LeaveType;
+  inTime?: string; // e.g. "07:35 AM"
+  outTime?: string; // e.g. "02:15 PM"
+  isLate?: boolean;
+  lateMinutes?: number;
+  remarks?: string;
+  leaveApplicationId?: string;
+  onDutyRecordId?: string;
+  markedBy: string; // e.g. "Principal" | "Self" | "Biometric"
+  markedAt: string; // ISO timestamp
+  verifiedByPrincipal?: boolean;
+  verifiedAt?: string;
+}
+
+export interface LeaveApplication {
+  id: string; // e.g. "la-1724058000"
+  employeeCode: string;
+  teacherName: string;
+  designation: string;
+  employmentType: 'Regular' | 'Contractual';
+  leaveType: LeaveType;
+  fromDate: string; // YYYY-MM-DD
+  toDate: string;   // YYYY-MM-DD
+  totalDays: number;
+  reason: string;
+  stationLeavingPermission: boolean;
+  stationAddress?: string;
+  prefixDates?: string; // e.g. "2026-08-14 (Holiday)"
+  suffixDates?: string; // e.g. "2026-08-17 (Sunday)"
+  medicalCertificateAttached?: boolean;
+  medicalCertDocUrl?: string;
+  status: 'Pending' | 'Recommended' | 'Sanctioned' | 'Rejected' | 'Cancelled';
+  appliedAt: string; // ISO timestamp
+  recommendedBy?: string; // e.g. "Vice Principal / Incharge"
+  sanctionedBy?: string;  // e.g. "Sh. Hemananda Barik (Principal I/c)"
+  sanctionedAt?: string;
+  principalRemarks?: string;
+  proxyArrangementsConfirmed?: boolean;
+}
+
+export interface OnDutyRecord {
+  id: string; // e.g. "od-1724058000"
+  employeeCode: string;
+  teacherName: string;
+  designation: string;
+  purpose: 'CBSE Observer' | 'KVS Regional Sports Meet' | 'National Sports Meet (NSM)' | 'In-Service Teacher Training' | 'Scout & Guide Rajya Puruskar Camp' | 'RO Official Meeting' | 'Election Duty' | 'Other';
+  description: string;
+  venue: string; // e.g. "KV Sambalpur / KVS RO Bhubaneswar"
+  officialOrderNo?: string;
+  fromDate: string; // YYYY-MM-DD
+  toDate: string;   // YYYY-MM-DD
+  totalDays: number;
+  affectedPeriods: {
+    day: DayOfWeek;
+    period: number;
+    className: string;
+    subjectName: string;
+  }[];
+  sanctionedByPrincipal: boolean;
+  sanctionedDate?: string;
+  certificateAttachmentUrl?: string;
+  createdAt: string;
+}
+
+export interface LeaveBalance {
+  employeeCode: string;
+  teacherName: string;
+  employmentType: 'Regular' | 'Contractual';
+  academicYear: string; // e.g. "2026-2027"
+  calendarYear: number; // e.g. 2026
+
+  // Regular Teachers Statutory Balances
+  clTotal: number;      // Standard: 8 days
+  clAvailed: number;
+  clRemaining: number;
+
+  elTotal: number;      // 10 / 20 days per annum
+  elAvailed: number;
+  elRemaining: number;
+
+  hplTotal: number;     // 20 days per annum
+  hplAvailed: number;
+  hplRemaining: number;
+
+  commutedAvailed: number; // Debited at 2x from HPL
+  specialClAvailed: number;
+  cclTotal?: number;
+  cclAvailed?: number;
+  cclRemaining?: number;
+
+  // Contractual Staff Specific Entitlements
+  contractualMonthlyClCredited: number; // Max 1 per month worked
+  contractualMonthlyClAvailed: number;
+  contractualMonthlyClBalance: number;
+  contractualVacationDutyExclusionActive?: boolean; // If true, 0 CL in that vacation month
+
+  // History breakdown
+  leavesHistory: {
+    leaveId: string;
+    leaveType: LeaveType;
+    fromDate: string;
+    toDate: string;
+    days: number;
+    sanctionedAt: string;
+    remarks?: string;
+  }[];
+
+  lastCalculatedAt: string;
+}
+
+export interface LeaveSettingsConfig {
+  contractualMinServiceMonths: number; // default 1
+  contractualMaxClPerMonth: number;    // default 1
+  remedialVacationDutyMonths: string[]; // e.g. ['2026-05', '2026-06', '2026-10']
+  regularClAnnualEntitlement: number;   // default 8
+  regularElAnnualEntitlement: number;   // default 10
+  regularHplAnnualEntitlement: number;  // default 20
+  regularCclAnnualEntitlement: number;  // default 730
+}
+
+export interface StudentAttendanceRecord {
+  id: string; // e.g. "att-stud-1049-2026-08-20"
+  studentId: string; // Foreign key to StudentProfile
+  studentName: string;
+  rollNo: number | string;
+  className: string; // "I"..."XII"
+  section: string;   // "A", "B", "C"
+  date: string;      // YYYY-MM-DD
+  status: 'P' | 'A' | 'L' | 'E'; // Present, Absent, Late, Excused/Leave
+  reasonForAbsence?: string; // e.g. "Fever / Medical", "Out of station", "Family function"
+  markedByTeacherCode?: string;
+  markedByTeacherName?: string;
+  markedAt: string;
+  isTcCancelled?: boolean; // Set true if student has been issued TC
+}
+
+export interface ClassDailyAttendanceRecord {
+  id: string; // e.g. "att-cls-I-2026-08-20"
+  date: string; // YYYY-MM-DD
+  className: string; // "I" to "X"
+  section: string; // "A"
+  totalStudents: number;
+  presentCount: number;
+  absentCount: number;
+  absentRollNos: number[];
+  absentStudentIds?: string[];
+  markedByTeacherName?: string;
+  markedAt: string;
+}
+
+export interface TransferCertificateRecord {
+  id: string; // e.g. "tc-2026-0042"
+  tcNumber: string; // Official TC No. e.g. "TC/2026/042"
+  bookNo?: string;
+  studentId: string;
+  studentName: string;
+  admissionNo: string;
+  penNo?: string; // UDISE PEN
+  apaarId?: string;
+  fatherName: string;
+  motherName: string;
+  nationality: string;
+  socialCategory: string; // GEN / OBC / SC / ST / EWS
+  className: string;
+  section: string;
+  admissionDateInSchool: string;
+  dateOfLeaving: string; // YYYY-MM-DD
+  dateOfIssueTc: string;  // YYYY-MM-DD
+  reasonForLeaving: 'Parent Transfer' | 'Relocation' | 'Admission to Other School' | 'Higher Education' | 'Personal Request';
+  destinationSchoolName?: string;
+  totalWorkingDays: number;
+  daysPresent: number;
+  conductAndBehaviour: 'Good' | 'Very Good' | 'Exemplary' | 'Satisfactory';
+  duesCleared: boolean;
+  concessionAvailed?: string;
+  nccOrScoutGuide?: string;
+  gamesPlayed?: string;
+  remarks?: string;
+  issuedByPrincipalName: string;
+  status: 'Draft' | 'Issued' | 'Cancelled';
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface MonthlyEnrollmentClassData {
+  className: string; // "I", "II" ... "XII"
+  section: string;   // "A", "B"
+  boysCount: number;
+  girlsCount: number;
+  transgenderCount: number;
+  totalStudents: number;
+  categoryBreakdown: {
+    gen: { boys: number; girls: number; total: number };
+    obc: { boys: number; girls: number; total: number };
+    sc: { boys: number; girls: number; total: number };
+    st: { boys: number; girls: number; total: number };
+    ewsOrBpl: { boys: number; girls: number; total: number };
+    minority: { boys: number; girls: number; total: number };
+    singleGirlChild: number;
+    rte: number;
+    differentlyAbled: number;
+  };
+  admissionsInMonth: number;
+  tcIssuedInMonth: number;
+  netEnrollment: number;
+}
+
+export interface MonthlyEnrollmentSnapshot {
+  id: string; // e.g. "enroll-ro-2026-08"
+  month: string; // "August"
+  year: number; // 2026
+  monthYearStr: string; // "2026-08"
+  generatedAt: string; // ISO date
+  generatedBy: string; // e.g. "Updesh Singh Pal (Data Entry Manager)"
+  verifiedByPrincipal: string; // "Shri Hemananda Barik (Principal I/c)"
+  schoolName: string;
+  kvCode: string;
+  region: string;
+  classesData: MonthlyEnrollmentClassData[];
+  grandTotals: {
+    totalBoys: number;
+    totalGirls: number;
+    totalStudents: number;
+    totalGen: number;
+    totalObc: number;
+    totalSc: number;
+    totalSt: number;
+    totalEws: number;
+    totalMinority: number;
+    totalSgc: number;
+    totalRte: number;
+    totalDifferentlyAbled: number;
+    totalTcIssued: number;
+    totalNewAdmissions: number;
+  };
+  roSubmissionStatus: 'Draft' | 'Finalized' | 'Exported' | 'Submitted to RO';
+  submissionDate?: string;
+  roDispatchNumber?: string;
+}
+
+export interface ProxyDutyAssignment {
+  id: string; // e.g. "proxy-2026-08-20-p3-xia"
+  date: string; // YYYY-MM-DD
+  dayOfWeek: DayOfWeek;
+  periodNumber: number;
+  timeSlot?: string;
+  className: string;
+  section: string;
+  subjectName: string;
+  roomNo?: string;
+
+  // Absent Teacher
+  absentTeacherCode: string;
+  absentTeacherName: string;
+  absenceReason: LeaveType | 'Late' | 'Official Deputation' | 'Emergency' | string;
+
+  // Substitute Assigned Teacher
+  substituteTeacherCode: string;
+  substituteTeacherName: string;
+  substituteDesignation?: string;
+  isFreePeriod: boolean; // Confirmed that substitute had no other regular teaching period
+
+  // Assignment metadata
+  assignedBy: string; // e.g. "Time-Table Committee / Principal"
+  assignedAt: string;
+  status: 'Assigned' | 'Acknowledged' | 'Completed' | 'Reassigned';
+  taskManagementTaskId?: string; // Links to auto-generated task in TaskManager
+  syncedToTaskSystem: boolean;
+  notes?: string;
+}
+
+export type TicketCategory = 'Bug / Glitch' | 'Feature Request' | 'Feedback' | 'UI/UX Issue' | 'Data Issue' | 'Other';
+export type TicketPriority = 'Low' | 'Medium' | 'High' | 'Critical';
+export type TicketStatus = 'Open' | 'In Progress' | 'Resolved' | 'Closed';
+
+export interface TicketEvidence {
+  id: string;
+  fileName: string;
+  fileType: 'image' | 'pdf' | 'video' | 'other';
+  fileUrl: string;          // Base64 data URL
+  uploadedAt: string;
+}
+
+export interface Ticket {
+  id: string;
+  title: string;
+  category: TicketCategory;
+  priority: TicketPriority;
+  description: string;
+  moduleOrPage?: string;    // e.g. "Teacher Attendance", "Student Enrollment", "TaskManager"
+  status: TicketStatus;
+  evidence: TicketEvidence[];
+  raisedBy: string;         // employeeCode or user id
+  raisedByName: string;
+  raisedAt: string;
+  assignedTo?: string;
+  assignedToName?: string;
+  principalOrDevRemarks?: string;
+  resolvedAt?: string;
+  updatedAt: string;
+}
+
+// ============================================================================
+// ROLE + RESPONSIBILITY + DELEGATION + CALENDAR-LINKED ACTIVITY SYSTEM (PHASE 1)
+// ============================================================================
+
+export type PortfolioCategory =
+  | 'Academic & Administration'
+  | 'Student Welfare & Safety'
+  | 'Activities, Clubs & Student Development'
+  | 'Maintenance & Infrastructure'
+  | 'Office / Administrative'
+  | 'Other';
+
+export type ResponsibilityFrequency =
+  | 'One-time'
+  | 'Daily'
+  | 'Weekly'
+  | 'Monthly'
+  | 'Quarterly'
+  | 'Term'
+  | 'Annual'
+  | 'As-needed';
+
+export interface ResponsibilitySubItem {
+  id: string;
+  title: string;
+  description?: string;
+  isCompleted?: boolean;
+}
+
+export interface PortfolioResponsibility {
+  id: string;
+  title: string;
+  subCategory?: string;                // e.g. "Pay Bills & TDS", "Audit & VVN", "Service Records"
+  subItems?: ResponsibilitySubItem[];  // Sub-tasks or checklist items
+  description?: string;
+  frequency: ResponsibilityFrequency;
+  suggestedMonths?: string[];          // e.g. ["April", "May", "August"]
+  isMandatory: boolean;
+  canBeDelegated: boolean;
+  linkedThemeCalendarActivity?: string;
+}
+
+export interface PortfolioTemplate {
+  id: string;
+  name: string;                        // e.g. "Examination Committee In-charge"
+  category: PortfolioCategory;
+  description: string;
+  responsibilities: PortfolioResponsibility[];
+  isCommittee: boolean;                // true for most school committees
+  createdBy: string;
+  createdAt: string;
+  updatedAt: string;
+  isActive: boolean;
+}
+
+export interface PortfolioAssignment {
+  id: string;
+  portfolioTemplateId: string;
+  role: 'In-charge' | 'Member';
+  teacherEmployeeCode: string;
+  teacherName: string;
+  assignedBy: string;
+  assignedAt: string;
+  status: 'Active' | 'Relieved';
+  notes?: string;
+}
+
+export interface ResponsibilityDelegation {
+  id: string;
+  portfolioTemplateId: string;
+  responsibilityId: string;
+  originalOwnerEmployeeCode: string;   // the In-charge
+  originalOwnerName: string;
+  delegatedToEmployeeCode: string;
+  delegatedToName: string;
+  delegatedBy: string;                 // Principal or In-charge
+  delegatedAt: string;
+  status: 'Active' | 'Completed' | 'Withdrawn';
+  notes?: string;
+}
+
+export interface ResponsibilityRequest {
+  id: string;
+  portfolioTemplateId: string;
+  requestedBy: string;
+  requestedByName: string;
+  title: string;
+  description: string;
+  suggestedFrequency: ResponsibilityFrequency;
+  status: 'Pending' | 'Approved' | 'Rejected';
+  principalRemarks?: string;
+  requestedAt: string;
+  reviewedAt?: string;
+}
+
+export interface PortfolioSuggestion {
+  id: string;
+  suggestedTitle: string;
+  suggestedDescription: string;
+  suggestedFrequency: ResponsibilityFrequency;
+  suggestedPortfolioTemplateId?: string;   // which existing portfolio it should go under
+  suggestedPortfolioName?: string;
+  evidenceCount: number;                   // how many times this pattern was seen
+  sampleActivityIds: string[];
+  status: 'Pending' | 'Approved' | 'Rejected' | 'Ignored';
+  createdAt: string;
+  reviewedAt?: string;
+  principalRemarks?: string;
+}
+
+export type ThemeCalendarCategory =
+  | 'Academic Activities'
+  | 'Examination Activities'
+  | 'Science, STEM & ATL'
+  | 'EBSB, Kala Utsav & Cultural'
+  | 'Games, Sports & Yoga'
+  | 'Scouts & Guides'
+  | 'Vocational & Skill Education'
+  | 'Training & CPD'
+  | 'National & International Days';
+
+export type ThemeCalendarMonth =
+  | 'April & May'
+  | 'June & July'
+  | 'August'
+  | 'September'
+  | 'October'
+  | 'November'
+  | 'December'
+  | 'January'
+  | 'February'
+  | 'March';
+
+export interface ThemeCalendarActivity {
+  id: string;
+  month: ThemeCalendarMonth;
+  category: ThemeCalendarCategory;
+  title: string;
+  description?: string;
+  suggestedCommitteeId?: string;
+  suggestedCommitteeName?: string;
+  isMandatory?: boolean;
+  dateOrWeek?: string;
+}
+
+export type CampusDutyType =
+  | 'Morning Gate & Assembly'
+  | 'Recess & Playground'
+  | 'Corridor & Water Point'
+  | 'Dispersal & Bus Stand'
+  | 'Special Event Supervision';
+
+export interface CampusDutyAssignment {
+  id: string;
+  dutyType: CampusDutyType;
+  dayOfWeek: 'Monday' | 'Tuesday' | 'Wednesday' | 'Thursday' | 'Friday' | 'Saturday' | string;
+  date?: string; // Optional specific date YYYY-MM-DD
+  location: string;
+  timing: string;
+  teacherEmployeeCode: string;
+  teacherName: string;
+  teacherDesignation?: string;
+  status: 'Scheduled' | 'Completed' | 'Substituted';
+  assignedBy: string;
+  assignedAt: string;
+  notes?: string;
+}
+
+
+
+
+
+
 
 
 

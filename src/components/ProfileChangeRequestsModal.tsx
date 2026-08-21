@@ -183,7 +183,72 @@ export const ProfileChangeRequestsModal: React.FC<ProfileChangeRequestsModalProp
         await db.set('auth:current_user', updatedCurUser);
       }
 
-      // 4. Update Request Status in IndexedDB
+      // 4. Update Timetable, Portfolios, and Campus Duties
+      const newName = selectedReq.proposedProfile.name;
+      const oldName = selectedReq.teacherName;
+      if (newName) {
+        // Timetable
+        const timetable = (await db.get<any[]>('setup:timetable')) || [];
+        if (timetable.length > 0) {
+          const updatedTT = timetable.map(slot => {
+            if (
+              slot.teacherId === selectedReq.employeeCode ||
+              (oldName && slot.teacherName && slot.teacherName.toLowerCase().includes(oldName.toLowerCase())) ||
+              (selectedReq.employeeCode === '51951' && slot.teacherName && slot.teacherName.toLowerCase().includes('dhuma'))
+            ) {
+              return {
+                ...slot,
+                teacherId: selectedReq.employeeCode,
+                teacherName: newName
+              };
+            }
+            return slot;
+          });
+          await db.set('setup:timetable', updatedTT);
+        }
+
+        // Portfolios
+        const assignments = (await db.get<any[]>('setup:portfolio_assignments')) || [];
+        if (assignments.length > 0) {
+          const updatedAsgn = assignments.map(a => {
+            if (
+              a.teacherEmployeeCode === selectedReq.employeeCode ||
+              (oldName && a.teacherName && a.teacherName.toLowerCase().includes(oldName.toLowerCase())) ||
+              (selectedReq.employeeCode === '51951' && a.teacherName && a.teacherName.toLowerCase().includes('dhuma'))
+            ) {
+              return {
+                ...a,
+                teacherEmployeeCode: selectedReq.employeeCode,
+                teacherName: newName
+              };
+            }
+            return a;
+          });
+          await db.set('setup:portfolio_assignments', updatedAsgn);
+        }
+
+        // Campus Duties
+        const campusDuties = (await db.get<any[]>('setup:campus_duty_assignments')) || [];
+        if (campusDuties.length > 0) {
+          const updatedDuties = campusDuties.map(d => {
+            if (
+              d.teacherEmployeeCode === selectedReq.employeeCode ||
+              (oldName && d.teacherName && d.teacherName.toLowerCase().includes(oldName.toLowerCase()))
+            ) {
+              return {
+                ...d,
+                teacherEmployeeCode: selectedReq.employeeCode,
+                teacherName: newName,
+                teacherDesignation: selectedReq.proposedProfile.designation || d.teacherDesignation
+              };
+            }
+            return d;
+          });
+          await db.set('setup:campus_duty_assignments', updatedDuties);
+        }
+      }
+
+      // 5. Update Request Status in IndexedDB
       const allRequests = (await db.get<ProfileChangeRequest[]>('profile:change_requests')) || [];
       const updatedRequests = allRequests.map(r => {
         if (r.id === selectedReq.id) {
@@ -199,10 +264,12 @@ export const ProfileChangeRequestsModal: React.FC<ProfileChangeRequestsModalProp
       });
       await db.set('profile:change_requests', updatedRequests);
 
-      // 5. Dispatch Events
+      // 6. Dispatch Events
       window.dispatchEvent(new CustomEvent('kvs-profile-request-resolved', { detail: { id: selectedReq.id, status: 'approved' } }));
       window.dispatchEvent(new CustomEvent('kvs-auth-changed', { detail: null }));
       window.dispatchEvent(new CustomEvent('kvs-active-teacher-changed', { detail: null }));
+      window.dispatchEvent(new CustomEvent('kvs-timetable-updated', { detail: null }));
+      window.dispatchEvent(new CustomEvent('kvs-portfolios-updated', { detail: null }));
 
       setMsg({ type: 'success', text: `Approved and merged profile update for ${selectedReq.teacherName}!` });
       await loadRequests();

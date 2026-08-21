@@ -796,7 +796,8 @@ export const TeacherProfileForm: React.FC<TeacherProfileFormProps> = ({ devMode,
     db.set(getActiveStorageKey(), updated);
   };
 
-  const isAdmin = currentUser?.role === 'admin' || currentUser?.role === 'data_entry_manager';
+  const activePersona = currentUser?.activePersona || (currentUser?.role === 'admin' ? 'admin' : 'teacher');
+  const isAdmin = activePersona === 'admin' || currentUser?.role === 'admin' || (activePersona === 'data_entry_manager');
 
   if (loading) {
     return <div className="p-8 text-center text-purple-300">Loading Teacher Profile...</div>;

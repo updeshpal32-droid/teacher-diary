@@ -44,7 +44,7 @@ interface SettingsManagerProps {
   onToggleDevMode: () => void;
   theme: 'dark' | 'light';
   onToggleTheme: (newTheme: 'dark' | 'light') => void;
-  onNavigateTab: (tab: 'school' | 'teacher' | 'classes' | 'timetable' | 'calendar' | 'exams' | 'syllabus' | 'lessonplan' | 'assessment' | 'inspection' | 'reports') => void;
+  onNavigateTab: (tab: 'school' | 'teacher' | 'classes' | 'timetable' | 'calendar' | 'exams' | 'syllabus' | 'lessonplan' | 'assessment' | 'inspection' | 'reports' | 'tickets' | string) => void;
   currentUser?: UserAccount | null;
   onSwitchAccount?: () => void;
 }
@@ -1093,6 +1093,18 @@ export const SettingsManager: React.FC<SettingsManagerProps> = ({
           >
             <span>PDF Reports</span>
             <ArrowRight className="w-3 h-3 text-amber-500" />
+          </button>
+
+          <button
+            onClick={() => onNavigateTab('tickets')}
+            className={`p-2.5 border rounded-xl font-medium flex items-center justify-between transition-all ${
+              theme === 'light'
+                ? 'bg-cyan-50/80 border-cyan-200 text-slate-800 hover:bg-cyan-100 hover:border-cyan-300'
+                : 'bg-slate-950 border-slate-800 text-cyan-300 hover:text-white hover:border-cyan-500/50'
+            }`}
+          >
+            <span>Feedback & Tickets</span>
+            <ArrowRight className="w-3 h-3 text-cyan-500" />
           </button>
         </div>
       </div>

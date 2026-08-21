@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { UserAccount, ClassSubjectAssignment, StageCategory } from '../types/auth';
-import { StaffDetailRecord, TeacherProfile, AcademicResponsibility, CustomRoleDefinition } from '../types/academic';
+import { StaffDetailRecord, TeacherProfile, AcademicResponsibility, CustomRoleDefinition, PortfolioTemplate, PortfolioAssignment } from '../types/academic';
 import {
   db,
   getUserAccounts,
@@ -63,6 +63,7 @@ interface RoleAssignmentModalProps {
   initialAction?: RoleAssignmentAction;
   targetTeacherCode?: string;
   targetRoleId?: string;
+  onOpenCommitteesDirectory?: () => void;
 }
 
 const ALL_CLASSES = [
@@ -98,11 +99,14 @@ export function RoleAssignmentModal({
   onClose,
   initialAction = 'class_teacher',
   targetTeacherCode,
-  targetRoleId
+  targetRoleId,
+  onOpenCommitteesDirectory
 }: RoleAssignmentModalProps) {
   const [activeTab, setActiveTab] = useState<'class_teacher' | 'subject_teacher' | 'incharge' | 'manage_roles' | 'overview'>('class_teacher');
   const [users, setUsers] = useState<UserAccount[]>([]);
   const [staffList, setStaffList] = useState<StaffDetailRecord[]>([]);
+  const [portfolioTemplates, setPortfolioTemplates] = useState<PortfolioTemplate[]>([]);
+  const [portfolioAssignments, setPortfolioAssignments] = useState<PortfolioAssignment[]>([]);
   const [rolesList, setRolesList] = useState<CustomRoleDefinition[]>(DEFAULT_KVS_ROLES);
   const [selectedTeacherId, setSelectedTeacherId] = useState<string>('');
 
@@ -169,14 +173,18 @@ export function RoleAssignmentModal({
 
   const loadData = async () => {
     setLoading(true);
-    const [userAccounts, staffRecords, customRoles] = await Promise.all([
+    const [userAccounts, staffRecords, customRoles, savedTemplates, savedAssignments] = await Promise.all([
       getUserAccounts(),
       db.get<StaffDetailRecord[]>('setup:staff_details') || [],
-      getCustomRoles()
+      getCustomRoles(),
+      db.get<PortfolioTemplate[]>('setup:portfolio_templates') || [],
+      db.get<PortfolioAssignment[]>('setup:portfolio_assignments') || []
     ]);
     setUsers(userAccounts);
     setStaffList(staffRecords || []);
     setRolesList(customRoles);
+    setPortfolioTemplates(savedTemplates || []);
+    setPortfolioAssignments(savedAssignments || []);
 
     if (targetTeacherCode) {
       const match = userAccounts.find(u => u.employeeCode === targetTeacherCode);
@@ -449,6 +457,58 @@ export function RoleAssignmentModal({
         return s;
       });
       await db.set('setup:staff_details', updatedStaff);
+
+      // Sync with Portfolio System (PortfolioRoleManager)
+      const ROLE_TO_PORTFOLIO_ID: Record<string, string> = {
+        'role-exam-ic': 'port-exam',
+        'role-tt-ic': 'port-timetable',
+        'role-sports-ic': 'port-sports',
+        'role-scout-ic': 'port-scouts',
+        'role-cca-ic': 'port-cca',
+        'role-admission-ic': 'port-admission',
+        'role-safety-ic': 'port-safety',
+        'role-infra-ic': 'port-infra',
+        'role-lib-ic': 'port-library',
+        'role-it-ic': 'port-it',
+        'role-guidance-ic': 'port-guidance',
+        'role-eco-ic': 'port-eco'
+      };
+
+      const matchedPortId = ROLE_TO_PORTFOLIO_ID[selectedRoleDef.id] ||
+        (selectedRoleDef.name.toLowerCase().includes('exam') ? 'port-exam' :
+         selectedRoleDef.name.toLowerCase().includes('timetable') ? 'port-timetable' :
+         selectedRoleDef.name.toLowerCase().includes('sport') ? 'port-sports' :
+         selectedRoleDef.name.toLowerCase().includes('scout') ? 'port-scouts' :
+         selectedRoleDef.name.toLowerCase().includes('cca') ? 'port-cca' :
+         selectedRoleDef.name.toLowerCase().includes('admission') ? 'port-admission' :
+         selectedRoleDef.name.toLowerCase().includes('safety') || selectedRoleDef.name.toLowerCase().includes('pocso') ? 'port-safety' :
+         selectedRoleDef.name.toLowerCase().includes('clean') || selectedRoleDef.name.toLowerCase().includes('furniture') ? 'port-infra' :
+         selectedRoleDef.name.toLowerCase().includes('lib') ? 'port-library' :
+         selectedRoleDef.name.toLowerCase().includes('it') || selectedRoleDef.name.toLowerCase().includes('website') ? 'port-it' :
+         selectedRoleDef.name.toLowerCase().includes('guidance') ? 'port-guidance' :
+         selectedRoleDef.name.toLowerCase().includes('eco') ? 'port-eco' : '');
+
+      if (matchedPortId) {
+        const isInc = inchargeLevel === 'In-Charge' || inchargeLevel === 'Convenor' || inchargeLevel === 'Coordinator';
+        const currentAssignments = (await db.get<any[]>('setup:portfolio_assignments')) || [];
+        let updatedAsgns = currentAssignments;
+        if (isInc) {
+          updatedAsgns = updatedAsgns.filter(a => !(a.portfolioTemplateId === matchedPortId && a.role === 'In-charge'));
+        }
+        updatedAsgns.push({
+          id: `asgn-${Date.now().toString().slice(-5)}`,
+          portfolioTemplateId: matchedPortId,
+          role: isInc ? 'In-charge' : 'Member',
+          teacherEmployeeCode: activeUser.employeeCode,
+          teacherName: activeUser.name,
+          assignedBy: 'Principal / Admin',
+          assignedAt: new Date().toISOString(),
+          status: 'Active',
+          notes: inchargeKeyOutcomes || selectedRoleDef.description
+        });
+        await db.set('setup:portfolio_assignments', updatedAsgns);
+        window.dispatchEvent(new CustomEvent('kvs-portfolios-updated'));
+      }
 
       await loadData();
       window.dispatchEvent(new CustomEvent('kvs-active-teacher-changed', { detail: null }));
@@ -1227,88 +1287,232 @@ export function RoleAssignmentModal({
           {/* TAB 5: MASTER ROLE MATRIX OVERVIEW */}
           {activeTab === 'overview' && (
             <div className="space-y-4">
-              <div className="flex items-center justify-between flex-wrap gap-2">
+              {/* Matrix Top Header & Quick Links */}
+              <div className="p-4 rounded-2xl bg-gradient-to-r from-purple-950/60 via-slate-950 to-indigo-950/60 border border-purple-500/30 flex flex-col md:flex-row md:items-center justify-between gap-3 shadow-lg">
                 <div>
-                  <h3 className="text-sm font-bold text-white">Master Academic &amp; Administrative Roles Matrix</h3>
-                  <p className="text-xs text-slate-400">Complete summary of staff allocations across KV Kutra</p>
+                  <div className="flex items-center gap-2">
+                    <Layers className="w-5 h-5 text-purple-400" />
+                    <h3 className="text-sm font-black text-white uppercase tracking-wider">
+                      Master Academic &amp; Administrative Roles Matrix
+                    </h3>
+                    <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-500/20 text-emerald-300 border border-emerald-500/30">
+                      Live Synced with Committees Directory
+                    </span>
+                  </div>
+                  <p className="text-xs text-slate-300 mt-1">
+                    Unified 360° overview of Class Teachers, Subject Mappings, and all 50 Official Vidyalaya Committees.
+                  </p>
                 </div>
-                <input
-                  type="text"
-                  value={searchQuery}
-                  onChange={e => setSearchQuery(e.target.value)}
-                  placeholder="Filter by teacher or role..."
-                  className="px-3 py-1.5 rounded-xl bg-slate-950 border border-slate-800 text-white text-xs"
-                />
+
+                <div className="flex items-center gap-2 flex-wrap shrink-0">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      onClose();
+                      if (onOpenCommitteesDirectory) {
+                        onOpenCommitteesDirectory();
+                      } else {
+                        window.dispatchEvent(new CustomEvent('open-committees-directory'));
+                      }
+                    }}
+                    className="px-3.5 py-2 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white font-bold text-xs shadow-md transition-all flex items-center gap-1.5 cursor-pointer"
+                    title="Open Full Official Responsibilities &amp; 50 Committees Directory"
+                  >
+                    <Building2 className="w-4 h-4 text-emerald-200" />
+                    <span>📂 Open Committees Directory ({portfolioTemplates.length > 0 ? portfolioTemplates.length : '50'})</span>
+                  </button>
+
+                  <input
+                    type="text"
+                    value={searchQuery}
+                    onChange={e => setSearchQuery(e.target.value)}
+                    placeholder="Search teacher, class, subject, or committee..."
+                    className="px-3 py-2 rounded-xl bg-slate-900 border border-slate-700 text-white text-xs w-64 focus:outline-none focus:border-purple-500"
+                  />
+                </div>
               </div>
 
-              <div className="rounded-2xl border border-slate-800 overflow-hidden">
-                <table className="w-full text-left text-xs border-collapse">
-                  <thead className="bg-slate-950 text-slate-400 font-bold border-b border-slate-800">
-                    <tr>
-                      <th className="p-3">S.N.</th>
-                      <th className="p-3">Staff Name &amp; Designation</th>
-                      <th className="p-3">Class Teacher / Co-CT</th>
-                      <th className="p-3">Assigned Subjects &amp; Classes</th>
-                      <th className="p-3">Special Portfolios</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-slate-800/60 bg-slate-900/50">
-                    {users
-                      .filter(u => !searchQuery || u.name.toLowerCase().includes(searchQuery.toLowerCase()) || u.designation.toLowerCase().includes(searchQuery.toLowerCase()))
-                      .map((u, idx) => (
-                        <tr key={u.id} className="hover:bg-slate-850 transition-colors">
-                          <td className="p-3 text-slate-500">{idx + 1}</td>
-                          <td className="p-3">
-                            <div className="font-bold text-white">{u.name}</div>
-                            <div className="text-[10px] text-slate-400">{u.designation} • #{u.employeeCode}</div>
-                          </td>
-                          <td className="p-3">
-                            <div className="flex flex-col gap-1">
-                              {u.isClassTeacherOf ? (
-                                <span className="px-2 py-0.5 rounded text-[10px] font-black bg-amber-500/20 text-amber-300 border border-amber-500/40 w-fit">
-                                  ⭐ CT: Class {u.isClassTeacherOf}
-                                </span>
-                              ) : null}
-                              {u.isCoClassTeacherOf ? (
-                                <span className="px-2 py-0.5 rounded text-[10px] font-black bg-cyan-500/20 text-cyan-300 border border-cyan-500/40 w-fit">
-                                  🤝 Co-CT: Class {u.isCoClassTeacherOf}
-                                </span>
-                              ) : null}
-                              {!u.isClassTeacherOf && !u.isCoClassTeacherOf && (
-                                <span className="text-slate-600">—</span>
-                              )}
-                            </div>
-                          </td>
-                          <td className="p-3">
-                            {u.assignedClasses && u.assignedClasses.length > 0 ? (
-                              <div className="flex flex-wrap gap-1">
-                                {u.assignedClasses.map(c => (
-                                  <span key={c} className="px-1.5 py-0.2 rounded text-[9px] font-bold bg-purple-950 text-purple-200 border border-purple-500/30">
-                                    {c}
-                                  </span>
-                                ))}
-                              </div>
-                            ) : (
-                              <span className="text-slate-600">—</span>
-                            )}
-                          </td>
-                          <td className="p-3">
-                            {u.role === 'admin' ? (
-                              <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-rose-500/20 text-rose-300 border border-rose-500/40">
-                                👑 Principal &amp; Checking Authority
-                              </span>
-                            ) : u.role === 'data_entry_manager' ? (
-                              <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-cyan-500/20 text-cyan-300 border border-cyan-500/40">
-                                📊 Data Entry Manager
-                              </span>
-                            ) : (
-                              <span className="text-slate-400 text-[11px]">Academic Faculty</span>
-                            )}
-                          </td>
-                        </tr>
-                      ))}
-                  </tbody>
-                </table>
+              {/* Summary Stats Badges */}
+              <div className="flex items-center gap-2 flex-wrap">
+                <div className="px-3 py-1 rounded-xl bg-slate-950 border border-slate-800 text-xs text-slate-300 flex items-center gap-1.5">
+                  <Users2 className="w-3.5 h-3.5 text-purple-400" />
+                  <span>Total Faculty: <strong className="text-white">{users.length}</strong></span>
+                </div>
+                <div className="px-3 py-1 rounded-xl bg-amber-950/60 border border-amber-500/40 text-xs text-amber-200 flex items-center gap-1.5">
+                  <Crown className="w-3.5 h-3.5 text-amber-400" />
+                  <span>Class Teachers: <strong className="text-amber-300 font-black">{users.filter(u => u.isClassTeacherOf).length}</strong></span>
+                </div>
+                <div className="px-3 py-1 rounded-xl bg-emerald-950/60 border border-emerald-500/40 text-xs text-emerald-200 flex items-center gap-1.5">
+                  <ShieldCheck className="w-3.5 h-3.5 text-emerald-400" />
+                  <span>Active In-Charges: <strong className="text-emerald-300 font-black">
+                    {new Set(portfolioAssignments.filter(a => a.role === 'In-charge').map(a => a.teacherEmployeeCode)).size}
+                  </strong></span>
+                </div>
+                <div className="px-3 py-1 rounded-xl bg-indigo-950/60 border border-indigo-500/40 text-xs text-indigo-200 flex items-center gap-1.5">
+                  <Award className="w-3.5 h-3.5 text-indigo-400" />
+                  <span>Total Committee Allocations: <strong className="text-indigo-300 font-black">{portfolioAssignments.length}</strong></span>
+                </div>
+              </div>
+
+              {/* Master Matrix Table */}
+              <div className="rounded-2xl border border-slate-800 overflow-hidden shadow-xl">
+                <div className="max-h-[60vh] overflow-y-auto">
+                  <table className="w-full text-left text-xs border-collapse">
+                    <thead className="bg-slate-950 text-slate-400 font-bold border-b border-slate-800 sticky top-0 z-10">
+                      <tr>
+                        <th className="p-3 w-12 text-center">S.N.</th>
+                        <th className="p-3 w-56">Staff Name &amp; Designation</th>
+                        <th className="p-3 w-48">Class Teacher / Co-CT</th>
+                        <th className="p-3 w-52">Assigned Subjects &amp; Classes</th>
+                        <th className="p-3">Official Committees &amp; In-Charge Portfolios</th>
+                        <th className="p-3 w-28 text-center">Action</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-800/60 bg-slate-900/50">
+                      {users
+                        .filter(u => {
+                          if (!searchQuery) return true;
+                          const q = searchQuery.toLowerCase();
+                          const teacherMatch = u.name.toLowerCase().includes(q) || u.designation.toLowerCase().includes(q) || (u.employeeCode && u.employeeCode.toLowerCase().includes(q));
+                          const classMatch = (u.isClassTeacherOf && u.isClassTeacherOf.toLowerCase().includes(q)) || (u.isCoClassTeacherOf && u.isCoClassTeacherOf.toLowerCase().includes(q));
+                          const subjectMatch = u.assignments && u.assignments.some(a => a.subject.toLowerCase().includes(q) || a.className.toLowerCase().includes(q));
+                          const teacherAsgns = portfolioAssignments.filter(a => a.teacherEmployeeCode === u.employeeCode || a.teacherName?.toLowerCase() === u.name.toLowerCase());
+                          const committeeMatch = teacherAsgns.some(a => {
+                            const tpl = portfolioTemplates.find(t => t.id === a.portfolioTemplateId);
+                            return (tpl && tpl.name.toLowerCase().includes(q)) || a.role.toLowerCase().includes(q);
+                          });
+                          return teacherMatch || classMatch || subjectMatch || committeeMatch;
+                        })
+                        .map((u, idx) => {
+                          // Find teacher's committee assignments from live directory
+                          const teacherAsgns = portfolioAssignments.filter(a => a.teacherEmployeeCode === u.employeeCode || (a.teacherName && a.teacherName.toLowerCase() === u.name.toLowerCase()));
+                          const inchargeAsgns = teacherAsgns.filter(a => a.role === 'In-charge');
+                          const memberAsgns = teacherAsgns.filter(a => a.role === 'Member');
+
+                          return (
+                            <tr key={u.id} className="hover:bg-slate-850 transition-colors">
+                              <td className="p-3 text-slate-500 text-center font-mono font-bold">{idx + 1}</td>
+                              <td className="p-3">
+                                <div className="font-bold text-white flex items-center gap-1.5">
+                                  <span>{u.name}</span>
+                                </div>
+                                <div className="text-[10px] text-slate-400 font-medium">{u.designation} • #{u.employeeCode}</div>
+                              </td>
+                              <td className="p-3">
+                                <div className="flex flex-col gap-1">
+                                  {u.isClassTeacherOf ? (
+                                    <span className="px-2 py-0.5 rounded-lg text-[10px] font-black bg-amber-500/20 text-amber-300 border border-amber-500/40 w-fit flex items-center gap-1">
+                                      <Crown className="w-3 h-3 text-amber-400" />
+                                      <span>Class Teacher: <strong>{u.isClassTeacherOf}</strong></span>
+                                    </span>
+                                  ) : null}
+                                  {u.isCoClassTeacherOf ? (
+                                    <span className="px-2 py-0.5 rounded-lg text-[10px] font-black bg-cyan-500/20 text-cyan-300 border border-cyan-500/40 w-fit flex items-center gap-1">
+                                      <Users2 className="w-3 h-3 text-cyan-400" />
+                                      <span>Co-CT: <strong>{u.isCoClassTeacherOf}</strong></span>
+                                    </span>
+                                  ) : null}
+                                  {!u.isClassTeacherOf && !u.isCoClassTeacherOf && (
+                                    <span className="text-slate-600">—</span>
+                                  )}
+                                </div>
+                              </td>
+                              <td className="p-3">
+                                {u.assignedClasses && u.assignedClasses.length > 0 ? (
+                                  <div className="flex flex-wrap gap-1">
+                                    {u.assignedClasses.map(c => (
+                                      <span key={c} className="px-1.5 py-0.2 rounded text-[9px] font-bold bg-purple-950 text-purple-200 border border-purple-500/30">
+                                        {c}
+                                      </span>
+                                    ))}
+                                  </div>
+                                ) : (
+                                  <span className="text-slate-600">—</span>
+                                )}
+                              </td>
+                              <td className="p-3">
+                                <div className="space-y-1.5">
+                                  {/* Special System Role */}
+                                  {u.role === 'admin' && (
+                                    <span className="px-2 py-0.5 rounded-lg text-[10px] font-bold bg-rose-500/20 text-rose-300 border border-rose-500/40 inline-flex items-center gap-1 mr-1.5">
+                                      👑 Principal &amp; Checking Authority
+                                    </span>
+                                  )}
+                                  {u.role === 'data_entry_manager' && (
+                                    <span className="px-2 py-0.5 rounded-lg text-[10px] font-bold bg-cyan-500/20 text-cyan-300 border border-cyan-500/40 inline-flex items-center gap-1 mr-1.5">
+                                      📊 Data Entry Manager
+                                    </span>
+                                  )}
+
+                                  {/* Incharge Roles */}
+                                  {inchargeAsgns.length > 0 && (
+                                    <div className="flex flex-wrap gap-1">
+                                      {inchargeAsgns.map(a => {
+                                        const tpl = portfolioTemplates.find(t => t.id === a.portfolioTemplateId);
+                                        const title = tpl ? tpl.name : a.portfolioTemplateId;
+                                        return (
+                                          <span
+                                            key={a.id}
+                                            className="px-2 py-0.5 rounded-lg text-[10px] font-bold bg-amber-950/70 text-amber-200 border border-amber-500/40 flex items-center gap-1"
+                                            title={a.notes || `${title} (${a.role})`}
+                                          >
+                                            <Sparkles className="w-3 h-3 text-amber-400" />
+                                            <span>{title} (<strong>{a.role}</strong>)</span>
+                                          </span>
+                                        );
+                                      })}
+                                    </div>
+                                  )}
+
+                                  {/* Committee Member Roles */}
+                                  {memberAsgns.length > 0 && (
+                                    <div className="flex flex-wrap gap-1 pt-0.5">
+                                      {memberAsgns.map(a => {
+                                        const tpl = portfolioTemplates.find(t => t.id === a.portfolioTemplateId);
+                                        const title = tpl ? tpl.name : a.portfolioTemplateId;
+                                        return (
+                                          <span
+                                            key={a.id}
+                                            className="px-1.5 py-0.2 rounded text-[9px] font-medium bg-slate-950 text-slate-300 border border-slate-800 flex items-center gap-1"
+                                            title={a.notes || `${title} (Member)`}
+                                          >
+                                            <span className="w-1.5 h-1.5 rounded-full bg-emerald-400" />
+                                            <span>{title}</span>
+                                          </span>
+                                        );
+                                      })}
+                                    </div>
+                                  )}
+
+                                  {inchargeAsgns.length === 0 && memberAsgns.length === 0 && u.role !== 'admin' && u.role !== 'data_entry_manager' && (
+                                    <span className="text-slate-500 text-[11px] italic">No committee assigned yet</span>
+                                  )}
+                                </div>
+                              </td>
+                              <td className="p-3 text-center">
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    onClose();
+                                    if (onOpenCommitteesDirectory) {
+                                      onOpenCommitteesDirectory();
+                                    } else {
+                                      window.dispatchEvent(new CustomEvent('open-committees-directory'));
+                                    }
+                                  }}
+                                  className="px-2.5 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 hover:text-white text-[10px] font-bold transition-all flex items-center gap-1 mx-auto cursor-pointer border border-slate-700"
+                                  title="View and Edit in Committees Directory"
+                                >
+                                  <Building2 className="w-3 h-3 text-emerald-400" />
+                                  <span>Directory</span>
+                                </button>
+                              </td>
+                            </tr>
+                          );
+                        })}
+                    </tbody>
+                  </table>
+                </div>
               </div>
             </div>
           )}

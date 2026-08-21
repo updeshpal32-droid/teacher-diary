@@ -1,8 +1,10 @@
 import React, { useState } from 'react';
-import { Settings, Users, ShieldCheck } from 'lucide-react';
+import { Settings, Users, MessageSquare } from 'lucide-react';
 import { SettingsManager } from '../SettingsManager';
 import { UserAccountManager } from '../UserAccountManager';
+import { TicketFeedbackManager } from '../TicketFeedbackManager';
 import { UserAccount } from '../../types/auth';
+import { isAdminOrDataManager } from '../../lib/permissions';
 
 interface SettingsModuleProps {
   devMode: boolean;
@@ -14,7 +16,7 @@ interface SettingsModuleProps {
   onNavigateTab: (tab: any) => void;
 }
 
-export type SettingsSubTab = 'preferences' | 'accounts';
+export type SettingsSubTab = 'preferences' | 'accounts' | 'feedback';
 
 export const SettingsModule: React.FC<SettingsModuleProps> = ({
   devMode,
@@ -26,6 +28,7 @@ export const SettingsModule: React.FC<SettingsModuleProps> = ({
   onNavigateTab
 }) => {
   const [activeTab, setActiveTab] = useState<SettingsSubTab>('preferences');
+  const isAdmin = isAdminOrDataManager(currentUser);
 
   return (
     <div className="space-y-4">
@@ -43,16 +46,30 @@ export const SettingsModule: React.FC<SettingsModuleProps> = ({
           <span>General Preferences & Backup</span>
         </button>
 
+        {isAdmin && (
+          <button
+            onClick={() => setActiveTab('accounts')}
+            className={`px-3 py-2 rounded-xl text-xs font-semibold whitespace-nowrap transition-all cursor-pointer flex items-center gap-1.5 ${
+              activeTab === 'accounts'
+                ? 'bg-gradient-to-r from-indigo-600 to-purple-600 text-white shadow-md'
+                : 'bg-white/5 light:bg-slate-100 text-slate-300 light:text-slate-700 hover:bg-white/10'
+            }`}
+          >
+            <Users className="w-3.5 h-3.5" />
+            <span>User Accounts & RBAC</span>
+          </button>
+        )}
+
         <button
-          onClick={() => setActiveTab('accounts')}
+          onClick={() => setActiveTab('feedback')}
           className={`px-3 py-2 rounded-xl text-xs font-semibold whitespace-nowrap transition-all cursor-pointer flex items-center gap-1.5 ${
-            activeTab === 'accounts'
+            activeTab === 'feedback'
               ? 'bg-gradient-to-r from-indigo-600 to-purple-600 text-white shadow-md'
               : 'bg-white/5 light:bg-slate-100 text-slate-300 light:text-slate-700 hover:bg-white/10'
           }`}
         >
-          <Users className="w-3.5 h-3.5" />
-          <span>User Accounts & RBAC</span>
+          <MessageSquare className="w-3.5 h-3.5" />
+          <span>Feedback & Support Desk</span>
         </button>
       </div>
 
@@ -69,6 +86,10 @@ export const SettingsModule: React.FC<SettingsModuleProps> = ({
       )}
 
       {activeTab === 'accounts' && <UserAccountManager currentUserId={currentUser?.id} />}
+
+      {activeTab === 'feedback' && (
+        <TicketFeedbackManager devMode={devMode} currentUser={currentUser} />
+      )}
     </div>
   );
 };

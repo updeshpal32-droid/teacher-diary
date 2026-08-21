@@ -33,9 +33,13 @@ import {
   FileSpreadsheet
 } from 'lucide-react';
 
+import { UserAccount } from '../types/auth';
+import { isAdminOrDataManager, hasTimetableEditAccess } from '../lib/permissions';
+
 interface TimetablePlannerProps {
   devMode: boolean;
   onSaved?: () => void;
+  currentUser?: UserAccount | null;
 }
 
 const DAYS: DayOfWeek[] = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
@@ -102,7 +106,8 @@ function resolveToRegistryName(rawName: string, registry: StaffDetailRecord[]): 
   return { name: rawName };
 }
 
-export const TimetablePlanner: React.FC<TimetablePlannerProps> = ({ devMode, onSaved }) => {
+export const TimetablePlanner: React.FC<TimetablePlannerProps> = ({ devMode, onSaved, currentUser }) => {
+  const canEdit = hasTimetableEditAccess(currentUser);
   const [timetable, setTimetable] = useState<TimetableSlot[]>(DEFAULT_TIMETABLE);
   const [periodTimings, setPeriodTimings] = useState<Record<number, { time: string; label: string }>>(DEFAULT_PERIOD_TIMINGS);
   const [viewMode, setViewMode] = useState<'teacher' | 'class'>('teacher');
@@ -705,53 +710,62 @@ export const TimetablePlanner: React.FC<TimetablePlannerProps> = ({ devMode, onS
               </button>
             </div>
 
-            <button
-              onClick={() => setIsExcelImporterOpen(true)}
-              className="px-3.5 py-1.5 rounded-xl bg-emerald-50 text-emerald-900 border border-emerald-300 hover:bg-emerald-100 text-xs font-extrabold flex items-center gap-1.5 transition-all cursor-pointer shadow-xs"
-              title="Import timetable Excel sheet (.xlsx, .xls, .csv) for all classes"
-            >
-              <FileSpreadsheet className="w-4 h-4 text-emerald-600" />
-              <span>Import Excel Timetable</span>
-            </button>
+            {canEdit ? (
+              <>
+                <button
+                  onClick={() => setIsExcelImporterOpen(true)}
+                  className="px-3.5 py-1.5 rounded-xl bg-emerald-50 text-emerald-900 border border-emerald-300 hover:bg-emerald-100 text-xs font-extrabold flex items-center gap-1.5 transition-all cursor-pointer shadow-xs"
+                  title="Import timetable Excel sheet (.xlsx, .xls, .csv) for all classes"
+                >
+                  <FileSpreadsheet className="w-4 h-4 text-emerald-600" />
+                  <span>Import Excel Timetable</span>
+                </button>
 
-            <button
-              onClick={() => {
-                setIsGridSelectMode(!isGridSelectMode);
-                if (isGridSelectMode) setSelectedSlotKeys([]);
-              }}
-              className={`px-3 py-1.5 rounded-xl border text-xs font-bold flex items-center gap-1.5 transition-all cursor-pointer ${
-                isGridSelectMode
-                  ? 'bg-rose-600 text-white border-rose-500 shadow-md animate-pulse'
-                  : 'bg-purple-50 text-purple-900 border-purple-300 hover:bg-purple-100 shadow-xs'
-              }`}
-            >
-              <CheckSquare className="w-3.5 h-3.5 text-purple-700" />
-              <span>{isGridSelectMode ? 'Exit Selection Mode' : 'Multi-Select Mode'}</span>
-            </button>
+                <button
+                  onClick={() => {
+                    setIsGridSelectMode(!isGridSelectMode);
+                    if (isGridSelectMode) setSelectedSlotKeys([]);
+                  }}
+                  className={`px-3 py-1.5 rounded-xl border text-xs font-bold flex items-center gap-1.5 transition-all cursor-pointer ${
+                    isGridSelectMode
+                      ? 'bg-rose-600 text-white border-rose-500 shadow-md animate-pulse'
+                      : 'bg-purple-50 text-purple-900 border-purple-300 hover:bg-purple-100 shadow-xs'
+                  }`}
+                >
+                  <CheckSquare className="w-3.5 h-3.5 text-purple-700" />
+                  <span>{isGridSelectMode ? 'Exit Selection Mode' : 'Multi-Select Mode'}</span>
+                </button>
 
-            <button
-              onClick={() => setIsBulkDeleteOpen(true)}
-              className="px-3 py-1.5 rounded-xl bg-rose-50 text-rose-900 border border-rose-300 hover:bg-rose-100 text-xs font-bold flex items-center gap-1.5 transition-all cursor-pointer shadow-xs"
-            >
-              <Eraser className="w-3.5 h-3.5 text-rose-600" />
-              <span>Quick Bulk Clear</span>
-            </button>
+                <button
+                  onClick={() => setIsBulkDeleteOpen(true)}
+                  className="px-3.5 py-1.5 rounded-xl bg-rose-50 text-rose-900 border border-rose-300 hover:bg-rose-100 text-xs font-bold flex items-center gap-1.5 transition-all cursor-pointer shadow-xs"
+                >
+                  <Eraser className="w-3.5 h-3.5 text-rose-600" />
+                  <span>Quick Bulk Clear</span>
+                </button>
 
-            <button
-              onClick={() => {
-                setTempTimings(periodTimings);
-                setIsEditingTimings(true);
-              }}
-              className="px-3 py-1.5 rounded-xl bg-purple-50 text-purple-900 border border-purple-300 hover:bg-purple-100 text-xs font-bold flex items-center gap-1.5 transition-all cursor-pointer shadow-xs"
-            >
-              <Edit2 className="w-3.5 h-3.5 text-purple-700" />
-              <span>Edit Period Timings</span>
-            </button>
+                <button
+                  onClick={() => {
+                    setTempTimings(periodTimings);
+                    setIsEditingTimings(true);
+                  }}
+                  className="px-3.5 py-1.5 rounded-xl bg-purple-50 text-purple-900 border border-purple-300 hover:bg-purple-100 text-xs font-bold flex items-center gap-1.5 transition-all cursor-pointer shadow-xs"
+                >
+                  <Edit2 className="w-3.5 h-3.5 text-purple-700" />
+                  <span>Edit Period Timings</span>
+                </button>
 
-            <button onClick={handleReset} className="td-btn-ghost text-xs py-1.5 cursor-pointer">
-              <RotateCcw className="w-3.5 h-3.5" />
-              <span>Auto-Fill KVS Schedule</span>
-            </button>
+                <button onClick={handleReset} className="td-btn-ghost text-xs py-1.5 cursor-pointer">
+                  <RotateCcw className="w-3.5 h-3.5" />
+                  <span>Auto-Fill KVS Schedule</span>
+                </button>
+              </>
+            ) : (
+              <span className="px-3 py-1.5 rounded-xl bg-purple-950/40 border border-purple-500/30 text-purple-300 text-xs font-bold flex items-center gap-1.5">
+                <Clock className="w-3.5 h-3.5 text-purple-400" />
+                <span>View-Only Timetable Matrix</span>
+              </span>
+            )}
           </div>
         </div>
 

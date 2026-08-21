@@ -35,7 +35,7 @@ export const RolesModule: React.FC<RolesModuleProps> = ({
             }`}
           >
             <ShieldCheck className="w-3.5 h-3.5" />
-            <span>KVS 50 Committees & Portfolios</span>
+            <span>KVK Committees & Portfolios</span>
           </button>
 
           <button

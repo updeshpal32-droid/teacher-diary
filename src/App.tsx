@@ -16,6 +16,7 @@ import { OfficeModule } from './components/modules/OfficeModule';
 import { TasksModule } from './components/modules/TasksModule';
 import { TicketsModule } from './components/modules/TicketsModule';
 import { SettingsModule } from './components/modules/SettingsModule';
+import { KvsCalendarManager } from './components/KvsCalendarManager';
 
 // Shared Modals & Context Providers
 import { ErrorBoundary } from './components/ErrorBoundary';
@@ -365,6 +366,23 @@ export default function App() {
 
           {activeModule === 'school' && <SchoolModule devMode={devMode} />}
 
+          {activeModule === 'calendar' && (
+            <div className="space-y-4 animate-fadeIn">
+              <div className="p-4 rounded-2xl bg-indigo-950/40 border border-indigo-500/30 flex items-center justify-between">
+                <div className="space-y-0.5">
+                  <h3 className="text-base font-bold text-white flex items-center gap-2 m-0">
+                    <span>📅 KVS Academic Calendar 2026-27</span>
+                    <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-indigo-500/20 text-indigo-300 border border-indigo-500/30">View-Only</span>
+                  </h3>
+                  <p className="text-xs text-slate-400 m-0">
+                    Official Kendriya Vidyalaya Sangathan academic schedule, holidays, exam dates & celebrations.
+                  </p>
+                </div>
+              </div>
+              <KvsCalendarManager devMode={devMode} />
+            </div>
+          )}
+
           {activeModule === 'staff' && (
             <StaffModule
               devMode={devMode}
@@ -372,7 +390,12 @@ export default function App() {
             />
           )}
 
-          {activeModule === 'students' && <StudentsModule devMode={devMode} />}
+          {activeModule === 'students' && (
+            <StudentsModule
+              devMode={devMode}
+              currentUser={currentUser}
+            />
+          )}
 
           {activeModule === 'roles' && (
             <RolesModule
@@ -392,7 +415,12 @@ export default function App() {
             />
           )}
 
-          {activeModule === 'timetable' && <TimetableModule devMode={devMode} />}
+          {activeModule === 'timetable' && (
+            <TimetableModule
+              devMode={devMode}
+              currentUser={currentUser}
+            />
+          )}
 
           {activeModule === 'admission' && <AdmissionModule devMode={devMode} />}
 

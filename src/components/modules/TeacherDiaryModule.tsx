@@ -37,6 +37,7 @@ import PtmMeetingManager from '../PtmMeetingManager';
 
 import { UserAccount } from '../../types/auth';
 import { StaffDetailRecord } from '../../types/academic';
+import { resolveTeacherDiaryStage } from '../../lib/permissions';
 
 interface TeacherDiaryModuleProps {
   devMode: boolean;
@@ -79,9 +80,15 @@ export const TeacherDiaryModule: React.FC<TeacherDiaryModuleProps> = ({
   activeInspectedTeacher,
   onOpenReportGenerator
 }) => {
-  const [stage, setStage] = useState<DiaryStage>('secondary');
+  const [stage, setStage] = useState<DiaryStage>(() => resolveTeacherDiaryStage(currentUser));
   const [primaryTab, setPrimaryTab] = useState<PrimarySubTab>('syllabus');
   const [secondaryTab, setSecondaryTab] = useState<SecondarySubTab>('syllabus');
+
+  React.useEffect(() => {
+    if (currentUser) {
+      setStage(resolveTeacherDiaryStage(currentUser));
+    }
+  }, [currentUser]);
 
   return (
     <div className="space-y-4">

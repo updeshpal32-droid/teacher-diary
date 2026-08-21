@@ -89,7 +89,7 @@ interface PortfolioRoleManagerProps {
   onNavigateTab?: (tab: string) => void;
 }
 
-type SubTab = 'committees' | 'delegations' | 'requests' | 'suggestions' | 'theme_calendar' | 'matrix';
+type SubTab = 'committees' | 'delegations' | 'requests' | 'suggestions' | 'theme_calendar';
 
 const CATEGORY_COLORS: Record<PortfolioCategory, { bg: string; text: string; border: string }> = {
   'Academic & Administration': { bg: 'bg-purple-950/40', text: 'text-purple-300', border: 'border-purple-500/40' },
@@ -1328,18 +1328,6 @@ export const PortfolioRoleManager: React.FC<PortfolioRoleManagerProps> = ({
           <Sparkles className="w-4 h-4" />
           <span>AI Living Suggestions ({pendingSuggestionsCount})</span>
         </button>
-
-        <button
-          onClick={() => setActiveTab('matrix')}
-          className={`px-4 py-2 rounded-xl text-xs font-bold transition-all flex items-center gap-2 cursor-pointer whitespace-nowrap ${
-            activeTab === 'matrix'
-              ? 'bg-purple-600 text-white shadow-lg shadow-purple-600/30'
-              : 'bg-slate-900 hover:bg-slate-800 text-slate-300 border border-slate-800'
-          }`}
-        >
-          <Users className="w-4 h-4" />
-          <span>Staff Portfolio Matrix</span>
-        </button>
       </div>
 
       {/* ========================================================================= */}
@@ -2122,144 +2110,6 @@ export const PortfolioRoleManager: React.FC<PortfolioRoleManagerProps> = ({
                 );
               })
             )}
-          </div>
-        </div>
-      )}
-
-      {/* ========================================================================= */}
-      {/* 6. STAFF PORTFOLIO MATRIX */}
-      {/* ========================================================================= */}
-      {activeTab === 'matrix' && (
-        <div className="space-y-4">
-          <div className="bg-slate-900 border border-slate-800 rounded-2xl overflow-hidden shadow-xl">
-            <div className="p-4 bg-slate-950/80 border-b border-slate-800 flex items-center justify-between">
-              <div className="flex items-center gap-2">
-                <Users className="w-4 h-4 text-purple-400" />
-                <h3 className="text-sm font-bold text-white m-0">
-                  Comprehensive Staff Committee Allocation Matrix
-                </h3>
-              </div>
-              <span className="text-xs text-slate-400 font-mono">
-                {staffList.length} Faculty Members Loaded
-              </span>
-            </div>
-
-            <div className="overflow-x-auto">
-              <table className="w-full text-left border-collapse text-xs">
-                <thead>
-                  <tr className="border-b border-slate-800 bg-slate-950 text-slate-400 font-bold">
-                    <th className="py-3 px-4">Faculty Member</th>
-                    <th className="py-3 px-3">Designation / Cadre</th>
-                    <th className="py-3 px-3">Primary Roles (In-charge)</th>
-                    <th className="py-3 px-3">Committee Memberships</th>
-                    <th className="py-3 px-3">Delegated Duties</th>
-                    <th className="py-3 px-3 text-right">Workload Balance</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-slate-800/60 font-sans">
-                  {staffList.map(teacher => {
-                    const inchargeOf = assignments.filter(
-                      a =>
-                        a.role === 'In-charge' &&
-                        a.status === 'Active' &&
-                        (a.teacherEmployeeCode === teacher.employeeCode || a.teacherName === teacher.name)
-                    );
-                    const memberOf = assignments.filter(
-                      a =>
-                        a.role === 'Member' &&
-                        a.status === 'Active' &&
-                        (a.teacherEmployeeCode === teacher.employeeCode || a.teacherName === teacher.name)
-                    );
-                    const delegatedDuties = delegations.filter(
-                      d =>
-                        d.status === 'Active' &&
-                        (d.delegatedToEmployeeCode === teacher.employeeCode || d.delegatedToName === teacher.name)
-                    );
-
-                    const totalLoad = inchargeOf.length * 3 + memberOf.length * 1 + delegatedDuties.length * 1.5;
-
-                    return (
-                      <tr key={teacher.id || teacher.employeeCode} className="hover:bg-slate-800/40 text-slate-300 transition-colors">
-                        <td className="py-3 px-4">
-                          <div className="font-bold text-white">{teacher.name}</div>
-                          <div className="text-[10px] text-slate-500 font-mono">Code: {teacher.employeeCode}</div>
-                        </td>
-
-                        <td className="py-3 px-3">
-                          <span className="px-2 py-0.5 rounded bg-slate-950 border border-slate-800 text-[10px] font-mono text-purple-300">
-                            {teacher.designation || 'Teacher'}
-                          </span>
-                        </td>
-
-                        <td className="py-3 px-3">
-                          {inchargeOf.length === 0 ? (
-                            <span className="text-slate-600 text-[11px] italic">None</span>
-                          ) : (
-                            <div className="space-y-1">
-                              {inchargeOf.map(a => {
-                                const template = templates.find(t => t.id === a.portfolioTemplateId);
-                                return (
-                                  <div
-                                    key={a.id}
-                                    className="px-2 py-0.5 rounded-md bg-purple-950/80 border border-purple-500/30 text-purple-300 font-bold text-[10px] inline-block mr-1"
-                                  >
-                                    🏛️ {template?.name || a.portfolioTemplateId}
-                                  </div>
-                                );
-                              })}
-                            </div>
-                          )}
-                        </td>
-
-                        <td className="py-3 px-3">
-                          {memberOf.length === 0 ? (
-                            <span className="text-slate-600 text-[11px] italic">None</span>
-                          ) : (
-                            <div className="flex flex-wrap gap-1">
-                              {memberOf.map(a => {
-                                const template = templates.find(t => t.id === a.portfolioTemplateId);
-                                return (
-                                  <span
-                                    key={a.id}
-                                    className="px-1.5 py-0.5 rounded bg-slate-950 border border-slate-800 text-slate-300 text-[10px]"
-                                  >
-                                    {template?.name || a.portfolioTemplateId}
-                                  </span>
-                                );
-                              })}
-                            </div>
-                          )}
-                        </td>
-
-                        <td className="py-3 px-3">
-                          {delegatedDuties.length === 0 ? (
-                            <span className="text-slate-600 text-[11px] italic">None</span>
-                          ) : (
-                            <span className="px-2 py-0.5 rounded-full bg-amber-950/80 border border-amber-500/40 text-amber-300 text-[10px] font-bold">
-                              {delegatedDuties.length} Duties
-                            </span>
-                          )}
-                        </td>
-
-                        <td className="py-3 px-3 text-right">
-                          <span
-                            className={`px-2.5 py-0.5 rounded-full text-[10px] font-bold font-mono border ${
-                              totalLoad >= 6
-                                ? 'bg-rose-950/80 border-rose-500/40 text-rose-300'
-                                : totalLoad >= 3
-                                ? 'bg-amber-950/80 border-amber-500/40 text-amber-300'
-                                : 'bg-emerald-950/80 border-emerald-500/40 text-emerald-300'
-                            }`}
-                          >
-                            {totalLoad >= 6 ? 'High Workload' : totalLoad >= 3 ? 'Balanced' : 'Light Load'}
-                          </span>
-                        </td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
-            </div>
           </div>
         </div>
       )}

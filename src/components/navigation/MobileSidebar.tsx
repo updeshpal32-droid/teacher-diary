@@ -1,7 +1,10 @@
-import React from 'react';
-import { X, LogOut, User, Sparkle } from 'lucide-react';
-import { TOP_MODULES, TopModuleKey } from './TopNavBar';
+import React, { useState, useEffect } from 'react';
+import { X, LogOut, User, Sparkle, Settings, HelpCircle } from 'lucide-react';
+import { ALL_MODULE_DEFINITIONS, type TopModuleKey } from './TopNavBar';
 import { UserAccount } from '../../types/auth';
+import { PortfolioAssignment } from '../../types/academic';
+import { getVisibleTopModules } from '../../lib/permissions';
+import { db, DEFAULT_PORTFOLIO_ASSIGNMENTS } from '../../lib/storage';
 
 interface MobileSidebarProps {
   isOpen: boolean;
@@ -24,7 +27,26 @@ export const MobileSidebar: React.FC<MobileSidebarProps> = ({
   onLogout,
   theme
 }) => {
+  const [assignments, setAssignments] = useState<PortfolioAssignment[]>([]);
+
+  useEffect(() => {
+    const loadAssignments = async () => {
+      const saved = await db.get<PortfolioAssignment[]>('setup:portfolio_assignments');
+      setAssignments(saved && saved.length > 0 ? saved : DEFAULT_PORTFOLIO_ASSIGNMENTS);
+    };
+    loadAssignments();
+
+    const handleUpdate = () => loadAssignments();
+    window.addEventListener('kvs-portfolios-updated', handleUpdate);
+    return () => window.removeEventListener('kvs-portfolios-updated', handleUpdate);
+  }, []);
+
   if (!isOpen) return null;
+
+  const visibleModuleKeys = getVisibleTopModules(currentUser, assignments);
+  const visibleModules = visibleModuleKeys
+    .map(key => ALL_MODULE_DEFINITIONS[key])
+    .filter(Boolean);
 
   return (
     <div className="fixed inset-0 z-50 lg:hidden">
@@ -58,9 +80,9 @@ export const MobileSidebar: React.FC<MobileSidebarProps> = ({
             </button>
           </div>
 
-          {/* Module List (12 items) */}
+          {/* Dynamic Module List */}
           <div className="space-y-1 py-1">
-            {TOP_MODULES.map(mod => {
+            {visibleModules.map(mod => {
               const Icon = mod.icon;
               const isActive = activeModule === mod.key;
 
@@ -93,25 +115,54 @@ export const MobileSidebar: React.FC<MobileSidebarProps> = ({
           </div>
         </div>
 
-        {/* Footer User Profile / Auth */}
-        <div className="pt-4 mt-2 border-t border-white/10 light:border-slate-200">
+        {/* Footer User Profile & Settings Links */}
+        <div className="pt-4 mt-2 border-t border-white/10 light:border-slate-200 space-y-2">
           {currentUser ? (
-            <div className="flex items-center justify-between gap-2 p-2.5 rounded-xl bg-white/5 light:bg-slate-100 border border-white/10 light:border-slate-200">
-              <div className="min-w-0 flex-1">
-                <p className="text-xs font-bold truncate">{currentUser.name}</p>
-                <p className="text-[10px] text-slate-400 truncate">{currentUser.role.toUpperCase()}</p>
+            <div className="space-y-1.5">
+              <div className="flex items-center justify-between gap-2 p-2.5 rounded-xl bg-white/5 light:bg-slate-100 border border-white/10 light:border-slate-200">
+                <div className="min-w-0 flex-1">
+                  <p className="text-xs font-bold truncate">{currentUser.name}</p>
+                  <p className="text-[10px] text-slate-400 truncate">{currentUser.designation} • {currentUser.role.toUpperCase()}</p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => {
+                    onLogout();
+                    onClose();
+                  }}
+                  className="p-1.5 rounded-lg text-rose-400 hover:bg-rose-500/10 cursor-pointer"
+                  title="Logout"
+                >
+                  <LogOut className="w-4 h-4" />
+                </button>
               </div>
-              <button
-                type="button"
-                onClick={() => {
-                  onLogout();
-                  onClose();
-                }}
-                className="p-1.5 rounded-lg text-rose-400 hover:bg-rose-500/10 cursor-pointer"
-                title="Logout"
-              >
-                <LogOut className="w-4 h-4" />
-              </button>
+
+              <div className="flex items-center gap-1.5">
+                <button
+                  type="button"
+                  onClick={() => {
+                    onSelectModule('settings');
+                    onClose();
+                  }}
+                  className="flex-1 flex items-center justify-center gap-1.5 py-1.5 px-2 rounded-lg text-[11px] font-semibold bg-white/5 hover:bg-white/10 text-slate-200 light:bg-slate-100 light:text-slate-700 cursor-pointer"
+                >
+                  <Settings className="w-3.5 h-3.5" />
+                  <span>Settings</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => {
+                    onSelectModule('settings');
+                    window.dispatchEvent(new CustomEvent('open-settings-tab', { detail: 'tickets' }));
+                    onClose();
+                  }}
+                  className="flex-1 flex items-center justify-center gap-1.5 py-1.5 px-2 rounded-lg text-[11px] font-semibold bg-white/5 hover:bg-white/10 text-slate-200 light:bg-slate-100 light:text-slate-700 cursor-pointer"
+                >
+                  <HelpCircle className="w-3.5 h-3.5 text-cyan-400" />
+                  <span>Feedback</span>
+                </button>
+              </div>
             </div>
           ) : (
             <button

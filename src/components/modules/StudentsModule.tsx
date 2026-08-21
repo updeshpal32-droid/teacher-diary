@@ -4,14 +4,16 @@ import { StudentProfileManager } from '../StudentProfileManager';
 import { StudentAttendanceEnrollmentManager } from '../StudentAttendanceEnrollmentManager';
 import StudentBehaviourObservationManager from '../StudentBehaviourObservationManager';
 import { RemedialAndExemplaryManager } from '../RemedialTeachingManager20';
+import { UserAccount } from '../../types/auth';
 
 interface StudentsModuleProps {
   devMode: boolean;
+  currentUser?: UserAccount | null;
 }
 
 export type StudentsSubTab = 'directory' | 'attendance' | 'behaviour' | 'remedial';
 
-export const StudentsModule: React.FC<StudentsModuleProps> = ({ devMode }) => {
+export const StudentsModule: React.FC<StudentsModuleProps> = ({ devMode, currentUser }) => {
   const [activeTab, setActiveTab] = useState<StudentsSubTab>('directory');
 
   return (
@@ -67,8 +69,8 @@ export const StudentsModule: React.FC<StudentsModuleProps> = ({ devMode }) => {
         </button>
       </div>
 
-      {activeTab === 'directory' && <StudentProfileManager devMode={devMode} />}
-      {activeTab === 'attendance' && <StudentAttendanceEnrollmentManager devMode={devMode} />}
+      {activeTab === 'directory' && <StudentProfileManager devMode={devMode} currentUser={currentUser} />}
+      {activeTab === 'attendance' && <StudentAttendanceEnrollmentManager devMode={devMode} currentUser={currentUser} />}
       {activeTab === 'behaviour' && <StudentBehaviourObservationManager devMode={devMode} />}
       {activeTab === 'remedial' && <RemedialAndExemplaryManager devMode={devMode} />}
     </div>

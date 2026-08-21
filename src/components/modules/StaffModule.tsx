@@ -22,6 +22,7 @@ import { TeacherAttendanceManager } from '../TeacherAttendanceManager';
 import { TeacherProfileForm } from '../TeacherProfileForm';
 import StaffMeetingManager from '../StaffMeetingManager';
 import { UserAccount } from '../../types/auth';
+import { isAdminOrDataManager } from '../../lib/permissions';
 
 interface StaffModuleProps {
   devMode: boolean;
@@ -41,6 +42,7 @@ export type StaffSubTab =
 export const StaffModule: React.FC<StaffModuleProps> = ({ devMode, currentUser }) => {
   const [activeTab, setActiveTab] = useState<StaffSubTab>('directory');
   const isPrincipal = currentUser?.role === 'admin';
+  const isStaffAdmin = isAdminOrDataManager(currentUser);
 
   // Training Sub-state
   const [trainingView, setTrainingView] = useState<string>(
@@ -87,41 +89,45 @@ export const StaffModule: React.FC<StaffModuleProps> = ({ devMode, currentUser }
           <span>Teacher Attendance & Leave</span>
         </button>
 
-        <button
-          onClick={() => setActiveTab('vacancy')}
-          className={`px-3 py-2 rounded-xl text-xs font-semibold whitespace-nowrap transition-all cursor-pointer flex items-center gap-1.5 ${
-            activeTab === 'vacancy'
-              ? 'bg-gradient-to-r from-indigo-600 to-purple-600 text-white shadow-md'
-              : 'bg-white/5 light:bg-slate-100 text-slate-300 light:text-slate-700 hover:bg-white/10'
-          }`}
-        >
-          <Layers className="w-3.5 h-3.5" />
-          <span>Clear Vacancy</span>
-        </button>
+        {isStaffAdmin && (
+          <>
+            <button
+              onClick={() => setActiveTab('vacancy')}
+              className={`px-3 py-2 rounded-xl text-xs font-semibold whitespace-nowrap transition-all cursor-pointer flex items-center gap-1.5 ${
+                activeTab === 'vacancy'
+                  ? 'bg-gradient-to-r from-indigo-600 to-purple-600 text-white shadow-md'
+                  : 'bg-white/5 light:bg-slate-100 text-slate-300 light:text-slate-700 hover:bg-white/10'
+              }`}
+            >
+              <Layers className="w-3.5 h-3.5" />
+              <span>Clear Vacancy</span>
+            </button>
 
-        <button
-          onClick={() => setActiveTab('transfer')}
-          className={`px-3 py-2 rounded-xl text-xs font-semibold whitespace-nowrap transition-all cursor-pointer flex items-center gap-1.5 ${
-            activeTab === 'transfer'
-              ? 'bg-gradient-to-r from-indigo-600 to-purple-600 text-white shadow-md'
-              : 'bg-white/5 light:bg-slate-100 text-slate-300 light:text-slate-700 hover:bg-white/10'
-          }`}
-        >
-          <ArrowLeftRight className="w-3.5 h-3.5" />
-          <span>Transfer</span>
-        </button>
+            <button
+              onClick={() => setActiveTab('transfer')}
+              className={`px-3 py-2 rounded-xl text-xs font-semibold whitespace-nowrap transition-all cursor-pointer flex items-center gap-1.5 ${
+                activeTab === 'transfer'
+                  ? 'bg-gradient-to-r from-indigo-600 to-purple-600 text-white shadow-md'
+                  : 'bg-white/5 light:bg-slate-100 text-slate-300 light:text-slate-700 hover:bg-white/10'
+              }`}
+            >
+              <ArrowLeftRight className="w-3.5 h-3.5" />
+              <span>Transfer</span>
+            </button>
 
-        <button
-          onClick={() => setActiveTab('samvida')}
-          className={`px-3 py-2 rounded-xl text-xs font-semibold whitespace-nowrap transition-all cursor-pointer flex items-center gap-1.5 ${
-            activeTab === 'samvida'
-              ? 'bg-gradient-to-r from-indigo-600 to-purple-600 text-white shadow-md'
-              : 'bg-white/5 light:bg-slate-100 text-slate-300 light:text-slate-700 hover:bg-white/10'
-          }`}
-        >
-          <Briefcase className="w-3.5 h-3.5" />
-          <span>Samvida Sathi</span>
-        </button>
+            <button
+              onClick={() => setActiveTab('samvida')}
+              className={`px-3 py-2 rounded-xl text-xs font-semibold whitespace-nowrap transition-all cursor-pointer flex items-center gap-1.5 ${
+                activeTab === 'samvida'
+                  ? 'bg-gradient-to-r from-indigo-600 to-purple-600 text-white shadow-md'
+                  : 'bg-white/5 light:bg-slate-100 text-slate-300 light:text-slate-700 hover:bg-white/10'
+              }`}
+            >
+              <Briefcase className="w-3.5 h-3.5" />
+              <span>Samvida Sathi</span>
+            </button>
+          </>
+        )}
 
         <button
           onClick={() => setActiveTab('training')}
@@ -149,7 +155,7 @@ export const StaffModule: React.FC<StaffModuleProps> = ({ devMode, currentUser }
       </div>
 
       {/* 1. Employee Directory */}
-      {activeTab === 'directory' && <StaffDetailsManager devMode={devMode} />}
+      {activeTab === 'directory' && <StaffDetailsManager devMode={devMode} currentUser={currentUser} />}
 
       {/* 2. My Profile */}
       {activeTab === 'profile' && <TeacherProfileForm devMode={devMode} />}

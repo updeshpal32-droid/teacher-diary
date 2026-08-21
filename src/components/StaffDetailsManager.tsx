@@ -3,6 +3,7 @@ import { StaffDetailRecord, SchoolDetails, TeacherProfile } from '../types/acade
 import { db, DEFAULT_STAFF_DETAILS, DEFAULT_SCHOOL, DEFAULT_TEACHER, getCurrentUser } from '../lib/storage';
 import { UserAccount } from '../types/auth';
 import { setActiveInspectedTeacher } from '../lib/teacherContext';
+import { isAdminOrDataManager } from '../lib/permissions';
 import {
   parseStaffCSVText,
   downloadSampleStaffCSVFile,
@@ -496,31 +497,35 @@ export const StaffDetailsManager: React.FC<StaffDetailsManagerProps> = ({
                   <span>Assign Roles</span>
                 </button>
 
-                <button
-                  onClick={() => setShowImportModal(true)}
-                  className="px-3.5 py-2 rounded-xl bg-purple-600 hover:bg-purple-500 text-white text-xs font-bold transition-all shadow-md flex items-center gap-1.5 cursor-pointer"
-                >
-                  <Upload className="w-4 h-4" />
-                  <span>Import Staff CSV</span>
-                </button>
+                {isAdminOrDataManager(currentUser) && (
+                  <>
+                    <button
+                      onClick={() => setShowImportModal(true)}
+                      className="px-3.5 py-2 rounded-xl bg-purple-600 hover:bg-purple-500 text-white text-xs font-bold transition-all shadow-md flex items-center gap-1.5 cursor-pointer"
+                    >
+                      <Upload className="w-4 h-4" />
+                      <span>Import Staff CSV</span>
+                    </button>
 
-                <button
-                  onClick={() => handleOpenAddModal('Regular')}
-                  className="px-3.5 py-2 rounded-xl bg-sky-600 hover:bg-sky-500 text-white text-xs font-bold transition-all shadow-md flex items-center gap-1.5 cursor-pointer"
-                  title="Add a Regular / Permanent faculty member"
-                >
-                  <UserPlus className="w-4 h-4" />
-                  <span>+ Add Regular</span>
-                </button>
+                    <button
+                      onClick={() => handleOpenAddModal('Regular')}
+                      className="px-3.5 py-2 rounded-xl bg-sky-600 hover:bg-sky-500 text-white text-xs font-bold transition-all shadow-md flex items-center gap-1.5 cursor-pointer"
+                      title="Add a Regular / Permanent faculty member"
+                    >
+                      <UserPlus className="w-4 h-4" />
+                      <span>+ Add Regular</span>
+                    </button>
 
-                <button
-                  onClick={() => handleOpenAddModal('Contractual')}
-                  className="px-3.5 py-2 rounded-xl bg-amber-600 hover:bg-amber-500 text-white text-xs font-bold transition-all shadow-md flex items-center gap-1.5 cursor-pointer"
-                  title="Add a Contractual / Part-time faculty member"
-                >
-                  <Zap className="w-4 h-4" />
-                  <span>+ Add Contractual</span>
-                </button>
+                    <button
+                      onClick={() => handleOpenAddModal('Contractual')}
+                      className="px-3.5 py-2 rounded-xl bg-amber-600 hover:bg-amber-500 text-white text-xs font-bold transition-all shadow-md flex items-center gap-1.5 cursor-pointer"
+                      title="Add a Contractual / Part-time faculty member"
+                    >
+                      <Zap className="w-4 h-4" />
+                      <span>+ Add Contractual</span>
+                    </button>
+                  </>
+                )}
 
                 <button
                   onClick={() => downloadSampleStaffCSVFile()}
@@ -988,23 +993,26 @@ export const StaffDetailsManager: React.FC<StaffDetailsManagerProps> = ({
                               </button>
                             )}
 
-                            {/* Edit Details */}
-                            <button
-                              onClick={() => handleOpenEditModal(stf)}
-                              className="p-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white transition-all cursor-pointer"
-                              title="Edit Staff Record"
-                            >
-                              <Edit className="w-3.5 h-3.5" />
-                            </button>
+                            {/* Edit Details & Delete (Admin Only) */}
+                            {isAdminOrDataManager(currentUser) && (
+                              <>
+                                <button
+                                  onClick={() => handleOpenEditModal(stf)}
+                                  className="p-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white transition-all cursor-pointer"
+                                  title="Edit Staff Record"
+                                >
+                                  <Edit className="w-3.5 h-3.5" />
+                                </button>
 
-                            {/* Delete */}
-                            <button
-                              onClick={() => handleDeleteStaff(stf.id, stf.name)}
-                              className="p-1.5 rounded-lg bg-slate-800 hover:bg-rose-950 text-slate-400 hover:text-rose-400 transition-all cursor-pointer"
-                              title="Delete Staff Member"
-                            >
-                              <Trash2 className="w-3.5 h-3.5" />
-                            </button>
+                                <button
+                                  onClick={() => handleDeleteStaff(stf.id, stf.name)}
+                                  className="p-1.5 rounded-lg bg-slate-800 hover:bg-rose-950 text-slate-400 hover:text-rose-400 transition-all cursor-pointer"
+                                  title="Delete Staff Member"
+                                >
+                                  <Trash2 className="w-3.5 h-3.5" />
+                                </button>
+                              </>
+                            )}
                           </div>
                         </td>
                       )}

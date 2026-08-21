@@ -25,6 +25,7 @@ import {
   AdmnCategoryRow,
   DailyAttendanceRow
 } from '../lib/enrollmentEngine';
+import { isAdminOrDataManager, isClassTeacherOrCoTeacher, isAdmin } from '../lib/permissions';
 import {
   Users,
   Calendar as CalIcon,
@@ -756,9 +757,22 @@ export const StudentAttendanceEnrollmentManager: React.FC<StudentAttendanceEnrol
                   Student Daily Attendance Grid 2026-27 &bull; Classes I to X
                 </h3>
               </div>
-              <span className="text-xs text-slate-400 font-mono">
-                Formula: Pres = Total - Abs &bull; Absent Roll Nos shown per class
-              </span>
+
+              <div className="flex items-center gap-2">
+                {isAdminOrDataManager(currentUser) ? (
+                  <span className="px-2.5 py-1 rounded-lg bg-emerald-500/20 text-emerald-300 font-bold border border-emerald-500/30 text-xs flex items-center gap-1.5">
+                    <ShieldCheck className="w-3.5 h-3.5" /> Full Attendance Marking Privileges (Admin / Data Manager)
+                  </span>
+                ) : (currentUser?.isClassTeacherOf || currentUser?.isCoClassTeacherOf) ? (
+                  <span className="px-2.5 py-1 rounded-lg bg-indigo-500/20 text-indigo-300 font-bold border border-indigo-500/30 text-xs flex items-center gap-1.5">
+                    <CheckCircle2 className="w-3.5 h-3.5" /> Class Teacher Access: {currentUser.isClassTeacherOf || currentUser.isCoClassTeacherOf}
+                  </span>
+                ) : (
+                  <span className="px-2.5 py-1 rounded-lg bg-amber-500/20 text-amber-300 font-bold border border-amber-500/30 text-xs flex items-center gap-1.5">
+                    <Info className="w-3.5 h-3.5" /> View-Only Mode: Attendance is maintained by Class Teachers
+                  </span>
+                )}
+              </div>
             </div>
 
             <div className="overflow-x-auto max-h-[700px]">
@@ -876,13 +890,20 @@ export const StudentAttendanceEnrollmentManager: React.FC<StudentAttendanceEnrol
               </p>
             </div>
 
-            <button
-              onClick={() => setIsTcModalOpen(true)}
-              className="px-4 py-2 rounded-xl bg-purple-600 hover:bg-purple-500 text-white font-bold text-xs flex items-center gap-2 transition-all shadow-md shadow-purple-600/30 cursor-pointer"
-            >
-              <Plus className="w-4 h-4" />
-              <span>Issue New Transfer Certificate</span>
-            </button>
+            {(isAdminOrDataManager(currentUser) || currentUser?.isClassTeacherOf || currentUser?.isCoClassTeacherOf) ? (
+              <button
+                onClick={() => setIsTcModalOpen(true)}
+                className="px-4 py-2 rounded-xl bg-purple-600 hover:bg-purple-500 text-white font-bold text-xs flex items-center gap-2 transition-all shadow-md shadow-purple-600/30 cursor-pointer"
+              >
+                <Plus className="w-4 h-4" />
+                <span>Issue New Transfer Certificate</span>
+              </button>
+            ) : (
+              <span className="px-3 py-1.5 rounded-xl bg-white/5 border border-slate-800 text-slate-400 text-xs flex items-center gap-1.5">
+                <Info className="w-3.5 h-3.5 text-amber-400" />
+                <span>TCs can be initiated by Class Teachers and approved by Admin</span>
+              </span>
+            )}
           </div>
 
           <div className="bg-slate-900 border border-slate-800 rounded-2xl overflow-hidden shadow-xl">

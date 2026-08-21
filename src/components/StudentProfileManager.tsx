@@ -88,11 +88,16 @@ export const NEP_STAGES_CONFIG = [
   { id: 'SECONDARY', label: 'Secondary Stage (Class 9 to 12)', shortLabel: 'Secondary (9-12)', icon: '🎓', classes: ['IX', 'X', 'XI', 'XII'] },
 ];
 
+import { UserAccount } from '../types/auth';
+import { isAdminOrDataManager } from '../lib/permissions';
+
 interface StudentProfileManagerProps {
   devMode?: boolean;
+  currentUser?: UserAccount | null;
 }
 
-export function StudentProfileManager({ devMode = true }: StudentProfileManagerProps) {
+export function StudentProfileManager({ devMode = true, currentUser }: StudentProfileManagerProps) {
+  const isAdmin = isAdminOrDataManager(currentUser);
   // Main tabs
   const [activeSubTab, setActiveSubTab] = useState<'directory' | 'import' | 'attendance' | 'scholastic'>('directory');
 
@@ -809,13 +814,15 @@ export function StudentProfileManager({ devMode = true }: StudentProfileManagerP
               <span>Sample CSV</span>
             </button>
 
-            <button
-              onClick={handleOpenAdd}
-              className="px-4 py-2 rounded-xl bg-purple-950/80 hover:bg-purple-900 border border-purple-500/40 text-purple-200 font-semibold text-xs flex items-center gap-2 cursor-pointer transition-all"
-            >
-              <UserPlus className="w-4 h-4 text-purple-300" />
-              <span>Add Single Student</span>
-            </button>
+            {isAdmin && (
+              <button
+                onClick={handleOpenAdd}
+                className="px-4 py-2 rounded-xl bg-purple-950/80 hover:bg-purple-900 border border-purple-500/40 text-purple-200 font-semibold text-xs flex items-center gap-2 cursor-pointer transition-all"
+              >
+                <UserPlus className="w-4 h-4 text-purple-300" />
+                <span>Add Single Student</span>
+              </button>
+            )}
 
             <button
               onClick={() => exportStudentsToCSV(filteredStudents)}
@@ -890,17 +897,19 @@ export function StudentProfileManager({ devMode = true }: StudentProfileManagerP
             <span>Students Directory & Master Table ({filteredStudents.length})</span>
           </button>
 
-          <button
-            onClick={() => setActiveSubTab('import')}
-            className={`px-4 py-2.5 rounded-xl font-semibold text-xs flex items-center gap-2 transition-all cursor-pointer whitespace-nowrap ${
-              activeSubTab === 'import'
-                ? 'bg-purple-600 text-white shadow-md'
-                : 'bg-white/5 text-[var(--text-dim)] hover:bg-white/10 hover:text-white'
-            }`}
-          >
-            <Upload className="w-4 h-4" />
-            <span>Universal File Importer (CSV / Excel / Paste)</span>
-          </button>
+          {isAdmin && (
+            <button
+              onClick={() => setActiveSubTab('import')}
+              className={`px-4 py-2.5 rounded-xl font-semibold text-xs flex items-center gap-2 transition-all cursor-pointer whitespace-nowrap ${
+                activeSubTab === 'import'
+                  ? 'bg-purple-600 text-white shadow-md'
+                  : 'bg-white/5 text-[var(--text-dim)] hover:bg-white/10 hover:text-white'
+              }`}
+            >
+              <Upload className="w-4 h-4" />
+              <span>Universal File Importer (CSV / Excel / Paste)</span>
+            </button>
+          )}
 
           <button
             onClick={() => setActiveSubTab('attendance')}
@@ -1263,23 +1272,27 @@ export function StudentProfileManager({ devMode = true }: StudentProfileManagerP
                                 >
                                   <Eye className="w-3.5 h-3.5" />
                                 </button>
-                                <button
-                                  onClick={() => handleOpenEdit(student)}
-                                  className="p-1.5 rounded-lg bg-white/5 hover:bg-white/10 text-blue-300 cursor-pointer transition-colors"
-                                  title="Edit Student Data"
-                                >
-                                  <Edit2 className="w-3.5 h-3.5" />
-                                </button>
-                                <button
-                                  onClick={() => {
-                                    setStudentToDelete(student);
-                                    setShowDeleteConfirmModal(true);
-                                  }}
-                                  className="p-1.5 rounded-lg bg-white/5 hover:bg-rose-950 text-rose-400 cursor-pointer transition-colors"
-                                  title="Delete Student"
-                                >
-                                  <Trash2 className="w-3.5 h-3.5" />
-                                </button>
+                                {isAdmin && (
+                                  <>
+                                    <button
+                                      onClick={() => handleOpenEdit(student)}
+                                      className="p-1.5 rounded-lg bg-white/5 hover:bg-white/10 text-blue-300 cursor-pointer transition-colors"
+                                      title="Edit Student Data"
+                                    >
+                                      <Edit2 className="w-3.5 h-3.5" />
+                                    </button>
+                                    <button
+                                      onClick={() => {
+                                        setStudentToDelete(student);
+                                        setShowDeleteConfirmModal(true);
+                                      }}
+                                      className="p-1.5 rounded-lg bg-white/5 hover:bg-rose-950 text-rose-400 cursor-pointer transition-colors"
+                                      title="Delete Student"
+                                    >
+                                      <Trash2 className="w-3.5 h-3.5" />
+                                    </button>
+                                  </>
+                                )}
                               </div>
                             </td>
                           </tr>

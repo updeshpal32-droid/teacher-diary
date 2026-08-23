@@ -80,13 +80,13 @@ export const TeacherDiaryModule: React.FC<TeacherDiaryModuleProps> = ({
   activeInspectedTeacher,
   onOpenReportGenerator
 }) => {
-  const [stage, setStage] = useState<DiaryStage>(() => resolveTeacherDiaryStage(currentUser));
+  const [stage, setStage] = useState<DiaryStage>(() => resolveTeacherDiaryStage(currentUser).defaultStage);
   const [primaryTab, setPrimaryTab] = useState<PrimarySubTab>('syllabus');
   const [secondaryTab, setSecondaryTab] = useState<SecondarySubTab>('syllabus');
 
   React.useEffect(() => {
     if (currentUser) {
-      setStage(resolveTeacherDiaryStage(currentUser));
+      setStage(resolveTeacherDiaryStage(currentUser).defaultStage);
     }
   }, [currentUser]);
 

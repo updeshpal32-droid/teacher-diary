@@ -18,7 +18,8 @@ import {
   ProxyDutyAssignment,
   LeaveBalance,
   PortfolioTemplate,
-  PortfolioAssignment
+  PortfolioAssignment,
+  AcademicResponsibility
 } from '../types/academic';
 import {
   db,
@@ -41,14 +42,17 @@ import {
   DEFAULT_PORTFOLIO_ASSIGNMENTS,
   getCurrentUser
 } from '../lib/storage';
+import { useActiveWorkingDate } from '../lib/activeDateContext';
 import { compareClassGrades } from '../utils/csvParser';
 import { getTeacherScopedStorageKey } from '../lib/teacherContext';
 import { getStaffEmploymentType } from '../lib/staffFileImporter';
 import { getLeaveBalance } from '../lib/leaveEngine';
+import { resolveTeacherAttendance, checkTeacherAbsenceOnDate } from '../lib/attendanceAbsenceEngine';
 import { UserAccount } from '../types/auth';
 import { DevModeBadge } from './DevModeBadge';
 import { ProfileChangeRequestsModal } from './ProfileChangeRequestsModal';
 import { DutyAndProxyManager } from './DutyAndProxyManager';
+import { AutomaticProxyPlannerModal } from './AutomaticProxyPlannerModal';
 import {
   LayoutDashboard,
   Clock,
@@ -109,6 +113,68 @@ interface TeacherDashboardProps {
   onNavigateTab: (tab: string) => void;
   currentUser?: UserAccount | null;
   onSwitchPersona?: (persona: 'teacher' | 'data_entry_manager' | 'admin') => void;
+}
+
+export interface FormattedRoleBadge {
+  id: string;
+  rolePrefix: 'In-Charge' | 'Member' | 'Convenor' | 'Coordinator';
+  cleanName: string;
+  isLeadership: boolean;
+}
+
+export function formatAndDeduplicateResponsibilities(responsibilities: AcademicResponsibility[]): FormattedRoleBadge[] {
+  if (!responsibilities || responsibilities.length === 0) return [];
+
+  const seen = new Set<string>();
+  const result: FormattedRoleBadge[] = [];
+
+  responsibilities.forEach((resp, idx) => {
+    let rolePrefix: 'In-Charge' | 'Member' | 'Convenor' | 'Coordinator' = 'In-Charge';
+    const rLower = (resp.role || '').toLowerCase();
+    if (rLower.includes('member')) {
+      rolePrefix = 'Member';
+    } else if (rLower.includes('convenor')) {
+      rolePrefix = 'Convenor';
+    } else if (rLower.includes('coordinator')) {
+      rolePrefix = 'Coordinator';
+    } else {
+      rolePrefix = 'In-Charge';
+    }
+
+    // Clean dutyName by removing redundant bracketed roles and trailing phrases
+    let cleanName = (resp.dutyName || '')
+      .replace(/\s*\((In-Charge|Incharge|Member|Convenor|Coordinator)\)\s*/gi, '')
+      .replace(/\s+In-?charge\s*$/i, '')
+      .replace(/\s+Member\s*$/i, '')
+      .trim();
+
+    // Skip if it is redundant Class Teacher assignment
+    if (/^Class Teacher/i.test(cleanName)) {
+      return;
+    }
+
+    if (!cleanName) return;
+
+    // Deduplicate by normalized cleanName and rolePrefix
+    const key = `${rolePrefix}:${cleanName.toLowerCase().replace(/[^a-z0-9]/g, '')}`;
+    if (seen.has(key)) return;
+    seen.add(key);
+
+    const isLeadership = rolePrefix === 'In-Charge' || rolePrefix === 'Convenor' || rolePrefix === 'Coordinator';
+
+    result.push({
+      id: resp.id || `resp-${idx}`,
+      rolePrefix,
+      cleanName,
+      isLeadership
+    });
+  });
+
+  return result.sort((a, b) => {
+    if (a.isLeadership && !b.isLeadership) return -1;
+    if (!a.isLeadership && b.isLeadership) return 1;
+    return a.cleanName.localeCompare(b.cleanName);
+  });
 }
 
 const DEFAULT_RECESS_DUTY_ROSTER: Record<string, { time: string; duties: { name: string; designation: string; location: string; role: string }[] }> = {
@@ -472,6 +538,9 @@ export const TeacherDashboard: React.FC<TeacherDashboardProps> = ({
     return detect.activePeriod !== null ? [detect.activePeriod] : [1];
   });
 
+  // Unified Active Working Date System State
+  const { activeDate: activeWorkingDate, activeDayName, formattedDate: formattedActiveDate, isWeekend } = useActiveWorkingDate();
+
   // Selected Day for Timetable
   const [selectedDay, setSelectedDay] = useState<string>('Tuesday'); // default current day context
   const [scheduleScope, setScheduleScope] = useState<'my_classes' | 'all' | 'arrangements'>('my_classes');
@@ -482,6 +551,9 @@ export const TeacherDashboard: React.FC<TeacherDashboardProps> = ({
   const [tasks, setTasks] = useState<TeacherTask[]>(DEFAULT_TEACHER_DASHBOARD_TASKS);
   const [isProfileRequestsModalOpen, setIsProfileRequestsModalOpen] = useState(false);
   const [isDutyProxyModalOpen, setIsDutyProxyModalOpen] = useState(false);
+  const [isAutoProxyPlannerOpen, setIsAutoProxyPlannerOpen] = useState(false);
+  const [proxyPlannerInitialStaff, setProxyPlannerInitialStaff] = useState<StaffDetailRecord | null>(null);
+  const [proxyPlannerInitialDate, setProxyPlannerInitialDate] = useState<string>('2026-08-18');
   const [profileRequests, setProfileRequests] = useState<ProfileChangeRequest[]>([]);
   const [taskTab, setTaskTab] = useState<'all' | 'assigned_by_superiors' | 'self'>('all');
   const [showNewTaskModal, setShowNewTaskModal] = useState(false);
@@ -497,14 +569,7 @@ export const TeacherDashboard: React.FC<TeacherDashboardProps> = ({
 
   useEffect(() => {
     loadData();
-    // Auto set day of week
-    const days = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
-    const todayName = days[new Date().getDay()];
-    if (todayName !== 'Sunday') {
-      setSelectedDay(todayName);
-    } else {
-      setSelectedDay('Monday');
-    }
+    setSelectedDay(activeDayName === 'Sunday' ? 'Tuesday' : activeDayName);
 
     const handleSchoolUpdate = (e: any) => {
       if (e.detail) setSchool(e.detail);
@@ -1186,22 +1251,6 @@ export const TeacherDashboard: React.FC<TeacherDashboardProps> = ({
         <div className="relative z-10 flex flex-col md:flex-row md:items-center justify-between gap-4">
           <div className="space-y-1.5">
             <div className="flex items-center gap-2 flex-wrap">
-              {isAdmin ? (
-                <span className="px-3 py-1 rounded-full text-xs font-black tracking-wider bg-rose-500/20 text-rose-300 border border-rose-500/40 uppercase flex items-center gap-1.5">
-                  <Crown className="w-3.5 h-3.5 text-rose-400" />
-                  <span>Principal & Administration Oversight</span>
-                </span>
-              ) : isDataEntry ? (
-                <span className="px-3 py-1 rounded-full text-xs font-black tracking-wider bg-amber-500/20 text-amber-300 border border-amber-500/40 uppercase flex items-center gap-1.5">
-                  <Sparkles className="w-3.5 h-3.5 text-amber-400" />
-                  <span>Data Center & Master Data Entry Manager</span>
-                </span>
-              ) : (
-                <span className="px-3 py-1 rounded-full text-xs font-black tracking-wider bg-purple-500/20 text-purple-300 border border-purple-500/30 uppercase">
-                  👨‍🏫 Teacher Workspace & Personal Diary
-                </span>
-              )}
-
               {/* Persona Quick Switcher for Dual-Role Users */}
               {(currentUser?.role === 'data_entry_manager' || (currentUser?.role === 'admin' && currentUser?.assignments?.length > 0)) && onSwitchPersona && (
                 <div className="inline-flex items-center rounded-xl bg-slate-950 p-0.5 border border-slate-700 shadow-inner">
@@ -1230,9 +1279,6 @@ export const TeacherDashboard: React.FC<TeacherDashboardProps> = ({
                 </div>
               )}
 
-              <span className="px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-slate-800 text-slate-300 border border-slate-700">
-                {school.schoolName || 'Kendriya Vidyalaya'}
-              </span>
               {devMode && <DevModeBadge pages={[18, 32]} title="KVS Diary P-18 & Analytics" fieldCount={2} />}
             </div>
 
@@ -1258,7 +1304,12 @@ export const TeacherDashboard: React.FC<TeacherDashboardProps> = ({
                 <>
                   <span>Campus: <strong className="text-white">{school.kvCode || 'KV-1042'}</strong></span>
                   <span>•</span>
-                  <span>Active Day: <strong className="text-emerald-400">{selectedDay}, 18 August 2026</strong></span>
+                  <span>Active Day: <strong className="text-emerald-400">{activeDayName}, {formattedActiveDate}</strong></span>
+                  {isWeekend && (
+                    <span className="px-2 py-0.5 rounded-full bg-amber-500/20 text-amber-300 border border-amber-500/40 text-[10px] font-black uppercase tracking-wider">
+                      Weekend
+                    </span>
+                  )}
                   <span>•</span>
                   <span>Total Scheduled Classes: <strong className="text-amber-300">{allTodaySlots.length} Periods</strong></span>
                 </>
@@ -1276,7 +1327,12 @@ export const TeacherDashboard: React.FC<TeacherDashboardProps> = ({
                   <span>•</span>
                   <span>Assigned Classes: <strong className="text-amber-300">{assignedClassesList.join(', ') || 'None assigned'}</strong></span>
                   <span>•</span>
-                  <span>Today: <strong className="text-emerald-400">{selectedDay}, 18 August 2026</strong></span>
+                  <span>Today: <strong className="text-emerald-400">{activeDayName}, {formattedActiveDate}</strong></span>
+                  {isWeekend && (
+                    <span className="px-2 py-0.5 rounded-full bg-amber-500/20 text-amber-300 border border-amber-500/40 text-[10px] font-black uppercase tracking-wider">
+                      Weekend
+                    </span>
+                  )}
                 </>
               )}
             </p>
@@ -1298,10 +1354,26 @@ export const TeacherDashboard: React.FC<TeacherDashboardProps> = ({
                   </span>
                 )}
 
-                {teacher.academicResponsibilities && teacher.academicResponsibilities.map((resp, i) => (
-                  <span key={i} className="px-2.5 py-1 rounded-xl text-xs font-bold bg-purple-950/90 text-purple-200 border border-purple-400/50 flex items-center gap-1.5 shadow-xs">
-                    <ShieldCheck className="w-3.5 h-3.5 text-emerald-400" />
-                    <span>{resp.dutyName} ({resp.role})</span>
+                {formatAndDeduplicateResponsibilities(teacher.academicResponsibilities || []).map(badge => (
+                  <span
+                    key={badge.id}
+                    className={`px-2.5 py-1 rounded-xl text-xs font-bold flex items-center gap-1.5 shadow-xs transition-all ${
+                      badge.isLeadership
+                        ? 'bg-emerald-950/80 hover:bg-emerald-900/90 text-emerald-200 border border-emerald-500/50'
+                        : 'bg-indigo-950/80 hover:bg-indigo-900/90 text-indigo-200 border border-indigo-500/40'
+                    }`}
+                  >
+                    {badge.isLeadership ? (
+                      <Sparkles className="w-3.5 h-3.5 text-amber-400" />
+                    ) : (
+                      <Users className="w-3.5 h-3.5 text-indigo-400" />
+                    )}
+                    <span>
+                      <strong className={`font-black ${badge.isLeadership ? 'text-emerald-300' : 'text-indigo-300'}`}>
+                        {badge.rolePrefix}:
+                      </strong>{' '}
+                      {badge.cleanName}
+                    </span>
                   </span>
                 ))}
               </div>
@@ -1313,7 +1385,11 @@ export const TeacherDashboard: React.FC<TeacherDashboardProps> = ({
             {isAdmin ? (
               <>
                 <button
-                  onClick={() => onNavigateTab('timetable')}
+                  onClick={() => {
+                    setProxyPlannerInitialStaff(null);
+                    setProxyPlannerInitialDate(activeWorkingDate);
+                    setIsAutoProxyPlannerOpen(true);
+                  }}
                   className="px-3.5 py-2 rounded-xl bg-amber-600 hover:bg-amber-500 text-white text-xs font-bold transition-all shadow-md flex items-center gap-1.5 cursor-pointer"
                 >
                   <AlertTriangle className="w-4 h-4 text-amber-200" />
@@ -1443,6 +1519,92 @@ export const TeacherDashboard: React.FC<TeacherDashboardProps> = ({
         </div>
       </div>
 
+      {/* Admin Absence Delegation Notice Banner (Rule iii) */}
+      {isAdmin && (() => {
+        const todayStr = activeWorkingDate;
+        const resolved = resolveTeacherAttendance(staffList, todayStr, attendanceRecords, leaveApplications, []);
+        const absentStaff = resolved.filter(r => r.status === 'Leave' || r.status === 'OD' || r.status === 'Absent');
+        
+        if (absentStaff.length === 0) return null;
+
+        return (
+          <div className="p-4 rounded-3xl bg-gradient-to-r from-amber-950/50 via-purple-950/40 to-slate-900 border border-amber-500/40 shadow-xl space-y-3 animate-fadeIn">
+            <div className="flex flex-col md:flex-row md:items-center justify-between gap-3">
+              <div className="flex items-start gap-3">
+                <div className="p-2.5 rounded-2xl bg-amber-500/20 border border-amber-500/40 text-amber-300 shrink-0">
+                  <AlertTriangle className="w-5 h-5" />
+                </div>
+                <div className="space-y-0.5">
+                  <h4 className="text-sm font-black text-white m-0 flex items-center gap-2">
+                    <span>Faculty Absence & Delegation Notice</span>
+                    <span className="px-2 py-0.5 rounded-full bg-amber-500 text-slate-950 text-[10px] font-black font-mono">
+                      {absentStaff.length} Staff Absent / On Leave Today
+                    </span>
+                  </h4>
+                  <p className="text-xs text-amber-200/90 m-0">
+                    Unmarked faculty are automatically registered as Present. Scheduled class periods and committee responsibilities for absent faculty are ready for delegation and substitute arrangement.
+                  </p>
+                </div>
+              </div>
+
+              <div className="flex items-center gap-2 flex-wrap shrink-0">
+                <button
+                  onClick={() => onNavigateTab('attendance')}
+                  className="px-3.5 py-2 rounded-xl bg-purple-600/40 hover:bg-purple-600 text-purple-200 hover:text-white border border-purple-500/40 font-bold text-xs flex items-center gap-1.5 transition-all cursor-pointer"
+                >
+                  <UserCheck className="w-3.5 h-3.5" />
+                  <span>Attendance Desk</span>
+                </button>
+                <button
+                  onClick={() => {
+                    setProxyPlannerInitialStaff(null);
+                    setProxyPlannerInitialDate(todayStr);
+                    setIsAutoProxyPlannerOpen(true);
+                  }}
+                  className="px-3.5 py-2 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 font-black text-xs flex items-center gap-1.5 shadow-md transition-all cursor-pointer"
+                >
+                  <Clock className="w-3.5 h-3.5" />
+                  <span>Open Daily Proxy Desk</span>
+                </button>
+              </div>
+            </div>
+
+            {/* Absent Faculty Chips - Clickable to instantly plan substitution */}
+            <div className="flex items-center gap-2 flex-wrap pt-2 border-t border-amber-500/20">
+              {absentStaff.map(r => (
+                <button
+                  key={r.staff.employeeCode}
+                  type="button"
+                  onClick={() => {
+                    setProxyPlannerInitialStaff(r.staff);
+                    setProxyPlannerInitialDate(todayStr);
+                    setIsAutoProxyPlannerOpen(true);
+                  }}
+                  className="inline-flex items-center gap-2 px-3 py-1.5 rounded-xl bg-slate-950/90 hover:bg-slate-900 border border-amber-500/40 hover:border-amber-400 text-xs text-white transition-all cursor-pointer shadow-sm hover:scale-105"
+                  title={`Plan proxy for ${r.staff.name}`}
+                >
+                  <span className="font-bold">{r.staff.name}</span>
+                  <span
+                    className={`px-1.5 py-0.2 rounded text-[10px] font-mono font-bold ${
+                      r.status === 'Leave'
+                        ? 'bg-amber-500/20 text-amber-300 border border-amber-500/40'
+                        : r.status === 'OD'
+                        ? 'bg-blue-500/20 text-blue-300 border border-blue-500/40'
+                        : 'bg-rose-500/20 text-rose-300 border border-rose-500/40'
+                    }`}
+                  >
+                    {r.leaveType || r.status}
+                  </span>
+                  <span className="px-1.5 py-0.2 rounded bg-amber-500/20 text-[9px] text-amber-300 font-mono font-bold uppercase">
+                    Plan Proxy
+                  </span>
+                </button>
+              ))}
+            </div>
+          </div>
+        );
+      })()}
+
       {/* Incharge Duty Desk Banner for Timetable & Proxy Incharge */}
       {isTimetableOrDutyIncharge && isTeacher && (
         <div className="p-4 rounded-3xl bg-gradient-to-r from-amber-950/80 via-slate-900 to-purple-950/80 border border-amber-500/40 flex flex-col md:flex-row md:items-center justify-between gap-4 shadow-xl animate-fadeIn">
@@ -1457,9 +1619,6 @@ export const TeacherDashboard: React.FC<TeacherDashboardProps> = ({
                   Official In-charge
                 </span>
               </h4>
-              <p className="text-xs text-amber-200/80 m-0">
-                Allocate daily substitutions, assign proxy periods to free teachers, manage Recess supervision rosters, and assign Morning Gate duty.
-              </p>
             </div>
           </div>
 
@@ -1843,9 +2002,6 @@ export const TeacherDashboard: React.FC<TeacherDashboardProps> = ({
                       </span>
                     )}
                   </div>
-                  <p className="text-[11px] text-slate-400 mt-0.5">
-                    Chronological period schedule with subjects, assigned faculty, arrangement substitutions, and recess duty roster.
-                  </p>
                 </div>
 
                 {/* Day Selector */}
@@ -2110,9 +2266,6 @@ export const TeacherDashboard: React.FC<TeacherDashboardProps> = ({
                       {myTodayClasses.length} Assigned Periods
                     </span>
                   </div>
-                  <p className="text-[11px] text-slate-400 mt-0.5">
-                    Classes, substitute proxy duties, and campus supervision assigned to <strong className="text-slate-200">{currentTeacherName}</strong> today.
-                  </p>
                 </div>
 
                 {/* Day Selector */}
@@ -2889,6 +3042,21 @@ export const TeacherDashboard: React.FC<TeacherDashboardProps> = ({
           </div>
         </div>
       )}
+
+      {/* Direct Automatic Proxy Planner Modal from Dashboard */}
+      <AutomaticProxyPlannerModal
+        isOpen={isAutoProxyPlannerOpen}
+        onClose={() => {
+          setIsAutoProxyPlannerOpen(false);
+          setProxyPlannerInitialStaff(null);
+        }}
+        initialStaff={proxyPlannerInitialStaff}
+        initialTeacherId={proxyPlannerInitialStaff?.employeeCode}
+        initialTeacherName={proxyPlannerInitialStaff?.name}
+        initialDate={proxyPlannerInitialDate || activeWorkingDate}
+        currentUser={currentUser}
+        onProxySaved={loadData}
+      />
     </div>
   );
 };

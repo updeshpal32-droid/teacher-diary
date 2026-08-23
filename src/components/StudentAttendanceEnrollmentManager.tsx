@@ -15,6 +15,7 @@ import {
   DEFAULT_STUDENT_ATTENDANCE,
   DEFAULT_CLASS_DAILY_ATTENDANCE
 } from '../lib/storage';
+import { useActiveWorkingDate } from '../lib/activeDateContext';
 import {
   calculateCasteCategoryMatrix,
   calculateAdmnCategoryMatrix,
@@ -65,13 +66,20 @@ export const StudentAttendanceEnrollmentManager: React.FC<StudentAttendanceEnrol
   currentUser,
   onSaved
 }) => {
+  const { activeDate } = useActiveWorkingDate();
   const [activeSubTab, setActiveSubTab] = useState<ActiveSubTab>('enrollment');
   const [academicYear, setAcademicYear] = useState<'2025-26' | '2026-27'>('2026-27');
-  const [asOnDate, setAsOnDate] = useState<string>('2026-07-31');
+  const [asOnDate, setAsOnDate] = useState<string>(activeDate);
 
-  // Month selection for daily attendance (Default April 2026)
-  const [selectedYear, setSelectedYear] = useState<number>(2026);
-  const [selectedMonthIndex, setSelectedMonthIndex] = useState<number>(3); // 3 = April
+  // Month selection for daily attendance (Default active working date month)
+  const [selectedYear, setSelectedYear] = useState<number>(() => {
+    const y = Number(activeDate.split('-')[0]);
+    return isNaN(y) ? 2026 : y;
+  });
+  const [selectedMonthIndex, setSelectedMonthIndex] = useState<number>(() => {
+    const m = Number(activeDate.split('-')[1]);
+    return isNaN(m) ? 7 : m - 1;
+  });
 
   // Core Data
   const [students, setStudents] = useState<StudentProfile[]>([]);
@@ -84,17 +92,27 @@ export const StudentAttendanceEnrollmentManager: React.FC<StudentAttendanceEnrol
   // TC Issue Modal State
   const [isTcModalOpen, setIsTcModalOpen] = useState(false);
   const [selectedStudentForTc, setSelectedStudentForTc] = useState<StudentProfile | null>(null);
-  const [tcDateOfLeaving, setTcDateOfLeaving] = useState<string>(new Date().toISOString().split('T')[0]);
-  const [tcDateOfIssue, setTcDateOfIssue] = useState<string>(new Date().toISOString().split('T')[0]);
+  const [tcDateOfLeaving, setTcDateOfLeaving] = useState<string>(activeDate);
+  const [tcDateOfIssue, setTcDateOfIssue] = useState<string>(activeDate);
   const [tcReason, setTcReason] = useState<TransferCertificateRecord['reasonForLeaving']>('Parent Transfer');
   const [tcDestinationSchool, setTcDestinationSchool] = useState<string>('');
   const [tcRemarks, setTcRemarks] = useState<string>('');
 
   // Daily Attendance Quick-Mark Modal State
   const [isMarkModalOpen, setIsMarkModalOpen] = useState(false);
-  const [markDate, setMarkDate] = useState<string>(new Date().toISOString().split('T')[0]);
+  const [markDate, setMarkDate] = useState<string>(activeDate);
   const [markClass, setMarkClass] = useState<string>('I');
   const [markAbsentRollNos, setMarkAbsentRollNos] = useState<string>('');
+
+  useEffect(() => {
+    if (activeDate) {
+      setAsOnDate(activeDate);
+      setMarkDate(activeDate);
+      const [y, m] = activeDate.split('-').map(Number);
+      if (!isNaN(y)) setSelectedYear(y);
+      if (!isNaN(m)) setSelectedMonthIndex(m - 1);
+    }
+  }, [activeDate]);
 
   const isPrincipalOrAdmin = currentUser?.role === 'admin' || currentUser?.activePersona === 'admin';
   const isDataEntryManager = currentUser?.role === 'data_entry_manager' || currentUser?.activePersona === 'data_entry_manager';

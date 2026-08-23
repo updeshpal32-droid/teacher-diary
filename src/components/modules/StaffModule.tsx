@@ -161,7 +161,7 @@ export const StaffModule: React.FC<StaffModuleProps> = ({ devMode, currentUser }
       {activeTab === 'profile' && <TeacherProfileForm devMode={devMode} />}
 
       {/* 3. Teacher Attendance & Leave */}
-      {activeTab === 'attendance' && <TeacherAttendanceManager devMode={devMode} />}
+      {activeTab === 'attendance' && <TeacherAttendanceManager devMode={devMode} currentUser={currentUser} />}
 
       {/* 4. Clear Vacancy Hub */}
       {activeTab === 'vacancy' && (

@@ -356,8 +356,8 @@ export const TimetablePlanner: React.FC<TimetablePlannerProps> = ({ devMode, onS
     setStaffRegistry(regList);
     if (savedTeachers) setStoredTeachers(savedTeachers);
 
-    // Normalize and cleanse timetable
-    const raw = savedTT && savedTT.length > 0 ? savedTT : DEFAULT_TIMETABLE;
+    // Normalize and cleanse timetable (auto-upgrades if stored timetable is legacy < 200 slots)
+    const raw = savedTT && savedTT.length >= 200 ? savedTT : DEFAULT_TIMETABLE;
     const cleansedTT: TimetableSlot[] = raw
       .filter(s => {
         if (s.id === 'tt-fri-6' || s.id === 'tt-fri-sr-7') return false;

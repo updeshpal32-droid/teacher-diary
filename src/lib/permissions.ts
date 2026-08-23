@@ -114,8 +114,8 @@ export function hasCommitteeInchargeOrMemberAccess(
 
   // Check if user is assigned to any of these
   return activeAssignments.some(a => {
-    const aPortId = (a.portfolioId || '').toLowerCase();
-    const aEmp = (a.employeeCode || '').toLowerCase();
+    const aPortId = ((a as any).portfolioId || (a as any).portfolioTemplateId || '').toLowerCase();
+    const aEmp = ((a as any).employeeCode || (a as any).teacherEmployeeCode || '').toLowerCase();
     const aName = (a.teacherName || '').toLowerCase();
 
     const isUser = (userCode && aEmp && userCode === aEmp) || (userName && aName && (aName.includes(userName) || userName.includes(aName)));

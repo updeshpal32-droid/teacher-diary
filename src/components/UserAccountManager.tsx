@@ -76,9 +76,11 @@ const DESIGNATIONS: TeacherDesignation[] = [
 
 interface UserAccountManagerProps {
   currentUserId?: string;
+  theme?: 'dark' | 'light';
 }
 
-export function UserAccountManager({ currentUserId }: UserAccountManagerProps) {
+export function UserAccountManager({ currentUserId, theme = 'dark' }: UserAccountManagerProps) {
+  const isDark = theme !== 'light';
   const [users, setUsers] = useState<UserAccount[]>([]);
   const [searchQuery, setSearchQuery] = useState('');
   const [filterRole, setFilterRole] = useState<'all' | UserRole>('all');
@@ -99,20 +101,20 @@ export function UserAccountManager({ currentUserId }: UserAccountManagerProps) {
     assignedClasses: [],
     assignedSubjects: [],
     isClassTeacherOf: '',
-    phone: '',
-    isActive: true
+    isActive: true,
+    phone: ''
   });
 
   // Dynamic Assignment Row Form
-  const [newAssignmentClass, setNewAssignmentClass] = useState('IX');
+  const [newAssignmentClass, setNewAssignmentClass] = useState('VI');
   const [newAssignmentSection, setNewAssignmentSection] = useState('A');
   const [newAssignmentSubject, setNewAssignmentSubject] = useState('Mathematics');
 
   useEffect(() => {
-    loadUsers();
+    loadAccounts();
   }, []);
 
-  const loadUsers = async () => {
+  const loadAccounts = async () => {
     const list = await getUserAccounts();
     setUsers(list);
   };
@@ -120,23 +122,19 @@ export function UserAccountManager({ currentUserId }: UserAccountManagerProps) {
   const handleOpenAdd = () => {
     setEditingUser(null);
     setFormData({
-      id: `user-${Date.now()}`,
       name: '',
       email: '',
       password: 'teacher',
       role: 'teacher',
       designation: 'TGT',
-      employeeCode: `KV-${Math.floor(10000 + Math.random() * 90000)}`,
-      department: 'Department of Science & Mathematics',
-      assignments: [
-        { id: `as-${Date.now()}-1`, className: 'IX', section: 'A', subject: 'Mathematics', stage: 'secondary' }
-      ],
-      assignedClasses: ['IX-A'],
-      assignedSubjects: ['Mathematics'],
+      employeeCode: '',
+      department: '',
+      assignments: [],
+      assignedClasses: [],
+      assignedSubjects: [],
       isClassTeacherOf: '',
-      phone: '',
       isActive: true,
-      createdAt: new Date().toISOString()
+      phone: ''
     });
     setIsModalOpen(true);
     setSaveSuccessMsg('');
@@ -153,10 +151,9 @@ export function UserAccountManager({ currentUserId }: UserAccountManagerProps) {
   };
 
   const handleAddAssignment = () => {
-    const classSec = `${newAssignmentClass}-${newAssignmentSection}`;
     const stage = getStageCategory(newAssignmentClass);
     const newAs: ClassSubjectAssignment = {
-      id: `as-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+      id: `asgn-${Date.now()}-${Math.random().toString(36).substr(2, 4)}`,
       className: newAssignmentClass,
       section: newAssignmentSection,
       subject: newAssignmentSubject,
@@ -164,9 +161,16 @@ export function UserAccountManager({ currentUserId }: UserAccountManagerProps) {
     };
 
     const currentAssignments = formData.assignments || [];
-    const updatedAssignments = [...currentAssignments, newAs];
+    const exists = currentAssignments.some(
+      a => a.className === newAssignmentClass && a.section === newAssignmentSection && a.subject === newAssignmentSubject
+    );
 
-    // Recompute unique classes & subjects
+    if (exists) {
+      alert('This specific class-section and subject combination is already assigned.');
+      return;
+    }
+
+    const updatedAssignments = [...currentAssignments, newAs];
     const uniqueClasses = Array.from(new Set(updatedAssignments.map(a => `${a.className}-${a.section}`)));
     const uniqueSubjects = Array.from(new Set(updatedAssignments.map(a => a.subject)));
 
@@ -194,22 +198,25 @@ export function UserAccountManager({ currentUserId }: UserAccountManagerProps) {
 
   const handleSave = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!formData.name?.trim() || !formData.email?.trim()) return;
+    if (!formData.name?.trim() || !formData.email?.trim() || !formData.employeeCode?.trim()) {
+      alert('Please fill in required fields: Name, Email and Employee Code.');
+      return;
+    }
 
     const userToSave: UserAccount = {
-      id: formData.id || `user-${Date.now()}`,
+      id: editingUser ? editingUser.id : `user-${Date.now()}`,
       name: formData.name.trim(),
       email: formData.email.trim().toLowerCase(),
-      password: formData.password || 'teacher',
+      password: formData.password?.trim() || 'teacher',
       role: formData.role || 'teacher',
       designation: formData.designation || 'TGT',
-      employeeCode: formData.employeeCode || `KV-EMP-${Date.now().toString().slice(-5)}`,
+      employeeCode: formData.employeeCode.trim(),
       department: formData.department || '',
       assignments: formData.assignments || [],
       assignedClasses: formData.assignedClasses || [],
       assignedSubjects: formData.assignedSubjects || [],
-      isClassTeacherOf: formData.isClassTeacherOf || undefined,
-      phone: formData.phone || '',
+      isClassTeacherOf: formData.isClassTeacherOf?.trim() || undefined,
+      phone: formData.phone?.trim() || '',
       isActive: formData.isActive !== false,
       createdAt: formData.createdAt || new Date().toISOString()
     };
@@ -236,7 +243,7 @@ export function UserAccountManager({ currentUserId }: UserAccountManagerProps) {
     const matchesSearch =
       u.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
       u.email.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      u.employeeCode.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      (u.employeeCode && u.employeeCode.toLowerCase().includes(searchQuery.toLowerCase())) ||
       (u.designation && u.designation.toLowerCase().includes(searchQuery.toLowerCase())) ||
       (u.assignedSubjects && u.assignedSubjects.some(s => s.toLowerCase().includes(searchQuery.toLowerCase())));
     const matchesRole = filterRole === 'all' || u.role === filterRole;
@@ -246,18 +253,28 @@ export function UserAccountManager({ currentUserId }: UserAccountManagerProps) {
   return (
     <div className="space-y-6">
       {/* Header Banner */}
-      <div className="p-6 rounded-3xl bg-[var(--glass-bg)] border border-[var(--glass-border)] shadow-xl flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+      <div className={`p-6 rounded-3xl border shadow-xl flex flex-col sm:flex-row sm:items-center justify-between gap-4 transition-all ${
+        isDark
+          ? 'bg-slate-900 border-slate-800 text-white'
+          : 'bg-white border-slate-200 text-slate-900 shadow-slate-200/50'
+      }`}>
         <div>
           <div className="flex items-center gap-2 mb-1">
-            <span className="px-2.5 py-0.5 rounded-full text-[10px] font-mono font-bold bg-purple-500/20 text-purple-300 border border-purple-500/30">
+            <span className={`px-2.5 py-0.5 rounded-full text-[10px] font-mono font-bold border ${
+              isDark
+                ? 'bg-purple-500/20 text-purple-300 border-purple-500/30'
+                : 'bg-purple-100 text-purple-800 border-purple-200'
+            }`}>
               Admin Console · Staff & Subject Allocation
             </span>
           </div>
-          <h2 className="text-xl font-serif font-bold text-white flex items-center gap-2">
-            <ShieldCheck className="w-5 h-5 text-purple-400" />
+          <h2 className={`text-xl font-serif font-bold flex items-center gap-2 ${
+            isDark ? 'text-white' : 'text-slate-900'
+          }`}>
+            <ShieldCheck className={`w-5 h-5 ${isDark ? 'text-purple-400' : 'text-purple-600'}`} />
             <span>Staff Account Directory & Dynamic Class-Subject Allocation</span>
           </h2>
-          <p className="text-xs text-[var(--text-dim)] mt-1">
+          <p className={`text-xs mt-1 ${isDark ? 'text-slate-400' : 'text-slate-600'}`}>
             Manage teacher logins, designations (PGT/TGT/PRT), and flexibly assign any subjects and classes across Balvatika to Class XII.
           </p>
         </div>
@@ -272,32 +289,48 @@ export function UserAccountManager({ currentUserId }: UserAccountManagerProps) {
       </div>
 
       {saveSuccessMsg && (
-        <div className="p-4 rounded-2xl bg-emerald-500/20 border border-emerald-500/40 text-emerald-300 text-xs font-semibold flex items-center gap-2 animate-fadeIn">
-          <CheckCircle2 className="w-5 h-5 text-emerald-400 shrink-0" />
+        <div className={`p-4 rounded-2xl border text-xs font-semibold flex items-center gap-2 animate-fadeIn ${
+          isDark
+            ? 'bg-emerald-500/20 border-emerald-500/40 text-emerald-300'
+            : 'bg-emerald-50 border-emerald-200 text-emerald-800'
+        }`}>
+          <CheckCircle2 className="w-5 h-5 text-emerald-500 shrink-0" />
           <span>{saveSuccessMsg}</span>
         </div>
       )}
 
       {/* Toolbar Search & Filter */}
-      <div className="p-4 rounded-2xl bg-purple-950/40 border border-[var(--glass-border)] flex flex-col sm:flex-row items-center justify-between gap-3 text-xs">
+      <div className={`p-4 rounded-2xl border flex flex-col sm:flex-row items-center justify-between gap-3 text-xs ${
+        isDark
+          ? 'bg-purple-950/40 border-slate-800 text-white'
+          : 'bg-white border-slate-200 text-slate-800 shadow-sm'
+      }`}>
         <div className="relative w-full sm:w-72">
-          <Search className="w-4 h-4 text-purple-400 absolute left-3 top-2.5 pointer-events-none" />
+          <Search className={`w-4 h-4 absolute left-3 top-2.5 pointer-events-none ${isDark ? 'text-purple-400' : 'text-purple-600'}`} />
           <input
             type="text"
             value={searchQuery}
             onChange={e => setSearchQuery(e.target.value)}
             placeholder="Search by name, email, code, subject..."
-            className="w-full pl-9 pr-3 py-2 rounded-xl bg-purple-950/60 border border-[var(--glass-border)] text-white focus:outline-none focus:border-purple-500"
+            className={`w-full pl-9 pr-3 py-2 rounded-xl border focus:outline-none focus:border-purple-500 text-xs ${
+              isDark
+                ? 'bg-purple-950/60 border-slate-800 text-white placeholder:text-slate-500'
+                : 'bg-slate-50 border-slate-300 text-slate-900 placeholder:text-slate-400 focus:bg-white'
+            }`}
           />
         </div>
 
         <div className="flex items-center gap-2 w-full sm:w-auto">
-          <Filter className="w-3.5 h-3.5 text-purple-400" />
-          <span className="text-[var(--text-dim)] font-medium">Filter Role:</span>
+          <Filter className={`w-3.5 h-3.5 ${isDark ? 'text-purple-400' : 'text-purple-600'}`} />
+          <span className={`font-bold ${isDark ? 'text-slate-300' : 'text-slate-700'}`}>Filter Role:</span>
           <select
             value={filterRole}
             onChange={e => setFilterRole(e.target.value as any)}
-            className="px-3 py-1.5 rounded-xl bg-purple-950/60 border border-[var(--glass-border)] text-white font-semibold focus:outline-none"
+            className={`px-3 py-1.5 rounded-xl border font-bold focus:outline-none text-xs ${
+              isDark
+                ? 'bg-purple-950/60 border-slate-800 text-white'
+                : 'bg-slate-50 border-slate-300 text-slate-900'
+            }`}
           >
             <option value="all">All Roles ({users.length})</option>
             <option value="admin">Admin ({users.filter(u => u.role === 'admin').length})</option>
@@ -315,7 +348,11 @@ export function UserAccountManager({ currentUserId }: UserAccountManagerProps) {
           return (
             <div
               key={user.id}
-              className="p-5 rounded-2xl bg-[var(--glass-bg)] border border-[var(--glass-border)] shadow-lg flex flex-col justify-between gap-4 hover:border-purple-500/40 transition-all group"
+              className={`p-5 rounded-2xl border shadow-lg flex flex-col justify-between gap-4 transition-all group ${
+                isDark
+                  ? 'bg-slate-900/90 border-slate-800 hover:border-purple-500/40 text-slate-100'
+                  : 'bg-white border-slate-200 hover:border-indigo-400 text-slate-900 shadow-slate-200/60'
+              }`}
             >
               <div className="space-y-3">
                 {/* Top Info */}
@@ -325,8 +362,8 @@ export function UserAccountManager({ currentUserId }: UserAccountManagerProps) {
                       {user.name.charAt(0)}
                     </div>
                     <div>
-                      <h3 className="font-bold text-sm text-white">{user.name}</h3>
-                      <div className="text-[11px] font-mono text-purple-300">{user.employeeCode}</div>
+                      <h3 className={`font-bold text-sm ${isDark ? 'text-white' : 'text-slate-900 font-extrabold'}`}>{user.name}</h3>
+                      <div className={`text-[11px] font-mono ${isDark ? 'text-purple-300' : 'text-purple-700 font-bold'}`}>{user.employeeCode}</div>
                     </div>
                   </div>
 
@@ -336,11 +373,11 @@ export function UserAccountManager({ currentUserId }: UserAccountManagerProps) {
                 </div>
 
                 {/* Contact & Meta */}
-                <div className="text-xs space-y-1 text-[var(--text-dim)]">
-                  <div className="truncate">📧 <span className="font-mono text-white">{user.email}</span></div>
-                  {user.phone && <div>📞 <span className="text-white">{user.phone}</span></div>}
+                <div className={`text-xs space-y-1 ${isDark ? 'text-slate-400' : 'text-slate-600'}`}>
+                  <div className="truncate">📧 <span className={`font-mono font-medium ${isDark ? 'text-white' : 'text-slate-800'}`}>{user.email}</span></div>
+                  {user.phone && <div>📞 <span className={isDark ? 'text-white' : 'text-slate-800'}>{user.phone}</span></div>}
                   {user.isClassTeacherOf && (
-                    <div className="text-emerald-400 font-semibold">
+                    <div className={isDark ? 'text-emerald-400 font-semibold' : 'text-emerald-700 font-bold'}>
                       ⭐ Class Teacher of: <strong>{user.isClassTeacherOf}</strong>
                     </div>
                   )}
@@ -348,8 +385,8 @@ export function UserAccountManager({ currentUserId }: UserAccountManagerProps) {
 
                 {/* Dynamic Assignments Preview */}
                 {user.role === 'teacher' && (
-                  <div className="pt-2 border-t border-[var(--glass-border)] space-y-1.5">
-                    <div className="text-[10px] font-bold uppercase tracking-wider text-purple-300">
+                  <div className={`pt-2 border-t space-y-1.5 ${isDark ? 'border-slate-800' : 'border-slate-100'}`}>
+                    <div className={`text-[10px] font-bold uppercase tracking-wider ${isDark ? 'text-purple-300' : 'text-purple-700 font-bold'}`}>
                       Assigned Classes & Subjects ({user.assignments?.length || 0}):
                     </div>
                     <div className="flex flex-wrap gap-1.5 max-h-20 overflow-y-auto">
@@ -357,13 +394,17 @@ export function UserAccountManager({ currentUserId }: UserAccountManagerProps) {
                         user.assignments.map((as, idx) => (
                           <span
                             key={as.id || idx}
-                            className="px-2 py-0.5 rounded-md text-[10px] font-semibold bg-purple-950/60 text-purple-200 border border-purple-500/20 flex items-center gap-1"
+                            className={`px-2 py-0.5 rounded-md text-[10px] font-semibold border flex items-center gap-1 ${
+                              isDark
+                                ? 'bg-purple-950/60 text-purple-200 border-purple-500/20'
+                                : 'bg-purple-50 text-purple-900 border-purple-200'
+                            }`}
                           >
-                            <strong className="text-amber-300">{as.className}-{as.section}</strong>: {as.subject}
+                            <strong className={isDark ? 'text-amber-300' : 'text-amber-700 font-bold'}>{as.className}-{as.section}</strong>: {as.subject}
                           </span>
                         ))
                       ) : (
-                        <span className="text-[10px] text-gray-400 italic">No specific classes assigned yet</span>
+                        <span className={`text-[10px] italic ${isDark ? 'text-gray-400' : 'text-slate-400'}`}>No specific classes assigned yet</span>
                       )}
                     </div>
                   </div>
@@ -371,8 +412,10 @@ export function UserAccountManager({ currentUserId }: UserAccountManagerProps) {
               </div>
 
               {/* Action Buttons */}
-              <div className="pt-3 border-t border-[var(--glass-border)] flex items-center justify-between text-xs">
-                <span className={`inline-flex items-center gap-1 text-[10px] font-bold ${user.isActive ? 'text-emerald-400' : 'text-rose-400'}`}>
+              <div className={`pt-3 border-t flex items-center justify-between text-xs ${isDark ? 'border-slate-800' : 'border-slate-100'}`}>
+                <span className={`inline-flex items-center gap-1 text-[10px] font-bold ${
+                  user.isActive ? (isDark ? 'text-emerald-400' : 'text-emerald-700') : (isDark ? 'text-rose-400' : 'text-rose-700')
+                }`}>
                   <span className={`w-2 h-2 rounded-full ${user.isActive ? 'bg-emerald-500' : 'bg-rose-500'}`} />
                   {user.isActive ? 'Active Account' : 'Suspended'}
                 </span>
@@ -380,7 +423,11 @@ export function UserAccountManager({ currentUserId }: UserAccountManagerProps) {
                 <div className="flex items-center gap-2">
                   <button
                     onClick={() => handleOpenEdit(user)}
-                    className="p-1.5 rounded-lg bg-purple-950/80 hover:bg-purple-900 border border-purple-500/30 text-purple-200 hover:text-white cursor-pointer"
+                    className={`p-1.5 rounded-lg border cursor-pointer transition-all ${
+                      isDark
+                        ? 'bg-purple-950/80 hover:bg-purple-900 border-purple-500/30 text-purple-200 hover:text-white'
+                        : 'bg-purple-50 hover:bg-purple-100 border-purple-200 text-purple-800'
+                    }`}
                     title="Edit user details & class allocations"
                   >
                     <Edit2 className="w-3.5 h-3.5" />
@@ -388,7 +435,11 @@ export function UserAccountManager({ currentUserId }: UserAccountManagerProps) {
 
                   <button
                     onClick={() => handleDelete(user.id, user.name)}
-                    className="p-1.5 rounded-lg bg-rose-950/60 hover:bg-rose-900 border border-rose-500/30 text-rose-300 hover:text-white cursor-pointer"
+                    className={`p-1.5 rounded-lg border cursor-pointer transition-all ${
+                      isDark
+                        ? 'bg-rose-950/60 hover:bg-rose-900 border-rose-500/30 text-rose-300 hover:text-white'
+                        : 'bg-rose-50 hover:bg-rose-100 border-rose-200 text-rose-700'
+                    }`}
                     title="Remove user account"
                   >
                     <Trash2 className="w-3.5 h-3.5" />
@@ -403,15 +454,21 @@ export function UserAccountManager({ currentUserId }: UserAccountManagerProps) {
       {/* ADD / EDIT USER MODAL */}
       {isModalOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm overflow-y-auto">
-          <div className="w-full max-w-3xl bg-slate-900 border border-[var(--glass-border)] rounded-3xl p-6 shadow-2xl space-y-6 max-h-[90vh] overflow-y-auto my-6">
-            <div className="flex items-center justify-between border-b border-[var(--glass-border)] pb-4">
-              <h3 className="text-lg font-serif font-bold text-white flex items-center gap-2">
-                <UserPlus className="w-5 h-5 text-purple-400" />
+          <div className={`w-full max-w-3xl border rounded-3xl p-6 shadow-2xl space-y-6 max-h-[90vh] overflow-y-auto my-6 ${
+            isDark
+              ? 'bg-slate-900 border-slate-800 text-white'
+              : 'bg-white border-slate-200 text-slate-900'
+          }`}>
+            <div className={`flex items-center justify-between border-b pb-4 ${isDark ? 'border-slate-800' : 'border-slate-200'}`}>
+              <h3 className={`text-lg font-serif font-bold flex items-center gap-2 ${isDark ? 'text-white' : 'text-slate-900'}`}>
+                <UserPlus className="w-5 h-5 text-purple-500" />
                 <span>{editingUser ? `Edit Staff Account: ${editingUser.name}` : 'Register New Staff Account'}</span>
               </h3>
               <button
                 onClick={() => setIsModalOpen(false)}
-                className="p-2 rounded-xl bg-white/5 hover:bg-white/10 text-white cursor-pointer"
+                className={`p-2 rounded-xl cursor-pointer ${
+                  isDark ? 'bg-white/5 hover:bg-white/10 text-white' : 'bg-slate-100 hover:bg-slate-200 text-slate-700'
+                }`}
               >
                 <X className="w-5 h-5" />
               </button>
@@ -421,50 +478,70 @@ export function UserAccountManager({ currentUserId }: UserAccountManagerProps) {
               {/* Core Credentials */}
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-3.5">
                 <div>
-                  <label className="block text-[var(--text-dim)] mb-1 font-medium">Full Name *</label>
+                  <label className={`block mb-1 font-bold ${isDark ? 'text-slate-300' : 'text-slate-700'}`}>Full Name *</label>
                   <input
                     type="text"
                     required
                     value={formData.name || ''}
                     onChange={e => setFormData({ ...formData, name: e.target.value })}
                     placeholder="e.g. Updesh Kumar"
-                    className="w-full px-3 py-2 rounded-xl bg-purple-950/40 border border-[var(--glass-border)] text-white focus:outline-none focus:border-purple-500 font-semibold"
+                    className={`w-full px-3 py-2 rounded-xl border font-semibold focus:outline-none focus:border-purple-500 ${
+                      isDark
+                        ? 'bg-purple-950/40 border-slate-800 text-white'
+                        : 'bg-slate-50 border-slate-300 text-slate-900 focus:bg-white'
+                    }`}
                   />
                 </div>
 
                 <div>
-                  <label className="block text-[var(--text-dim)] mb-1 font-medium">Email Address (Login ID) *</label>
+                  <label className={`block mb-1 font-bold ${isDark ? 'text-slate-300' : 'text-slate-700'}`}>Email Address (Login ID) *</label>
                   <input
                     type="email"
                     required
                     value={formData.email || ''}
                     onChange={e => setFormData({ ...formData, email: e.target.value })}
                     placeholder="e.g. updesh.teacher@kvs.edu"
-                    className="w-full px-3 py-2 rounded-xl bg-purple-950/40 border border-[var(--glass-border)] text-white focus:outline-none focus:border-purple-500 font-mono"
+                    className={`w-full px-3 py-2 rounded-xl border font-mono focus:outline-none focus:border-purple-500 ${
+                      isDark
+                        ? 'bg-purple-950/40 border-slate-800 text-white'
+                        : 'bg-slate-50 border-slate-300 text-slate-900 focus:bg-white'
+                    }`}
                   />
                 </div>
 
                 <div>
-                  <label className="block text-[var(--text-dim)] mb-1 font-medium">Employee Code *</label>
+                  <label className={`block mb-1 font-bold ${isDark ? 'text-slate-300' : 'text-slate-700'}`}>Employee Code *</label>
                   <input
                     type="text"
                     required
                     value={formData.employeeCode || ''}
                     onChange={e => setFormData({ ...formData, employeeCode: e.target.value })}
                     placeholder="e.g. KV-PGT-84920"
-                    className="w-full px-3 py-2 rounded-xl bg-purple-950/40 border border-[var(--glass-border)] text-white focus:outline-none focus:border-purple-500 font-mono"
+                    className={`w-full px-3 py-2 rounded-xl border font-mono focus:outline-none focus:border-purple-500 ${
+                      isDark
+                        ? 'bg-purple-950/40 border-slate-800 text-white'
+                        : 'bg-slate-50 border-slate-300 text-slate-900 focus:bg-white'
+                    }`}
                   />
                 </div>
               </div>
 
               {/* Role & Designation */}
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3.5 p-4 rounded-2xl bg-purple-950/30 border border-purple-500/20">
+              <div className={`grid grid-cols-1 sm:grid-cols-3 gap-3.5 p-4 rounded-2xl border ${
+                isDark
+                  ? 'bg-purple-950/30 border-purple-500/20 text-white'
+                  : 'bg-slate-50 border-slate-200 text-slate-900'
+              }`}>
                 <div>
-                  <label className="block text-purple-200 mb-1 font-bold">Role Level *</label>
+                  <label className={`block mb-1 font-bold ${isDark ? 'text-purple-200' : 'text-purple-800'}`}>Role Level *</label>
                   <select
                     value={formData.role || 'teacher'}
                     onChange={e => setFormData({ ...formData, role: e.target.value as any })}
-                    className="w-full px-3 py-2 rounded-xl bg-purple-950/60 border border-[var(--glass-border)] text-white focus:outline-none focus:border-purple-500 font-bold"
+                    className={`w-full px-3 py-2 rounded-xl border font-bold focus:outline-none focus:border-purple-500 ${
+                      isDark
+                        ? 'bg-purple-950/60 border-slate-800 text-white'
+                        : 'bg-white border-slate-300 text-slate-900'
+                    }`}
                   >
                     <option value="admin">🏛️ Level 1: Admin (Principal / Incharge)</option>
                     <option value="data_entry_manager">📊 Level 2: Data Entry Manager</option>
@@ -473,11 +550,15 @@ export function UserAccountManager({ currentUserId }: UserAccountManagerProps) {
                 </div>
 
                 <div>
-                  <label className="block text-purple-200 mb-1 font-bold">Designation *</label>
+                  <label className={`block mb-1 font-bold ${isDark ? 'text-purple-200' : 'text-purple-800'}`}>Designation *</label>
                   <select
                     value={formData.designation || 'TGT'}
                     onChange={e => setFormData({ ...formData, designation: e.target.value as any })}
-                    className="w-full px-3 py-2 rounded-xl bg-purple-950/60 border border-[var(--glass-border)] text-white focus:outline-none focus:border-purple-500 font-semibold"
+                    className={`w-full px-3 py-2 rounded-xl border font-semibold focus:outline-none focus:border-purple-500 ${
+                      isDark
+                        ? 'bg-purple-950/60 border-slate-800 text-white'
+                        : 'bg-white border-slate-300 text-slate-900'
+                    }`}
                   >
                     {DESIGNATIONS.map(d => (
                       <option key={d} value={d}>{d}</option>
@@ -486,39 +567,53 @@ export function UserAccountManager({ currentUserId }: UserAccountManagerProps) {
                 </div>
 
                 <div>
-                  <label className="block text-purple-200 mb-1 font-bold">Class Teacher Role</label>
+                  <label className={`block mb-1 font-bold ${isDark ? 'text-purple-200' : 'text-purple-800'}`}>Class Teacher Role</label>
                   <input
                     type="text"
                     value={formData.isClassTeacherOf || ''}
                     onChange={e => setFormData({ ...formData, isClassTeacherOf: e.target.value })}
                     placeholder="e.g. XII-A or X-B (Optional)"
-                    className="w-full px-3 py-2 rounded-xl bg-purple-950/60 border border-[var(--glass-border)] text-white focus:outline-none focus:border-purple-500"
+                    className={`w-full px-3 py-2 rounded-xl border focus:outline-none focus:border-purple-500 ${
+                      isDark
+                        ? 'bg-purple-950/60 border-slate-800 text-white'
+                        : 'bg-white border-slate-300 text-slate-900'
+                    }`}
                   />
                 </div>
               </div>
 
               {/* Dynamic Class & Subject Assignment Section */}
-              <div className="p-4 rounded-2xl bg-purple-950/20 border border-[var(--glass-border)] space-y-3">
+              <div className={`p-4 rounded-2xl border space-y-3 ${
+                isDark
+                  ? 'bg-purple-950/20 border-slate-800'
+                  : 'bg-slate-50 border-slate-200'
+              }`}>
                 <div className="flex items-center justify-between">
                   <div>
-                    <h4 className="font-bold text-white flex items-center gap-1.5">
-                      <BookOpen className="w-4 h-4 text-purple-400" />
+                    <h4 className={`font-bold flex items-center gap-1.5 ${isDark ? 'text-white' : 'text-slate-900'}`}>
+                      <BookOpen className="w-4 h-4 text-purple-500" />
                       <span>Assigned Classes & Subjects (Cross-Stage Supported)</span>
                     </h4>
-                    <p className="text-[11px] text-[var(--text-dim)]">
+                    <p className={`text-[11px] ${isDark ? 'text-slate-400' : 'text-slate-600'}`}>
                       Assign any combination of classes (Class I to XII, Balvatika) and subjects to this teacher.
                     </p>
                   </div>
                 </div>
 
                 {/* Add Assignment Sub-Row */}
-                <div className="grid grid-cols-1 sm:grid-cols-4 gap-2.5 p-3 rounded-xl bg-purple-950/50 border border-purple-500/30 items-end">
+                <div className={`grid grid-cols-1 sm:grid-cols-4 gap-2.5 p-3 rounded-xl border items-end ${
+                  isDark
+                    ? 'bg-purple-950/50 border-purple-500/30'
+                    : 'bg-white border-purple-200 shadow-xs'
+                }`}>
                   <div>
-                    <label className="block text-[10px] font-bold text-purple-200 mb-1">Class</label>
+                    <label className={`block text-[10px] font-bold mb-1 ${isDark ? 'text-purple-200' : 'text-purple-800'}`}>Class</label>
                     <select
                       value={newAssignmentClass}
                       onChange={e => setNewAssignmentClass(e.target.value)}
-                      className="w-full px-2.5 py-1.5 rounded-lg bg-purple-950/80 border border-[var(--glass-border)] text-white font-bold"
+                      className={`w-full px-2.5 py-1.5 rounded-lg border font-bold ${
+                        isDark ? 'bg-purple-950/80 border-slate-700 text-white' : 'bg-slate-50 border-slate-300 text-slate-900'
+                      }`}
                     >
                       {ALL_CLASSES.map(c => (
                         <option key={c} value={c}>Class {c}</option>
@@ -527,11 +622,13 @@ export function UserAccountManager({ currentUserId }: UserAccountManagerProps) {
                   </div>
 
                   <div>
-                    <label className="block text-[10px] font-bold text-purple-200 mb-1">Section</label>
+                    <label className={`block text-[10px] font-bold mb-1 ${isDark ? 'text-purple-200' : 'text-purple-800'}`}>Section</label>
                     <select
                       value={newAssignmentSection}
                       onChange={e => setNewAssignmentSection(e.target.value)}
-                      className="w-full px-2.5 py-1.5 rounded-lg bg-purple-950/80 border border-[var(--glass-border)] text-white font-bold"
+                      className={`w-full px-2.5 py-1.5 rounded-lg border font-bold ${
+                        isDark ? 'bg-purple-950/80 border-slate-700 text-white' : 'bg-slate-50 border-slate-300 text-slate-900'
+                      }`}
                     >
                       {SECTIONS.map(s => (
                         <option key={s} value={s}>Section {s}</option>
@@ -540,11 +637,13 @@ export function UserAccountManager({ currentUserId }: UserAccountManagerProps) {
                   </div>
 
                   <div>
-                    <label className="block text-[10px] font-bold text-purple-200 mb-1">Subject</label>
+                    <label className={`block text-[10px] font-bold mb-1 ${isDark ? 'text-purple-200' : 'text-purple-800'}`}>Subject</label>
                     <select
                       value={newAssignmentSubject}
                       onChange={e => setNewAssignmentSubject(e.target.value)}
-                      className="w-full px-2.5 py-1.5 rounded-lg bg-purple-950/80 border border-[var(--glass-border)] text-white font-bold"
+                      className={`w-full px-2.5 py-1.5 rounded-lg border font-bold ${
+                        isDark ? 'bg-purple-950/80 border-slate-700 text-white' : 'bg-slate-50 border-slate-300 text-slate-900'
+                      }`}
                     >
                       {STANDARD_SUBJECTS.map(sub => (
                         <option key={sub} value={sub}>{sub}</option>
@@ -555,7 +654,7 @@ export function UserAccountManager({ currentUserId }: UserAccountManagerProps) {
                   <button
                     type="button"
                     onClick={handleAddAssignment}
-                    className="w-full py-1.5 px-3 rounded-lg bg-purple-600 hover:bg-purple-500 text-white font-bold flex items-center justify-center gap-1 cursor-pointer"
+                    className="w-full py-1.5 px-3 rounded-lg bg-purple-600 hover:bg-purple-500 text-white font-bold flex items-center justify-center gap-1 cursor-pointer shadow-sm"
                   >
                     <Plus className="w-3.5 h-3.5" />
                     <span>Assign Class</span>
@@ -569,18 +668,26 @@ export function UserAccountManager({ currentUserId }: UserAccountManagerProps) {
                       {formData.assignments.map(as => (
                         <div
                           key={as.id}
-                          className="flex items-center justify-between p-2 rounded-lg bg-purple-950/60 border border-purple-500/30 text-xs"
+                          className={`flex items-center justify-between p-2 rounded-lg border text-xs ${
+                            isDark
+                              ? 'bg-purple-950/60 border-purple-500/30'
+                              : 'bg-white border-purple-200 shadow-xs'
+                          }`}
                         >
                           <div className="flex items-center gap-2">
-                            <span className="font-mono font-bold text-amber-300 bg-amber-500/20 px-1.5 py-0.5 rounded border border-amber-500/30">
+                            <span className={`font-mono font-bold px-1.5 py-0.5 rounded border ${
+                              isDark
+                                ? 'text-amber-300 bg-amber-500/20 border-amber-500/30'
+                                : 'text-amber-800 bg-amber-100 border-amber-300'
+                            }`}>
                               {as.className}-{as.section}
                             </span>
-                            <span className="text-white font-semibold">{as.subject}</span>
+                            <span className={`font-semibold ${isDark ? 'text-white' : 'text-slate-800'}`}>{as.subject}</span>
                           </div>
                           <button
                             type="button"
                             onClick={() => handleRemoveAssignment(as.id)}
-                            className="p-1 text-gray-400 hover:text-rose-400 cursor-pointer"
+                            className="p-1 text-gray-400 hover:text-rose-500 cursor-pointer"
                             title="Remove this class allocation"
                           >
                             <X className="w-3.5 h-3.5" />
@@ -589,7 +696,9 @@ export function UserAccountManager({ currentUserId }: UserAccountManagerProps) {
                       ))}
                     </div>
                   ) : (
-                    <div className="p-3 text-center rounded-lg bg-purple-950/10 border border-dashed border-[var(--glass-border)] text-gray-400">
+                    <div className={`p-3 text-center rounded-lg border border-dashed text-gray-400 ${
+                      isDark ? 'bg-purple-950/10 border-slate-800' : 'bg-white border-slate-300'
+                    }`}>
                       No classes assigned yet. Use the selector above to assign subjects.
                     </div>
                   )}
@@ -599,23 +708,27 @@ export function UserAccountManager({ currentUserId }: UserAccountManagerProps) {
               {/* Status & Password */}
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
                 <div>
-                  <label className="block text-[var(--text-dim)] mb-1 font-medium">Account Password</label>
+                  <label className={`block mb-1 font-bold ${isDark ? 'text-slate-300' : 'text-slate-700'}`}>Account Password</label>
                   <input
                     type="text"
                     value={formData.password || ''}
                     onChange={e => setFormData({ ...formData, password: e.target.value })}
                     placeholder="Enter password (default: teacher)"
-                    className="w-full px-3 py-2 rounded-xl bg-purple-950/40 border border-[var(--glass-border)] text-white focus:outline-none font-mono"
+                    className={`w-full px-3 py-2 rounded-xl border font-mono focus:outline-none ${
+                      isDark
+                        ? 'bg-purple-950/40 border-slate-800 text-white'
+                        : 'bg-slate-50 border-slate-300 text-slate-900 focus:bg-white'
+                    }`}
                   />
                 </div>
 
                 <div className="flex items-center gap-3 pt-5">
-                  <label className="flex items-center gap-2 cursor-pointer text-white font-semibold">
+                  <label className={`flex items-center gap-2 cursor-pointer font-bold ${isDark ? 'text-white' : 'text-slate-800'}`}>
                     <input
                       type="checkbox"
                       checked={formData.isActive !== false}
                       onChange={e => setFormData({ ...formData, isActive: e.target.checked })}
-                      className="rounded border-purple-500/40 bg-purple-950/60 text-purple-600 cursor-pointer"
+                      className="rounded border-purple-500 bg-purple-950 text-purple-600 cursor-pointer"
                     />
                     <span>Account Active & Enabled</span>
                   </label>
@@ -623,11 +736,13 @@ export function UserAccountManager({ currentUserId }: UserAccountManagerProps) {
               </div>
 
               {/* Modal Buttons */}
-              <div className="flex justify-end gap-3 pt-4 border-t border-[var(--glass-border)]">
+              <div className={`flex justify-end gap-3 pt-4 border-t ${isDark ? 'border-slate-800' : 'border-slate-200'}`}>
                 <button
                   type="button"
                   onClick={() => setIsModalOpen(false)}
-                  className="px-4 py-2 rounded-xl bg-white/5 hover:bg-white/10 text-white text-xs font-semibold cursor-pointer"
+                  className={`px-4 py-2 rounded-xl text-xs font-semibold cursor-pointer ${
+                    isDark ? 'bg-white/5 hover:bg-white/10 text-white' : 'bg-slate-100 hover:bg-slate-200 text-slate-700'
+                  }`}
                 >
                   Cancel
                 </button>

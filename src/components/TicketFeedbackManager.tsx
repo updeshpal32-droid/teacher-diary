@@ -45,6 +45,7 @@ interface TicketFeedbackManagerProps {
   currentUser?: UserAccount | null;
   currentTab?: string;
   onNavigateTab?: (tab: string) => void;
+  theme?: 'dark' | 'light';
 }
 
 type SubTab = 'my_tickets' | 'admin_desk';
@@ -76,8 +77,10 @@ export const TicketFeedbackManager: React.FC<TicketFeedbackManagerProps> = ({
   devMode,
   currentUser,
   currentTab,
-  onNavigateTab
+  onNavigateTab,
+  theme = 'dark'
 }) => {
+  const isDark = theme !== 'light';
   const isPrincipalOrAdmin = currentUser?.role === 'admin' || currentUser?.activePersona === 'admin';
   const isDataEntryManager = currentUser?.role === 'data_entry_manager' || currentUser?.activePersona === 'data_entry_manager';
   const canManageAllTickets = isPrincipalOrAdmin || isDataEntryManager;
@@ -275,18 +278,26 @@ export const TicketFeedbackManager: React.FC<TicketFeedbackManagerProps> = ({
   return (
     <div className="space-y-6 animate-fadeIn pb-16">
       {/* Top Banner & Header */}
-      <div className="bg-gradient-to-r from-purple-950 via-slate-900 to-indigo-950 border border-purple-500/30 p-5 rounded-2xl shadow-xl flex flex-col lg:flex-row lg:items-center justify-between gap-4">
+      <div className={`p-5 rounded-2xl shadow-xl flex flex-col lg:flex-row lg:items-center justify-between gap-4 border transition-all ${
+        isDark
+          ? 'bg-gradient-to-r from-purple-950 via-slate-900 to-indigo-950 border-purple-500/30 text-white'
+          : 'bg-gradient-to-r from-purple-100 via-white to-indigo-100 border-purple-200 text-slate-900 shadow-slate-200/50'
+      }`}>
         <div className="space-y-1">
           <div className="flex items-center gap-2">
-            <span className="p-2 rounded-xl bg-purple-600/30 border border-purple-500/50 text-purple-300">
+            <span className={`p-2 rounded-xl border ${
+              isDark ? 'bg-purple-600/30 border-purple-500/50 text-purple-300' : 'bg-purple-100 border-purple-300 text-purple-700'
+            }`}>
               <HelpCircle className="w-5 h-5" />
             </span>
-            <h2 className="text-xl font-black text-white tracking-tight flex items-center gap-2 m-0">
+            <h2 className={`text-xl font-black tracking-tight flex items-center gap-2 m-0 ${
+              isDark ? 'text-white' : 'text-slate-900'
+            }`}>
               <span>Ticket Raise & Feedback Desk</span>
               {devMode && <DevModeBadge pages={[1, 52]} title="User Feedback & Bug Tracking System" />}
             </h2>
           </div>
-          <p className="text-xs text-purple-200/80 m-0">
+          <p className={`text-xs m-0 ${isDark ? 'text-purple-200/80' : 'text-slate-600'}`}>
             Direct communication channel for staff to report bugs, request features, suggest UI improvements, and track resolution status with evidence.
           </p>
         </div>
@@ -303,7 +314,11 @@ export const TicketFeedbackManager: React.FC<TicketFeedbackManagerProps> = ({
 
           <button
             onClick={handleExportTicketsToExcel}
-            className="px-3.5 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 font-bold text-xs flex items-center gap-1.5 transition-all border border-slate-700 cursor-pointer"
+            className={`px-3.5 py-2 rounded-xl font-bold text-xs flex items-center gap-1.5 transition-all border cursor-pointer ${
+              isDark
+                ? 'bg-slate-800 hover:bg-slate-700 text-slate-300 border-slate-700'
+                : 'bg-white hover:bg-slate-100 text-slate-700 border-slate-300 shadow-xs'
+            }`}
           >
             <Download className="w-4 h-4" />
             <span>Export (.xlsx)</span>
@@ -316,23 +331,25 @@ export const TicketFeedbackManager: React.FC<TicketFeedbackManagerProps> = ({
         <div
           className={`p-3.5 rounded-xl border flex items-center gap-2.5 text-xs font-bold animate-fadeIn ${
             msg.type === 'success'
-              ? 'bg-emerald-950/90 border-emerald-500/50 text-emerald-300'
-              : 'bg-rose-950/90 border-rose-500/50 text-rose-300'
+              ? isDark ? 'bg-emerald-950/90 border-emerald-500/50 text-emerald-300' : 'bg-emerald-50 border-emerald-300 text-emerald-900'
+              : isDark ? 'bg-rose-950/90 border-rose-500/50 text-rose-300' : 'bg-rose-50 border-rose-300 text-rose-900'
           }`}
         >
-          {msg.type === 'success' ? <CheckCircle2 className="w-4 h-4 text-emerald-400" /> : <AlertTriangle className="w-4 h-4" />}
+          {msg.type === 'success' ? <CheckCircle2 className="w-4 h-4 text-emerald-500" /> : <AlertTriangle className="w-4 h-4 text-rose-500" />}
           <span>{msg.text}</span>
         </div>
       )}
 
       {/* Sub-Tab Navigation */}
-      <div className="flex items-center gap-2 border-b border-slate-800 pb-2">
+      <div className={`flex items-center gap-2 border-b pb-2 ${isDark ? 'border-slate-800' : 'border-slate-200'}`}>
         <button
           onClick={() => setActiveTab('my_tickets')}
           className={`px-4 py-2 rounded-xl text-xs font-bold transition-all flex items-center gap-2 cursor-pointer ${
             activeTab === 'my_tickets'
               ? 'bg-purple-600 text-white shadow-lg shadow-purple-600/30'
-              : 'bg-slate-900 hover:bg-slate-800 text-slate-300 border border-slate-800'
+              : isDark
+                ? 'bg-slate-900 hover:bg-slate-800 text-slate-300 border border-slate-800'
+                : 'bg-white hover:bg-slate-50 text-slate-700 border border-slate-300 shadow-xs'
           }`}
         >
           <UserCheck className="w-4 h-4" />
@@ -345,7 +362,9 @@ export const TicketFeedbackManager: React.FC<TicketFeedbackManagerProps> = ({
             className={`px-4 py-2 rounded-xl text-xs font-bold transition-all flex items-center gap-2 cursor-pointer ${
               activeTab === 'admin_desk'
                 ? 'bg-purple-600 text-white shadow-lg shadow-purple-600/30'
-                : 'bg-slate-900 hover:bg-slate-800 text-slate-300 border border-slate-800'
+                : isDark
+                  ? 'bg-slate-900 hover:bg-slate-800 text-slate-300 border border-slate-800'
+                  : 'bg-white hover:bg-slate-50 text-slate-700 border border-slate-300 shadow-xs'
             }`}
           >
             <ShieldCheck className="w-4 h-4" />
@@ -361,62 +380,88 @@ export const TicketFeedbackManager: React.FC<TicketFeedbackManagerProps> = ({
 
       {/* KPI Metric Summary Cards */}
       <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
-        <div className="p-3.5 rounded-2xl bg-slate-900 border border-slate-800 space-y-1">
-          <div className="text-[10px] font-bold text-slate-400 uppercase tracking-wider flex items-center justify-between">
+        <div className={`p-3.5 rounded-2xl border space-y-1 ${
+          isDark ? 'bg-slate-900 border-slate-800' : 'bg-white border-slate-200 shadow-sm'
+        }`}>
+          <div className={`text-[10px] font-bold uppercase tracking-wider flex items-center justify-between ${
+            isDark ? 'text-slate-400' : 'text-slate-500'
+          }`}>
             <span>Total Tickets</span>
-            <FileText className="w-3.5 h-3.5 text-purple-400" />
+            <FileText className="w-3.5 h-3.5 text-purple-500" />
           </div>
-          <div className="text-xl font-black text-white font-mono">{metrics.total}</div>
-          <div className="text-[10px] text-slate-500">In current view</div>
+          <div className={`text-xl font-black font-mono ${isDark ? 'text-white' : 'text-slate-900'}`}>{metrics.total}</div>
+          <div className={`text-[10px] ${isDark ? 'text-slate-500' : 'text-slate-400'}`}>In current view</div>
         </div>
 
-        <div className="p-3.5 rounded-2xl bg-emerald-950/30 border border-emerald-500/30 space-y-1">
-          <div className="text-[10px] font-bold text-emerald-300 uppercase tracking-wider flex items-center justify-between">
+        <div className={`p-3.5 rounded-2xl border space-y-1 ${
+          isDark ? 'bg-emerald-950/30 border-emerald-500/30' : 'bg-emerald-50 border-emerald-200 shadow-sm'
+        }`}>
+          <div className={`text-[10px] font-bold uppercase tracking-wider flex items-center justify-between ${
+            isDark ? 'text-emerald-300' : 'text-emerald-800'
+          }`}>
             <span>Open (New)</span>
-            <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400" />
+            <CheckCircle2 className="w-3.5 h-3.5 text-emerald-500" />
           </div>
-          <div className="text-xl font-black text-emerald-400 font-mono">{metrics.open}</div>
-          <div className="text-[10px] text-emerald-300/70">Awaiting review</div>
+          <div className={`text-xl font-black font-mono ${isDark ? 'text-emerald-400' : 'text-emerald-700'}`}>{metrics.open}</div>
+          <div className={`text-[10px] ${isDark ? 'text-emerald-300/70' : 'text-emerald-600'}`}>Awaiting review</div>
         </div>
 
-        <div className="p-3.5 rounded-2xl bg-amber-950/30 border border-amber-500/30 space-y-1">
-          <div className="text-[10px] font-bold text-amber-300 uppercase tracking-wider flex items-center justify-between">
+        <div className={`p-3.5 rounded-2xl border space-y-1 ${
+          isDark ? 'bg-amber-950/30 border-amber-500/30' : 'bg-amber-50 border-amber-200 shadow-sm'
+        }`}>
+          <div className={`text-[10px] font-bold uppercase tracking-wider flex items-center justify-between ${
+            isDark ? 'text-amber-300' : 'text-amber-800'
+          }`}>
             <span>In Progress</span>
-            <Clock className="w-3.5 h-3.5 text-amber-400" />
+            <Clock className="w-3.5 h-3.5 text-amber-500" />
           </div>
-          <div className="text-xl font-black text-amber-400 font-mono">{metrics.inProgress}</div>
-          <div className="text-[10px] text-amber-300/70">Under action</div>
+          <div className={`text-xl font-black font-mono ${isDark ? 'text-amber-400' : 'text-amber-700'}`}>{metrics.inProgress}</div>
+          <div className={`text-[10px] ${isDark ? 'text-amber-300/70' : 'text-amber-600'}`}>Under action</div>
         </div>
 
-        <div className="p-3.5 rounded-2xl bg-purple-950/30 border border-purple-500/30 space-y-1">
-          <div className="text-[10px] font-bold text-purple-300 uppercase tracking-wider flex items-center justify-between">
+        <div className={`p-3.5 rounded-2xl border space-y-1 ${
+          isDark ? 'bg-purple-950/30 border-purple-500/30' : 'bg-purple-50 border-purple-200 shadow-sm'
+        }`}>
+          <div className={`text-[10px] font-bold uppercase tracking-wider flex items-center justify-between ${
+            isDark ? 'text-purple-300' : 'text-purple-800'
+          }`}>
             <span>Resolved</span>
-            <ShieldCheck className="w-3.5 h-3.5 text-purple-400" />
+            <ShieldCheck className="w-3.5 h-3.5 text-purple-500" />
           </div>
-          <div className="text-xl font-black text-purple-300 font-mono">{metrics.resolved}</div>
-          <div className="text-[10px] text-purple-300/70">Completed & closed</div>
+          <div className={`text-xl font-black font-mono ${isDark ? 'text-purple-300' : 'text-purple-700'}`}>{metrics.resolved}</div>
+          <div className={`text-[10px] ${isDark ? 'text-purple-300/70' : 'text-purple-600'}`}>Completed & closed</div>
         </div>
 
-        <div className="p-3.5 rounded-2xl bg-rose-950/30 border border-rose-500/30 space-y-1">
-          <div className="text-[10px] font-bold text-rose-300 uppercase tracking-wider flex items-center justify-between">
+        <div className={`p-3.5 rounded-2xl border space-y-1 ${
+          isDark ? 'bg-rose-950/30 border-rose-500/30' : 'bg-rose-50 border-rose-200 shadow-sm'
+        }`}>
+          <div className={`text-[10px] font-bold uppercase tracking-wider flex items-center justify-between ${
+            isDark ? 'text-rose-300' : 'text-rose-800'
+          }`}>
             <span>Critical Priority</span>
-            <AlertCircle className="w-3.5 h-3.5 text-rose-400" />
+            <AlertCircle className="w-3.5 h-3.5 text-rose-500" />
           </div>
-          <div className="text-xl font-black text-rose-400 font-mono">{metrics.critical}</div>
-          <div className="text-[10px] text-rose-300/70">Immediate attention</div>
+          <div className={`text-xl font-black font-mono ${isDark ? 'text-rose-400' : 'text-rose-700'}`}>{metrics.critical}</div>
+          <div className={`text-[10px] ${isDark ? 'text-rose-300/70' : 'text-rose-600'}`}>Immediate attention</div>
         </div>
       </div>
 
       {/* Filter and Search Bar */}
-      <div className="bg-slate-900 border border-slate-800 p-4 rounded-2xl flex flex-col md:flex-row items-center justify-between gap-4 shadow-sm">
+      <div className={`p-4 rounded-2xl border flex flex-col md:flex-row items-center justify-between gap-4 shadow-sm ${
+        isDark ? 'bg-slate-900 border-slate-800' : 'bg-white border-slate-200'
+      }`}>
         <div className="relative w-full md:w-72">
-          <Search className="w-4 h-4 text-slate-400 absolute left-3 top-2.5" />
+          <Search className={`w-4 h-4 absolute left-3 top-2.5 ${isDark ? 'text-slate-400' : 'text-slate-500'}`} />
           <input
             type="text"
             placeholder="Search tickets by title, id, module..."
             value={searchQuery}
             onChange={e => setSearchQuery(e.target.value)}
-            className="w-full pl-9 pr-3 py-1.5 text-xs bg-slate-950 border border-slate-800 rounded-xl text-white focus:outline-none focus:border-purple-500"
+            className={`w-full pl-9 pr-3 py-1.5 text-xs border rounded-xl focus:outline-none focus:border-purple-500 ${
+              isDark
+                ? 'bg-slate-950 border-slate-800 text-white placeholder:text-slate-500'
+                : 'bg-slate-50 border-slate-300 text-slate-900 placeholder:text-slate-400 focus:bg-white'
+            }`}
           />
         </div>
 
@@ -424,7 +469,9 @@ export const TicketFeedbackManager: React.FC<TicketFeedbackManagerProps> = ({
           <select
             value={statusFilter}
             onChange={e => setStatusFilter(e.target.value as any)}
-            className="px-3 py-1.5 text-xs bg-slate-950 border border-slate-800 rounded-xl text-white font-bold focus:outline-none"
+            className={`px-3 py-1.5 text-xs border rounded-xl font-bold focus:outline-none ${
+              isDark ? 'bg-slate-950 border-slate-800 text-white' : 'bg-slate-50 border-slate-300 text-slate-900'
+            }`}
           >
             <option value="ALL">All Statuses</option>
             <option value="Open">Open</option>
@@ -436,7 +483,9 @@ export const TicketFeedbackManager: React.FC<TicketFeedbackManagerProps> = ({
           <select
             value={categoryFilter}
             onChange={e => setCategoryFilter(e.target.value as any)}
-            className="px-3 py-1.5 text-xs bg-slate-950 border border-slate-800 rounded-xl text-white font-bold focus:outline-none"
+            className={`px-3 py-1.5 text-xs border rounded-xl font-bold focus:outline-none ${
+              isDark ? 'bg-slate-950 border-slate-800 text-white' : 'bg-slate-50 border-slate-300 text-slate-900'
+            }`}
           >
             <option value="ALL">All Categories</option>
             <option value="Bug / Glitch">Bug / Glitch</option>
@@ -450,7 +499,9 @@ export const TicketFeedbackManager: React.FC<TicketFeedbackManagerProps> = ({
           <select
             value={priorityFilter}
             onChange={e => setPriorityFilter(e.target.value as any)}
-            className="px-3 py-1.5 text-xs bg-slate-950 border border-slate-800 rounded-xl text-white font-bold focus:outline-none"
+            className={`px-3 py-1.5 text-xs border rounded-xl font-bold focus:outline-none ${
+              isDark ? 'bg-slate-950 border-slate-800 text-white' : 'bg-slate-50 border-slate-300 text-slate-900'
+            }`}
           >
             <option value="ALL">All Priorities</option>
             <option value="Low">Low</option>
@@ -462,15 +513,19 @@ export const TicketFeedbackManager: React.FC<TicketFeedbackManagerProps> = ({
       </div>
 
       {/* Tickets List / Table */}
-      <div className="bg-slate-900 border border-slate-800 rounded-2xl overflow-hidden shadow-xl space-y-2">
-        <div className="p-4 bg-slate-950/80 border-b border-slate-800 flex items-center justify-between">
+      <div className={`border rounded-2xl overflow-hidden shadow-xl space-y-2 ${
+        isDark ? 'bg-slate-900 border-slate-800' : 'bg-white border-slate-200'
+      }`}>
+        <div className={`p-4 border-b flex items-center justify-between ${
+          isDark ? 'bg-slate-950/80 border-slate-800' : 'bg-slate-50 border-slate-200'
+        }`}>
           <div className="flex items-center gap-2">
-            <HelpCircle className="w-4 h-4 text-purple-400" />
-            <h3 className="text-sm font-bold text-white m-0">
+            <HelpCircle className="w-4 h-4 text-purple-500" />
+            <h3 className={`text-sm font-bold m-0 ${isDark ? 'text-white' : 'text-slate-900'}`}>
               {activeTab === 'my_tickets' ? 'My Raised Tickets Ledger' : 'All Vidyalaya System Tickets & Feedback'}
             </h3>
           </div>
-          <span className="text-xs text-purple-300 font-mono font-bold">
+          <span className={`text-xs font-mono font-bold ${isDark ? 'text-purple-300' : 'text-purple-700'}`}>
             Showing {filteredTickets.length} of {activeTicketsList.length} tickets
           </span>
         </div>
@@ -478,7 +533,9 @@ export const TicketFeedbackManager: React.FC<TicketFeedbackManagerProps> = ({
         <div className="overflow-x-auto">
           <table className="w-full text-left border-collapse text-xs">
             <thead>
-              <tr className="border-b border-slate-800 bg-slate-950 text-slate-400 font-bold">
+              <tr className={`border-b font-bold ${
+                isDark ? 'border-slate-800 bg-slate-950 text-slate-400' : 'border-slate-200 bg-slate-100 text-slate-700'
+              }`}>
                 <th className="py-3 px-3">Ticket ID</th>
                 <th className="py-3 px-3">Category</th>
                 <th className="py-3 px-4">Title & Description</th>
@@ -489,12 +546,12 @@ export const TicketFeedbackManager: React.FC<TicketFeedbackManagerProps> = ({
                 <th className="py-3 px-3 text-right">Actions</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-slate-800/60 font-sans">
+            <tbody className={`divide-y font-sans ${isDark ? 'divide-slate-800/60' : 'divide-slate-200'}`}>
               {filteredTickets.length === 0 ? (
                 <tr>
                   <td colSpan={8} className="py-12 text-center text-slate-500">
-                    <HelpCircle className="w-8 h-8 text-slate-600 mx-auto mb-2 opacity-50" />
-                    <p className="text-xs font-bold text-slate-400">No tickets found matching current filters.</p>
+                    <HelpCircle className="w-8 h-8 text-slate-400 mx-auto mb-2 opacity-50" />
+                    <p className={`text-xs font-bold ${isDark ? 'text-slate-400' : 'text-slate-600'}`}>No tickets found matching current filters.</p>
                     <button
                       onClick={() => setIsRaiseModalOpen(true)}
                       className="mt-2 px-3 py-1.5 rounded-lg bg-purple-600 hover:bg-purple-500 text-white font-bold text-xs inline-flex items-center gap-1 cursor-pointer"
@@ -512,9 +569,11 @@ export const TicketFeedbackManager: React.FC<TicketFeedbackManagerProps> = ({
                   const statusBadge = STATUS_BADGES[ticket.status] || STATUS_BADGES['Open'];
 
                   return (
-                    <tr key={ticket.id} className="hover:bg-slate-800/40 text-slate-300 transition-colors">
+                    <tr key={ticket.id} className={`transition-colors ${
+                      isDark ? 'hover:bg-slate-800/40 text-slate-300' : 'hover:bg-slate-50 text-slate-800'
+                    }`}>
                       {/* Ticket ID */}
-                      <td className="py-3 px-3 font-mono font-bold text-purple-300">
+                      <td className={`py-3 px-3 font-mono font-bold ${isDark ? 'text-purple-300' : 'text-purple-700'}`}>
                         #{ticket.id}
                       </td>
 
@@ -530,15 +589,19 @@ export const TicketFeedbackManager: React.FC<TicketFeedbackManagerProps> = ({
                       <td className="py-3 px-4 max-w-sm">
                         <div
                           onClick={() => setSelectedTicketForDetail(ticket)}
-                          className="font-bold text-white text-xs hover:text-purple-300 cursor-pointer line-clamp-1"
+                          className={`font-bold text-xs cursor-pointer line-clamp-1 ${
+                            isDark ? 'text-white hover:text-purple-300' : 'text-slate-900 hover:text-purple-700 font-extrabold'
+                          }`}
                         >
                           {ticket.title}
                         </div>
-                        <div className="text-[11px] text-slate-400 line-clamp-1 mt-0.5">
+                        <div className={`text-[11px] line-clamp-1 mt-0.5 ${isDark ? 'text-slate-400' : 'text-slate-600'}`}>
                           {ticket.description}
                         </div>
                         {ticket.evidence && ticket.evidence.length > 0 && (
-                          <div className="flex items-center gap-1 text-[10px] text-purple-300 font-mono mt-1">
+                          <div className={`flex items-center gap-1 text-[10px] font-mono mt-1 ${
+                            isDark ? 'text-purple-300' : 'text-purple-700 font-bold'
+                          }`}>
                             <Paperclip className="w-3 h-3" />
                             <span>{ticket.evidence.length} attachment(s)</span>
                           </div>
@@ -546,7 +609,7 @@ export const TicketFeedbackManager: React.FC<TicketFeedbackManagerProps> = ({
                       </td>
 
                       {/* Module */}
-                      <td className="py-3 px-3 text-slate-300 text-[11px]">
+                      <td className={`py-3 px-3 text-[11px] ${isDark ? 'text-slate-300' : 'text-slate-700'}`}>
                         {ticket.moduleOrPage || 'General'}
                       </td>
 
@@ -566,8 +629,8 @@ export const TicketFeedbackManager: React.FC<TicketFeedbackManagerProps> = ({
 
                       {/* Raised By / Date */}
                       <td className="py-3 px-3">
-                        <div className="font-bold text-white text-[11px]">{ticket.raisedByName}</div>
-                        <div className="text-[10px] text-slate-400 font-mono">
+                        <div className={`font-bold text-[11px] ${isDark ? 'text-white' : 'text-slate-900'}`}>{ticket.raisedByName}</div>
+                        <div className={`text-[10px] font-mono ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>
                           {new Date(ticket.raisedAt).toLocaleDateString()}
                         </div>
                       </td>
@@ -577,7 +640,9 @@ export const TicketFeedbackManager: React.FC<TicketFeedbackManagerProps> = ({
                         <div className="flex items-center justify-end gap-1.5">
                           <button
                             onClick={() => setSelectedTicketForDetail(ticket)}
-                            className="px-2 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 text-[11px] font-bold cursor-pointer transition-all flex items-center gap-1"
+                            className={`px-2 py-1 rounded-lg text-[11px] font-bold cursor-pointer transition-all flex items-center gap-1 border ${
+                              isDark ? 'bg-slate-800 hover:bg-slate-700 text-slate-200 border-slate-700' : 'bg-slate-100 hover:bg-slate-200 text-slate-800 border-slate-200'
+                            }`}
                             title="View Details"
                           >
                             <Eye className="w-3.5 h-3.5" />

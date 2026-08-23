@@ -4,7 +4,8 @@ import { db, DEFAULT_SCHOOL, DEFAULT_SESSIONS, getCurrentUser, setCurrentUser } 
 import { DEFAULT_USER_ACCOUNTS } from '../lib/authDefaults';
 import { UserAccount } from '../types/auth';
 import { DevModeBadge } from './DevModeBadge';
-import { Building2, Calendar, Save, RotateCcw, Plus, Trash2, Edit2, CheckCircle, AlertCircle, RefreshCw } from 'lucide-react';
+import { KvsLogo } from './common/KvsLogo';
+import { Building2, Calendar, Save, RotateCcw, Plus, Trash2, Edit2, CheckCircle, AlertCircle, RefreshCw, Upload, Image as ImageIcon, Sparkles, ExternalLink, X } from 'lucide-react';
 
 interface SchoolSessionFormProps {
   devMode: boolean;
@@ -120,6 +121,29 @@ export const SchoolSessionForm: React.FC<SchoolSessionFormProps> = ({ devMode, o
     }
   };
 
+  const handleLogoUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (!e.target.files || !e.target.files[0]) return;
+    const file = e.target.files[0];
+    if (file.size > 2 * 1024 * 1024) {
+      alert('Logo file size must be under 2MB.');
+      return;
+    }
+    const reader = new FileReader();
+    reader.onload = () => {
+      setSchool(prev => ({ ...prev, logoUrl: reader.result as string }));
+    };
+    reader.readAsDataURL(file);
+  };
+
+  const handleClearLogo = () => {
+    setSchool(prev => ({ ...prev, logoUrl: undefined }));
+  };
+
+  const handleGenerateSubtitle = () => {
+    const subtitle = `An autonomous body under the Ministry of Education, Government of India | KV Code: ${school.kvCode || '2218'}, CBSE Affiliation Number: ${school.cbseAffiliationNo || '1500052'}, CBSE School Code: ${school.cbseSchoolCode || '19133'}, UDISE Code: ${school.udiseCode || '21050903372'}`;
+    setSchool(prev => ({ ...prev, bannerSubtitle: subtitle }));
+  };
+
   const handleSaveSession = async () => {
     if (!editSession.sessionName.trim()) return;
 
@@ -233,7 +257,125 @@ export const SchoolSessionForm: React.FC<SchoolSessionFormProps> = ({ devMode, o
         </div>
 
         <form onSubmit={handleSaveSchool} className="td-form">
+          {/* Logo & Live Banner Branding Section */}
+          <div className="p-4 rounded-2xl bg-purple-950/20 border border-purple-500/30 space-y-4">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+              <div className="flex items-center gap-3">
+                <div className="p-2 rounded-xl bg-purple-600/20 border border-purple-500/40 text-purple-300">
+                  <ImageIcon className="w-5 h-5" />
+                </div>
+                <div>
+                  <h4 className="text-sm font-bold text-white m-0">Vidyalaya / School Logo & Official Emblem</h4>
+                  <p className="text-xs text-purple-200/70 m-0">Upload a custom school logo image or use the built-in KVS Sun Emblem</p>
+                </div>
+              </div>
+
+              <div className="flex items-center gap-2">
+                <label className="px-3 py-1.5 rounded-xl bg-purple-600 hover:bg-purple-500 text-white font-bold text-xs flex items-center gap-1.5 transition-all shadow-sm cursor-pointer">
+                  <Upload className="w-3.5 h-3.5" />
+                  <span>{school.logoUrl ? 'Change Logo' : 'Upload School Logo'}</span>
+                  <input
+                    type="file"
+                    accept="image/*"
+                    onChange={handleLogoUpload}
+                    className="hidden"
+                  />
+                </label>
+
+                {school.logoUrl && (
+                  <button
+                    type="button"
+                    onClick={handleClearLogo}
+                    className="px-2.5 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-rose-300 border border-slate-700 font-bold text-xs flex items-center gap-1 cursor-pointer"
+                    title="Reset to Official KVS Emblem"
+                  >
+                    <X className="w-3.5 h-3.5" />
+                    <span>Reset to KVS Emblem</span>
+                  </button>
+                )}
+              </div>
+            </div>
+
+            {/* Logo Preview & Current Badge */}
+            <div className="flex items-center gap-4 p-3 rounded-xl bg-slate-950/60 border border-slate-800">
+              <KvsLogo logoUrl={school.logoUrl} size="lg" />
+              <div className="space-y-0.5">
+                <div className="text-xs font-bold text-white flex items-center gap-2">
+                  <span>{school.logoUrl ? 'Custom Uploaded Logo Active' : 'Official KVS Rising Sun Vector Emblem Active'}</span>
+                  <span className="px-1.5 py-0.5 rounded text-[10px] bg-emerald-500/20 text-emerald-300 border border-emerald-500/30">
+                    {school.logoUrl ? 'Custom Image' : 'Default Vector'}
+                  </span>
+                </div>
+                <p className="text-[11px] text-slate-400 m-0">
+                  {school.logoUrl
+                    ? 'Your custom school logo is displayed in the top navbar banner, printable diary exports, and dashboard.'
+                    : 'High-detail vector emblem with Sanskrit motto "केन्द्रीय विद्यालय संगठन" is rendered automatically.'}
+                </p>
+              </div>
+            </div>
+
+            {/* Live Banner Preview in Light & Dark Mode */}
+            <div className="space-y-2 pt-2 border-t border-purple-500/20">
+              <span className="text-[11px] font-bold text-purple-300 uppercase tracking-wider block">
+                Live Navbar Banner Preview:
+              </span>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                {/* Light Mode Preview */}
+                <div className="p-3 rounded-2xl bg-gradient-to-r from-[#00529b] via-[#0275d8] to-[#004b8d] border border-sky-400/40 shadow-md text-white">
+                  <div className="text-[9px] font-bold text-sky-200 uppercase tracking-wider mb-1 flex items-center justify-between">
+                    <span>Light Mode (Official KVS Blue)</span>
+                    <span className="px-1 py-0.2 rounded bg-sky-400/30 text-[8px]">Day Mode</span>
+                  </div>
+                  <div className="flex items-center gap-2.5">
+                    <KvsLogo logoUrl={school.logoUrl} size="sm" isDark={false} />
+                    <div className="min-w-0">
+                      <div className="font-serif font-black text-xs text-white uppercase tracking-wide truncate">
+                        {school.schoolName || 'Kendriya Vidyalaya Kutra'}
+                      </div>
+                      <div className="text-[10px] text-sky-100 line-clamp-1">
+                        {school.bannerSubtitle || 'An autonomous body under the Ministry of Education, Government of India'}
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Dark Mode Preview */}
+                <div className="p-3 rounded-2xl bg-gradient-to-r from-[#0B0F19] via-[#121929] to-[#0B0F19] border border-indigo-500/40 shadow-md text-white">
+                  <div className="text-[9px] font-bold text-indigo-300 uppercase tracking-wider mb-1 flex items-center justify-between">
+                    <span>Dark Mode (Midnight Indigo)</span>
+                    <span className="px-1 py-0.2 rounded bg-indigo-500/30 text-[8px]">Night Mode</span>
+                  </div>
+                  <div className="flex items-center gap-2.5">
+                    <KvsLogo logoUrl={school.logoUrl} size="sm" isDark={true} />
+                    <div className="min-w-0">
+                      <div className="font-serif font-black text-xs bg-clip-text text-transparent bg-gradient-to-r from-indigo-100 via-purple-100 to-amber-200 uppercase tracking-wide truncate">
+                        {school.schoolName || 'Kendriya Vidyalaya Kutra'}
+                      </div>
+                      <div className="text-[10px] text-slate-300 line-clamp-1">
+                        {school.bannerSubtitle || 'An autonomous body under the Ministry of Education, Government of India'}
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
+            <div>
+              <label>
+                Portal / App Title <span className="text-rose-400">*</span>
+              </label>
+              <input
+                type="text"
+                value={school.portalName ?? "KVS Teacher's Diary"}
+                onChange={e => setSchool({ ...school, portalName: e.target.value })}
+                placeholder="e.g. KVS Teacher's Diary"
+                required
+              />
+              <span className="text-[10px] text-slate-400 mt-0.5 block">Customizes top-left app title across all user dashboards</span>
+            </div>
+
             <div>
               <label>
                 Vidyalaya / School Name <span className="text-rose-400">*</span>
@@ -242,7 +384,7 @@ export const SchoolSessionForm: React.FC<SchoolSessionFormProps> = ({ devMode, o
                 type="text"
                 value={school.schoolName}
                 onChange={e => setSchool({ ...school, schoolName: e.target.value })}
-                placeholder="e.g. Kendriya Vidyalaya No. 1, Bhubaneswar"
+                placeholder="e.g. Kendriya Vidyalaya Kutra"
                 required
               />
               {devMode && <DevModeBadge pages={1} compact className="mt-1" />}
@@ -256,10 +398,67 @@ export const SchoolSessionForm: React.FC<SchoolSessionFormProps> = ({ devMode, o
                 type="text"
                 value={school.kvCode}
                 onChange={e => setSchool({ ...school, kvCode: e.target.value })}
-                placeholder="e.g. KV-BBSR-1042"
+                placeholder="e.g. 2218"
                 required
               />
               {devMode && <DevModeBadge pages={12} compact className="mt-1" />}
+            </div>
+
+            <div>
+              <label>CBSE Affiliation Number</label>
+              <input
+                type="text"
+                value={school.cbseAffiliationNo || ''}
+                onChange={e => setSchool({ ...school, cbseAffiliationNo: e.target.value })}
+                placeholder="e.g. 1500052"
+              />
+              <span className="text-[10px] text-slate-400 mt-0.5 block">CBSE Affiliation No (Auto-included in banner)</span>
+            </div>
+
+            <div>
+              <label>CBSE School Code</label>
+              <input
+                type="text"
+                value={school.cbseSchoolCode || ''}
+                onChange={e => setSchool({ ...school, cbseSchoolCode: e.target.value })}
+                placeholder="e.g. 19133"
+              />
+              <span className="text-[10px] text-slate-400 mt-0.5 block">CBSE School Code for exams and reports</span>
+            </div>
+
+            <div>
+              <label>UDISE Code</label>
+              <input
+                type="text"
+                value={school.udiseCode || ''}
+                onChange={e => setSchool({ ...school, udiseCode: e.target.value })}
+                placeholder="e.g. 21050903372"
+              />
+              <span className="text-[10px] text-slate-400 mt-0.5 block">National UDISE+ identifier</span>
+            </div>
+
+            <div className="md:col-span-2 lg:col-span-3">
+              <div className="flex items-center justify-between mb-1">
+                <label className="m-0">Banner Statutory / Affiliation Subtitle</label>
+                <button
+                  type="button"
+                  onClick={handleGenerateSubtitle}
+                  className="text-xs text-purple-400 hover:text-purple-300 font-bold flex items-center gap-1 cursor-pointer"
+                >
+                  <Sparkles className="w-3.5 h-3.5" />
+                  <span>Auto-Generate from KV & CBSE Codes</span>
+                </button>
+              </div>
+              <textarea
+                value={school.bannerSubtitle || ''}
+                onChange={e => setSchool({ ...school, bannerSubtitle: e.target.value })}
+                placeholder="An autonomous body under the Ministry of Education, Government of India | KV Code: 2218, CBSE Affiliation Number: 1500052, CBSE School Code: 19133, UDISE Code: 21050903372"
+                rows={2}
+                className="w-full text-xs font-sans p-2.5 rounded-xl bg-slate-950 border border-slate-800 text-white focus:outline-none focus:border-purple-500"
+              />
+              <span className="text-[10px] text-slate-400 mt-0.5 block">
+                This subtitle is displayed in the main top header banner and official diary prints.
+              </span>
             </div>
 
             <div>

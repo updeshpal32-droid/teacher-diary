@@ -20,9 +20,13 @@ import {
   TaskTagDefinition,
   TimetableSlot,
   TeacherProfile,
-  StaffDetailRecord
+  StaffDetailRecord,
+  TeacherAttendanceRecord,
+  LeaveApplication,
+  OnDutyRecord
 } from '../types/academic';
 import { UserAccount } from '../types/auth';
+import { isTeacherAvailableForDeadline, checkTeacherAbsenceOnDate } from '../lib/attendanceAbsenceEngine';
 import { parseSmartDate, ParsedDateResult } from '../lib/smartDateParser';
 import { getTeacherScopedStorageKey, getActiveInspectedTeacher } from '../lib/teacherContext';
 import {
@@ -179,6 +183,10 @@ export const TaskManager: React.FC<TaskManagerProps> = ({ devMode, currentUser, 
   const quickAddContainerRef = useRef<HTMLFormElement>(null);
 
   const [activeInspectedTeacher, setActiveInspectedTeacher] = useState<StaffDetailRecord | null>(null);
+  const [staffList, setStaffList] = useState<StaffDetailRecord[]>([]);
+  const [attendanceRecords, setAttendanceRecords] = useState<TeacherAttendanceRecord[]>([]);
+  const [leaveApplications, setLeaveApplications] = useState<LeaveApplication[]>([]);
+  const [onDutyRecords, setOnDutyRecords] = useState<OnDutyRecord[]>([]);
   const teacherCode = currentUser?.employeeCode;
   const isAdmin = currentUser?.role === 'admin';
 
@@ -192,6 +200,22 @@ export const TaskManager: React.FC<TaskManagerProps> = ({ devMode, currentUser, 
       await loadTaskLists();
       await loadSmartSettings();
       await loadAvailableTags(code);
+
+      // Load faculty and attendance data for deadline availability checking
+      try {
+        const [staffData, attData, leaveData, odData] = await Promise.all([
+          db.get<StaffDetailRecord[]>('setup:staff_details'),
+          db.get<TeacherAttendanceRecord[]>('setup:teacher_attendance'),
+          db.get<LeaveApplication[]>('setup:leave_applications'),
+          db.get<OnDutyRecord[]>('setup:on_duty_records')
+        ]);
+        if (staffData) setStaffList(staffData);
+        if (attData) setAttendanceRecords(attData);
+        if (leaveData) setLeaveApplications(leaveData);
+        if (odData) setOnDutyRecords(odData);
+      } catch (err) {
+        console.error('Error loading staff attendance for tasks:', err);
+      }
     };
     initData();
 
@@ -2965,6 +2989,78 @@ export const TaskManager: React.FC<TaskManagerProps> = ({ devMode, currentUser, 
                     className="w-full px-3 py-2 text-xs bg-slate-950 border border-slate-800 rounded-xl text-white focus:outline-none focus:border-purple-500"
                   />
                 </div>
+              </div>
+
+              {/* Faculty Assignment with Leave & Availability Checking (Rule i & i.a) */}
+              <div className="p-3 rounded-xl bg-slate-950 border border-slate-800 space-y-2">
+                <label className="text-xs font-bold text-slate-300 block mb-1">
+                  Assign To Faculty / Role
+                </label>
+                <select
+                  value={formAssignedTo}
+                  onChange={e => setFormAssignedTo(e.target.value)}
+                  className="w-full px-3 py-2 text-xs bg-slate-900 border border-slate-800 rounded-xl text-white focus:outline-none focus:border-purple-500"
+                >
+                  <option value="Self">Self (My Diary)</option>
+                  {staffList.length > 0 && (
+                    <optgroup label="School Faculty (Availability evaluated for Due Date)">
+                      {staffList.map(teacher => {
+                        const avail = isTeacherAvailableForDeadline(
+                          teacher.employeeCode,
+                          formDueDate,
+                          attendanceRecords,
+                          leaveApplications,
+                          onDutyRecords
+                        );
+
+                        return (
+                          <option
+                            key={teacher.employeeCode}
+                            value={teacher.name}
+                            disabled={!avail.isAvailable}
+                          >
+                            {avail.isAvailable
+                              ? `✅ ${teacher.name} (${teacher.designation || 'Teacher'})`
+                              : `🚫 ${teacher.name} (On ${avail.absenceInfo?.leaveType || avail.absenceInfo?.status || 'Leave'} on ${formDueDate} - Unavailable)`}
+                          </option>
+                        );
+                      })}
+                    </optgroup>
+                  )}
+                  <optgroup label="Other Roles">
+                    <option value="Lab Attendant">Lab Attendant</option>
+                    <option value="Student Council">Student Council</option>
+                    <option value="Co-Teacher">Co-Teacher</option>
+                  </optgroup>
+                </select>
+
+                {(() => {
+                  const selectedTeacher = staffList.find(s => s.name === formAssignedTo);
+                  if (!selectedTeacher) return null;
+                  const avail = isTeacherAvailableForDeadline(
+                    selectedTeacher.employeeCode,
+                    formDueDate,
+                    attendanceRecords,
+                    leaveApplications,
+                    onDutyRecords
+                  );
+                  if (!avail.isAvailable) {
+                    return (
+                      <div className="p-2 rounded-lg bg-amber-950/40 border border-amber-500/40 text-[11px] text-amber-300 flex items-start gap-1.5">
+                        <AlertTriangle className="w-4 h-4 text-amber-400 shrink-0 mt-0.5" />
+                        <div>
+                          <span className="font-bold text-white">
+                            {selectedTeacher.name} is on {avail.absenceInfo?.leaveType || avail.absenceInfo?.status || 'Leave'}
+                          </span>
+                          <span className="block text-[10px] text-amber-300/80">
+                            Leave duration: {avail.absenceInfo?.fromDate} to {avail.absenceInfo?.toDate}. Please select a due date outside this period or assign to an available colleague.
+                          </span>
+                        </div>
+                      </div>
+                    );
+                  }
+                  return null;
+                })()}
               </div>
 
               {/* Subtasks Builder */}

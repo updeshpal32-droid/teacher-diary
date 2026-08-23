@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { CalendarEvent } from '../types/academic';
 import { db, DEFAULT_CALENDAR } from '../lib/storage';
+import { useActiveWorkingDate } from '../lib/activeDateContext';
 import { DevModeBadge } from './DevModeBadge';
 import { Calendar as CalIcon, Search, Plus, Edit2, Trash2, Save, RotateCcw, CheckCircle, AlertCircle, Tag, Filter } from 'lucide-react';
 
@@ -10,6 +11,7 @@ interface KvsCalendarManagerProps {
 }
 
 export const KvsCalendarManager: React.FC<KvsCalendarManagerProps> = ({ devMode, onSaved }) => {
+  const { activeDate } = useActiveWorkingDate();
   const [events, setEvents] = useState<CalendarEvent[]>(DEFAULT_CALENDAR);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
@@ -20,10 +22,10 @@ export const KvsCalendarManager: React.FC<KvsCalendarManagerProps> = ({ devMode,
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editEvent, setEditEvent] = useState<CalendarEvent>({
     id: '',
-    date: '2025-08-15',
-    title: 'Independence Day',
+    date: activeDate || '2026-08-18',
+    title: 'KVS Activity',
     category: 'KVS Activity',
-    description: 'Vidyalaya Flag Hoisting & Cultural Programme',
+    description: '',
     templateRefPage: 50
   });
 

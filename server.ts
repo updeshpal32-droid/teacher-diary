@@ -5,7 +5,7 @@ import { GoogleGenAI, Type } from "@google/genai";
 
 async function startServer() {
   const app = express();
-  const PORT = Number(process.env.PORT) || 3000;
+  const PORT = Number(process.env.PORT) || 3001;
 
   app.use(express.json({ limit: "50mb" }));
 
@@ -1110,6 +1110,14 @@ Produce an official inspection-ready daily period lesson plan matching the JSON 
   app.listen(PORT, "0.0.0.0", () => {
     console.log(`Server running on http://0.0.0.0:${PORT}`);
   });
+  if (PORT === 3001) {
+    try {
+      const s3000 = app.listen(3000, "0.0.0.0", () => {
+        console.log(`Secondary listener active on http://0.0.0.0:3000`);
+      });
+      s3000.on('error', () => {});
+    } catch (_) {}
+  }
 }
 
 startServer();

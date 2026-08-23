@@ -25,13 +25,15 @@ import {
   Layers,
   Code,
   HelpCircle,
-  Shield
+  Shield,
+  ExternalLink
 } from 'lucide-react';
 import { CloudSyncBadge } from '../CloudSyncBadge';
+import { KvsLogo } from '../common/KvsLogo';
 import { UserAccount } from '../../types/auth';
-import { PortfolioAssignment } from '../../types/academic';
+import { PortfolioAssignment, SchoolDetails } from '../../types/academic';
 import { type TopModuleKey, getVisibleTopModules, isAdminOrDataManager } from '../../lib/permissions';
-import { db, DEFAULT_PORTFOLIO_ASSIGNMENTS } from '../../lib/storage';
+import { db, DEFAULT_PORTFOLIO_ASSIGNMENTS, DEFAULT_SCHOOL } from '../../lib/storage';
 
 export type { TopModuleKey };
 
@@ -165,6 +167,7 @@ export const TopNavBar: React.FC<TopNavBarProps> = ({
   const [isUserDropdownOpen, setIsUserDropdownOpen] = useState(false);
   const dropdownRef = useRef<HTMLDivElement>(null);
   const [assignments, setAssignments] = useState<PortfolioAssignment[]>([]);
+  const [schoolDetails, setSchoolDetails] = useState<SchoolDetails>(DEFAULT_SCHOOL);
 
   useEffect(() => {
     const loadAssignments = async () => {
@@ -173,9 +176,22 @@ export const TopNavBar: React.FC<TopNavBarProps> = ({
     };
     loadAssignments();
 
+    const loadSchool = async () => {
+      const saved = await db.get<SchoolDetails>('setup:school');
+      if (saved) setSchoolDetails(saved);
+    };
+    loadSchool();
+
     const handleUpdate = () => loadAssignments();
+    const handleSchoolUpdate = () => loadSchool();
+
     window.addEventListener('kvs-portfolios-updated', handleUpdate);
-    return () => window.removeEventListener('kvs-portfolios-updated', handleUpdate);
+    window.addEventListener('kvs-school-updated', handleSchoolUpdate);
+
+    return () => {
+      window.removeEventListener('kvs-portfolios-updated', handleUpdate);
+      window.removeEventListener('kvs-school-updated', handleSchoolUpdate);
+    };
   }, []);
 
   useEffect(() => {
@@ -189,50 +205,122 @@ export const TopNavBar: React.FC<TopNavBarProps> = ({
   }, []);
 
   // Compute visible modules based on permissions
+  const isAdmin = isAdminOrDataManager(currentUser);
   const visibleModuleKeys = getVisibleTopModules(currentUser, assignments);
   const visibleModules = visibleModuleKeys
-    .map(key => ALL_MODULE_DEFINITIONS[key])
-    .filter(Boolean);
+    .map(key => {
+      const def = ALL_MODULE_DEFINITIONS[key];
+      if (!def) return null;
+      if (key === 'roles') {
+        return {
+          ...def,
+          label: isAdmin ? 'Roles & Committees' : 'My Roles & Committees',
+          shortLabel: isAdmin ? 'Roles' : 'My Roles'
+        };
+      }
+      return def;
+    })
+    .filter(Boolean) as ModuleDefinition[];
 
-  const isAdmin = isAdminOrDataManager(currentUser);
+  const isDark = theme !== 'light';
 
   return (
-    <header className="sticky top-0 z-40 w-full backdrop-blur-xl border-b transition-colors duration-200 bg-[#0F111A]/90 dark:bg-[#0B0D14]/95 border-white/10 dark:border-white/10 light:bg-white/95 light:border-slate-200">
+    <header className={`sticky top-0 z-40 w-full backdrop-blur-xl border-b transition-colors duration-200 shadow-md ${
+      isDark
+        ? 'bg-[#0B0D14]/98 border-white/10 text-white'
+        : 'bg-white/98 border-slate-200 text-slate-900 shadow-slate-200/50'
+    }`}>
       <div className="max-w-[1720px] mx-auto px-3 sm:px-5">
         {/* Top Action Row */}
-        <div className="flex items-center justify-between h-14 gap-2 sm:gap-4">
+        <div className="flex items-center justify-between min-h-16 py-1.5 gap-2 sm:gap-4">
           
-          {/* Left: Brand & Mobile Hamburger */}
-          <div className="flex items-center gap-2.5 sm:gap-3 shrink-0">
+          {/* Left: Prominent Left-Aligned Vidyalaya Banner & Mobile Brand */}
+          <div className="flex items-center gap-2.5 sm:gap-3 flex-1 min-w-0">
             <button
               type="button"
               onClick={onOpenMobileMenu}
-              className="lg:hidden p-2 rounded-xl border transition-all text-slate-300 hover:text-white bg-white/5 hover:bg-white/10 border-white/10 light:text-slate-700 light:bg-slate-100 light:border-slate-200 cursor-pointer"
+              className={`lg:hidden p-2 rounded-xl border transition-all cursor-pointer shrink-0 ${
+                isDark
+                  ? 'text-slate-300 hover:text-white bg-white/5 hover:bg-white/10 border-white/10'
+                  : 'text-slate-700 hover:text-slate-900 bg-slate-100 hover:bg-slate-200 border-slate-300'
+              }`}
               aria-label="Open Mobile Menu"
             >
               <Menu className="w-5 h-5" />
             </button>
 
-            {/* School Brand Mark */}
+            {/* Desktop Left-Aligned Vidyalaya Institutional Banner (>= md) */}
+            <div className={`hidden md:flex items-center gap-3 min-w-0 max-w-4xl px-3.5 py-1.5 rounded-2xl border transition-all select-none ${
+              isDark
+                ? 'bg-gradient-to-r from-[#0B0F19] via-[#121929] to-[#0B0F19] border-indigo-500/30 text-white shadow-md'
+                : 'bg-gradient-to-r from-[#00529b] via-[#0275d8] to-[#004b8d] border-sky-400/50 text-white shadow-md'
+            }`}>
+              <div
+                onClick={() => onSelectModule('dashboard')}
+                className="cursor-pointer transition-transform hover:scale-105 shrink-0"
+                title="Go to Vidyalaya Dashboard"
+              >
+                <KvsLogo logoUrl={schoolDetails.logoUrl} size="md" isDark={isDark} />
+              </div>
+
+              <div className="min-w-0 flex flex-col justify-center">
+                {/* Top Line: Large Bold School Name */}
+                <div className="flex items-center gap-2">
+                  <h1
+                    onClick={() => onSelectModule('dashboard')}
+                    className={`font-serif font-black text-base lg:text-lg tracking-tight truncate cursor-pointer transition-colors m-0 ${
+                      isDark
+                        ? 'bg-clip-text text-transparent bg-gradient-to-r from-white via-indigo-100 to-amber-200 hover:brightness-125'
+                        : 'text-white hover:text-amber-200'
+                    }`}
+                    title={schoolDetails.schoolName || 'Kendriya Vidyalaya Kutra'}
+                  >
+                    {schoolDetails.schoolName || 'Kendriya Vidyalaya Kutra'}
+                  </h1>
+                  {schoolDetails.kvCode && (
+                    <span className={`hidden xl:inline-block px-1.5 py-0.5 rounded text-[10px] font-sans font-bold border ${
+                      isDark
+                        ? 'bg-indigo-500/20 text-indigo-300 border-indigo-500/30'
+                        : 'bg-sky-950/40 text-amber-300 border-sky-400/40'
+                    }`}>
+                      KV.{schoolDetails.kvCode}
+                    </span>
+                  )}
+                </div>
+
+                {/* Bottom Line: Statutory Subtitle (Linked to school website) */}
+                <a
+                  href={schoolDetails.website || 'https://kutra.kvs.ac.in/'}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className={`text-[11px] font-sans transition-colors line-clamp-1 flex items-center gap-1 ${
+                    isDark
+                      ? 'text-slate-300 hover:text-amber-300'
+                      : 'text-sky-100 hover:text-amber-200 font-medium'
+                  }`}
+                  title="Open Official Vidyalaya Website"
+                >
+                  <span>
+                    {schoolDetails.bannerSubtitle ||
+                      `An autonomous body under the Ministry of Education, Government of India | KV Code: ${schoolDetails.kvCode || '2218'}, CBSE Affiliation Number: ${schoolDetails.cbseAffiliationNo || '1500052'}, CBSE School Code: ${schoolDetails.cbseSchoolCode || '19133'}, UDISE Code: ${schoolDetails.udiseCode || '21050903372'}`}
+                  </span>
+                  <ExternalLink className="w-3 h-3 opacity-70 inline shrink-0" />
+                </a>
+              </div>
+            </div>
+
+            {/* Mobile Brand Mark (< md) - Compact, Single Line */}
             <div
               onClick={() => onSelectModule('dashboard')}
-              className="flex items-center gap-2.5 cursor-pointer select-none group"
+              className="flex md:hidden items-center gap-2 cursor-pointer select-none group min-w-0"
               title="Go to Dashboard"
             >
-              <div className="w-8 h-8 sm:w-9 sm:h-9 rounded-xl flex items-center justify-center font-serif font-bold text-sm sm:text-base text-white shadow-md transition-transform group-hover:scale-105 bg-gradient-to-br from-indigo-500 via-purple-500 to-violet-600">
-                KV
-              </div>
-              <div className="min-w-0">
-                <div className="font-serif font-bold text-sm sm:text-base text-slate-100 dark:text-slate-100 light:text-slate-900 leading-none tracking-tight truncate flex items-center gap-1.5">
-                  <span>KVS Teacher's Diary</span>
-                  <span className="hidden xl:inline-block px-1.5 py-0.5 rounded text-[9px] font-sans font-bold bg-indigo-500/20 text-indigo-300 border border-indigo-500/30">
-                    KV Kutra
-                  </span>
-                </div>
-                <div className="text-[10px] text-slate-400 dark:text-slate-400 light:text-slate-500 leading-tight truncate mt-0.5">
-                  {currentUser?.designation ? `${currentUser.designation} Portal` : 'Smart School Suite'}
-                </div>
-              </div>
+              <KvsLogo logoUrl={schoolDetails.logoUrl} size="xs" isDark={isDark} />
+              <span className={`font-serif font-black text-sm tracking-tight truncate ${
+                isDark ? 'text-white' : 'text-slate-900 font-extrabold'
+              }`}>
+                {schoolDetails.portalName || "KVS Teacher's Diary"}
+              </span>
             </div>
           </div>
 
@@ -242,11 +330,15 @@ export const TopNavBar: React.FC<TopNavBarProps> = ({
             <button
               type="button"
               onClick={onQuickTasksClick}
-              className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl text-xs font-semibold transition-all border cursor-pointer bg-purple-950/40 hover:bg-purple-900/60 text-purple-200 border-purple-500/40 light:bg-purple-50 light:text-purple-700 light:border-purple-200"
+              className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl text-xs font-semibold transition-all border cursor-pointer ${
+                isDark
+                  ? 'bg-purple-950/40 hover:bg-purple-900/60 text-purple-200 border-purple-500/40'
+                  : 'bg-purple-100 hover:bg-purple-200 text-purple-900 border-purple-300'
+              }`}
               title="Quick Work & Task Manager Shortcut"
             >
-              <ListTodo className="w-3.5 h-3.5 text-purple-400" />
-              <span className="hidden sm:inline">Tasks</span>
+              <ListTodo className={`w-3.5 h-3.5 ${isDark ? 'text-purple-400' : 'text-purple-700'}`} />
+              <span className="hidden sm:inline font-bold">Tasks</span>
             </button>
 
             {/* Cloud Sync Live Badge */}
@@ -256,25 +348,33 @@ export const TopNavBar: React.FC<TopNavBarProps> = ({
             <button
               type="button"
               onClick={onOpenVersionHistory}
-              className="hidden sm:flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl text-xs font-semibold transition-all border cursor-pointer bg-white/5 hover:bg-white/10 text-slate-200 border-white/10 light:bg-slate-100 light:text-slate-700 light:border-slate-200"
+              className={`hidden sm:flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl text-xs font-semibold transition-all border cursor-pointer ${
+                isDark
+                  ? 'bg-white/5 hover:bg-white/10 text-slate-200 border-white/10'
+                  : 'bg-slate-100 hover:bg-slate-200 text-slate-700 border-slate-300'
+              }`}
               title="Revision Snapshots & History"
             >
-              <History className="w-3.5 h-3.5 text-purple-300" />
-              <span className="hidden md:inline">History</span>
+              <History className={`w-3.5 h-3.5 ${isDark ? 'text-purple-300' : 'text-indigo-600'}`} />
+              <span className="hidden md:inline font-bold">History</span>
             </button>
 
             {/* Theme Toggle */}
             <button
               type="button"
               onClick={onToggleTheme}
-              className="p-2 rounded-xl text-xs font-semibold transition-all border cursor-pointer bg-white/5 hover:bg-white/10 text-slate-200 border-white/10 light:bg-slate-100 light:text-slate-700 light:border-slate-200"
-              title={theme === 'dark' ? 'Switch to Light Mode' : 'Switch to Dark Mode'}
+              className={`p-2 rounded-xl text-xs font-semibold transition-all border cursor-pointer ${
+                isDark
+                  ? 'bg-white/5 hover:bg-white/10 text-amber-400 border-white/10'
+                  : 'bg-indigo-100 hover:bg-indigo-200 text-indigo-700 border-indigo-300'
+              }`}
+              title={isDark ? 'Switch to Light Mode' : 'Switch to Dark Mode'}
               aria-label="Toggle Theme"
             >
-              {theme === 'dark' ? (
+              {isDark ? (
                 <Sun className="w-4 h-4 text-amber-400" />
               ) : (
-                <Moon className="w-4 h-4 text-indigo-600" />
+                <Moon className="w-4 h-4 text-indigo-700" />
               )}
             </button>
 
@@ -286,16 +386,20 @@ export const TopNavBar: React.FC<TopNavBarProps> = ({
                   onClick={() => setIsUserDropdownOpen(!isUserDropdownOpen)}
                   className={`flex items-center gap-1.5 p-1.5 sm:px-2.5 sm:py-1.5 rounded-xl text-xs font-semibold transition-all border cursor-pointer ${
                     isAdmin
-                      ? 'bg-rose-950/40 hover:bg-rose-900/60 border-rose-500/40 text-rose-200 light:bg-rose-50 light:text-rose-700 light:border-rose-200'
-                      : 'bg-emerald-950/40 hover:bg-emerald-900/60 border-emerald-500/40 text-emerald-200 light:bg-emerald-50 light:text-emerald-700 light:border-emerald-200'
+                      ? isDark
+                        ? 'bg-rose-950/40 hover:bg-rose-900/60 border-rose-500/40 text-rose-200'
+                        : 'bg-rose-100 hover:bg-rose-200 border-rose-300 text-rose-900'
+                      : isDark
+                        ? 'bg-emerald-950/40 hover:bg-emerald-900/60 border-emerald-500/40 text-emerald-200'
+                        : 'bg-emerald-100 hover:bg-emerald-200 border-emerald-300 text-emerald-900'
                   }`}
                   title="Active User Session & Settings"
                 >
-                  <div className="w-5 h-5 rounded-full bg-white/15 flex items-center justify-center text-[10px] font-bold">
+                  <div className="w-5 h-5 rounded-full bg-white/20 flex items-center justify-center text-[10px] font-bold">
                     {currentUser.name.charAt(0)}
                   </div>
-                  <span className="hidden md:inline max-w-[130px] truncate">{currentUser.name}</span>
-                  <ChevronDown className="w-3.5 h-3.5 text-slate-400" />
+                  <span className="hidden md:inline max-w-[130px] truncate font-bold">{currentUser.name}</span>
+                  <ChevronDown className={`w-3.5 h-3.5 ${isDark ? 'text-slate-400' : 'text-slate-600'}`} />
                 </button>
               ) : (
                 <button
@@ -310,16 +414,24 @@ export const TopNavBar: React.FC<TopNavBarProps> = ({
 
               {/* Active User Session Dropdown */}
               {isUserDropdownOpen && currentUser && (
-                <div className="absolute right-0 mt-2 w-64 p-2 rounded-2xl shadow-2xl border z-50 backdrop-blur-xl bg-[#131722]/98 border-white/10 text-slate-200 light:bg-white/98 light:border-slate-200 light:text-slate-800 animate-in fade-in slide-in-from-top-1 duration-150">
-                  <div className="p-2.5 border-b border-white/10 light:border-slate-100">
+                <div className={`absolute right-0 mt-2 w-64 p-2 rounded-2xl shadow-2xl border z-50 backdrop-blur-xl animate-in fade-in slide-in-from-top-1 duration-150 ${
+                  isDark
+                    ? 'bg-[#131722]/98 border-white/10 text-slate-200'
+                    : 'bg-white border-slate-200 text-slate-900 shadow-slate-300/60'
+                }`}>
+                  <div className={`p-2.5 border-b ${isDark ? 'border-white/10' : 'border-slate-200'}`}>
                     <p className="text-xs font-bold truncate">{currentUser.name}</p>
-                    <p className="text-[10px] text-slate-400 truncate">{currentUser.designation} • {currentUser.employeeCode || 'KV Staff'}</p>
+                    <p className={`text-[10px] truncate ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>{currentUser.designation} • {currentUser.employeeCode || 'KV Staff'}</p>
                     <div className="mt-1.5 flex items-center gap-1.5">
-                      <span className="inline-flex items-center px-2 py-0.5 rounded text-[10px] font-semibold bg-indigo-500/20 text-indigo-300 border border-indigo-500/30">
+                      <span className={`inline-flex items-center px-2 py-0.5 rounded text-[10px] font-semibold border ${
+                        isDark ? 'bg-indigo-500/20 text-indigo-300 border-indigo-500/30' : 'bg-indigo-100 text-indigo-800 border-indigo-300'
+                      }`}>
                         {currentUser.role.toUpperCase()}
                       </span>
                       {currentUser.isClassTeacherOf && (
-                        <span className="inline-flex items-center px-2 py-0.5 rounded text-[10px] font-semibold bg-emerald-500/20 text-emerald-300 border border-emerald-500/30">
+                        <span className={`inline-flex items-center px-2 py-0.5 rounded text-[10px] font-semibold border ${
+                          isDark ? 'bg-emerald-500/20 text-emerald-300 border-emerald-500/30' : 'bg-emerald-100 text-emerald-800 border-emerald-300'
+                        }`}>
                           CT: {currentUser.isClassTeacherOf}
                         </span>
                       )}
@@ -334,16 +446,18 @@ export const TopNavBar: React.FC<TopNavBarProps> = ({
                         setIsUserDropdownOpen(false);
                         onSelectModule('settings');
                       }}
-                      className="w-full flex items-center gap-2.5 px-3 py-2 text-xs text-left rounded-xl hover:bg-white/10 light:hover:bg-slate-100 transition-colors cursor-pointer"
+                      className={`w-full flex items-center gap-2.5 px-3 py-2 text-xs text-left rounded-xl transition-colors cursor-pointer ${
+                        isDark ? 'hover:bg-white/10 text-slate-200' : 'hover:bg-slate-100 text-slate-800'
+                      }`}
                     >
-                      <Settings className="w-4 h-4 text-purple-400" />
+                      <Settings className="w-4 h-4 text-purple-500" />
                       <div>
                         <div className="font-semibold">Settings & Preferences</div>
-                        <div className="text-[10px] text-slate-400">Theme, backup & account options</div>
+                        <div className={`text-[10px] ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>Theme, backup & account options</div>
                       </div>
                     </button>
 
-                    {/* Feedback & Support Trigger */}
+                    {/* Feedback & Support Desk */}
                     <button
                       type="button"
                       onClick={() => {
@@ -351,12 +465,14 @@ export const TopNavBar: React.FC<TopNavBarProps> = ({
                         onSelectModule('settings');
                         window.dispatchEvent(new CustomEvent('open-settings-tab', { detail: 'tickets' }));
                       }}
-                      className="w-full flex items-center gap-2.5 px-3 py-2 text-xs text-left rounded-xl hover:bg-white/10 light:hover:bg-slate-100 transition-colors cursor-pointer"
+                      className={`w-full flex items-center gap-2.5 px-3 py-2 text-xs text-left rounded-xl transition-colors cursor-pointer ${
+                        isDark ? 'hover:bg-white/10 text-slate-200' : 'hover:bg-slate-100 text-slate-800'
+                      }`}
                     >
-                      <HelpCircle className="w-4 h-4 text-cyan-400" />
+                      <HelpCircle className="w-4 h-4 text-cyan-500" />
                       <div>
                         <div className="font-semibold">Feedback & Support Desk</div>
-                        <div className="text-[10px] text-slate-400">Report issue or feature suggestion</div>
+                        <div className={`text-[10px] ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>Report issue or feature suggestion</div>
                       </div>
                     </button>
 
@@ -367,9 +483,9 @@ export const TopNavBar: React.FC<TopNavBarProps> = ({
                         setIsUserDropdownOpen(false);
                         onLogout();
                       }}
-                      className="w-full flex items-center gap-2.5 px-3 py-2 text-xs text-left rounded-xl text-rose-400 hover:bg-rose-500/10 transition-colors cursor-pointer"
+                      className="w-full flex items-center gap-2.5 px-3 py-2 text-xs text-left rounded-xl text-rose-500 hover:bg-rose-500/10 transition-colors cursor-pointer"
                     >
-                      <LogOut className="w-4 h-4 text-rose-400" />
+                      <LogOut className="w-4 h-4 text-rose-500" />
                       <span className="font-semibold">Switch Account / Logout</span>
                     </button>
                   </div>
@@ -380,34 +496,72 @@ export const TopNavBar: React.FC<TopNavBarProps> = ({
 
         </div>
 
-        {/* Desktop Horizontal Navigation Bar (Filtered dynamically by role) */}
-        <nav className="hidden lg:flex items-center gap-1 overflow-x-auto py-1.5 border-t border-white/5 light:border-slate-100 scrollbar-none">
-          {visibleModules.map(mod => {
-            const Icon = mod.icon;
-            const isActive = activeModule === mod.key;
+        {/* Desktop Horizontal Navigation Bar (Eye-Catching, Large, Clear & Simple Pill Chips) */}
+        <nav className={`hidden lg:flex items-center gap-2 overflow-x-auto py-2.5 px-1 border-t transition-colors scrollbar-none ${
+          isDark ? 'border-white/10 bg-transparent' : 'border-slate-200 bg-slate-100/70'
+        }`}>
+          {/* Dedicated Home / Dashboard Icon Pill */}
+          <button
+            type="button"
+            onClick={() => onSelectModule('dashboard')}
+            className={`flex items-center justify-center p-2.5 sm:px-3.5 sm:py-2.5 rounded-2xl text-xs font-bold transition-all whitespace-nowrap cursor-pointer select-none shrink-0 ${
+              activeModule === 'dashboard'
+                ? isDark
+                  ? 'bg-gradient-to-r from-purple-700 via-indigo-600 to-violet-700 text-white border-2 border-purple-300 shadow-lg shadow-purple-950/80 ring-2 ring-purple-400/50 scale-[1.03]'
+                  : 'bg-gradient-to-r from-indigo-600 to-purple-600 text-white border-2 border-indigo-700 shadow-md shadow-indigo-300 ring-2 ring-indigo-400/60 scale-[1.03]'
+                : isDark
+                  ? 'bg-[#131728]/95 hover:bg-slate-800 text-slate-200 hover:text-white border-2 border-purple-500/40 hover:border-purple-400 shadow-sm hover:scale-[1.02]'
+                  : 'bg-white hover:bg-indigo-50/70 text-slate-900 hover:text-indigo-900 border-2 border-slate-300 hover:border-indigo-500 shadow-sm hover:scale-[1.02]'
+            }`}
+            title="Go to Dashboard (Home)"
+            aria-label="Home Dashboard"
+          >
+            <LayoutDashboard className={`w-4 h-4 sm:w-4.5 sm:h-4.5 ${
+              activeModule === 'dashboard'
+                ? 'text-white'
+                : isDark ? 'text-purple-400' : 'text-indigo-600'
+            }`} />
+          </button>
 
-            return (
-              <button
-                key={mod.key}
-                type="button"
-                onClick={() => onSelectModule(mod.key)}
-                className={`flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-semibold transition-all whitespace-nowrap cursor-pointer select-none ${
-                  isActive
-                    ? 'bg-gradient-to-r from-indigo-600 to-purple-600 text-white shadow-md shadow-indigo-500/20'
-                    : 'text-slate-300 hover:text-white hover:bg-white/5 light:text-slate-600 light:hover:text-slate-900 light:hover:bg-slate-100'
-                }`}
-                title={mod.description}
-              >
-                <Icon className={`w-4 h-4 ${isActive ? 'text-white' : 'text-slate-400 light:text-slate-500'}`} />
-                <span>{mod.label}</span>
-                {mod.badge && (
-                  <span className="px-1.5 py-0.2 rounded text-[9px] font-bold bg-purple-400/20 text-purple-200">
-                    {mod.badge}
+          {/* Module Pill Tabs */}
+          {visibleModules
+            .filter(mod => mod.key !== 'dashboard')
+            .map(mod => {
+              const Icon = mod.icon;
+              const isActive = activeModule === mod.key;
+
+              return (
+                <button
+                  key={mod.key}
+                  type="button"
+                  onClick={() => onSelectModule(mod.key)}
+                  className={`flex items-center gap-2 px-4 py-2 sm:px-4.5 sm:py-2.5 rounded-2xl text-xs sm:text-[13px] font-extrabold tracking-wide uppercase transition-all whitespace-nowrap cursor-pointer select-none shrink-0 ${
+                    isActive
+                      ? isDark
+                        ? 'bg-gradient-to-r from-purple-700 via-indigo-600 to-violet-700 text-white border-2 border-purple-300 shadow-lg shadow-purple-950/80 ring-2 ring-purple-400/50 scale-[1.03]'
+                        : 'bg-gradient-to-r from-indigo-600 to-purple-600 text-white border-2 border-indigo-700 shadow-md shadow-indigo-300 ring-2 ring-indigo-400/60 scale-[1.03]'
+                      : isDark
+                        ? 'bg-[#131728]/95 hover:bg-slate-800 text-slate-100 hover:text-white border-2 border-purple-500/40 hover:border-purple-400 shadow-sm hover:scale-[1.02]'
+                        : 'bg-white hover:bg-indigo-50/70 text-slate-900 hover:text-indigo-950 border-2 border-slate-300 hover:border-indigo-500 shadow-sm hover:scale-[1.02]'
+                  }`}
+                  title={mod.description}
+                >
+                  <Icon className={`w-4 h-4 sm:w-4.5 sm:h-4.5 shrink-0 ${
+                    isActive
+                      ? 'text-white'
+                      : isDark ? 'text-purple-400' : 'text-indigo-600'
+                  }`} />
+                  <span className={isActive ? 'text-white font-black' : isDark ? 'text-slate-100 font-extrabold' : 'text-slate-900 font-black'}>
+                    {mod.label}
                   </span>
-                )}
-              </button>
-            );
-          })}
+                  {mod.badge && (
+                    <span className="px-1.5 py-0.5 rounded-md text-[10px] font-black bg-rose-500 text-white shadow-xs">
+                      {mod.badge}
+                    </span>
+                  )}
+                </button>
+              );
+            })}
         </nav>
       </div>
     </header>

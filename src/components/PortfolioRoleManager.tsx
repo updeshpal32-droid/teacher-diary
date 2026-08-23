@@ -15,9 +15,13 @@ import {
   ThemeCalendarCategory,
   ThemeCalendarMonth,
   HourlyActivity,
-  TeacherTask
+  TeacherTask,
+  TeacherAttendanceRecord,
+  LeaveApplication,
+  OnDutyRecord
 } from '../types/academic';
 import { UserAccount } from '../types/auth';
+import { checkTeacherAbsenceOnDate, isDateInRange } from '../lib/attendanceAbsenceEngine';
 import {
   db,
   DEFAULT_PORTFOLIO_TEMPLATES,
@@ -112,6 +116,10 @@ export const PortfolioRoleManager: React.FC<PortfolioRoleManagerProps> = ({
   const [requests, setRequests] = useState<ResponsibilityRequest[]>([]);
   const [suggestions, setSuggestions] = useState<PortfolioSuggestion[]>([]);
   const [staffList, setStaffList] = useState<StaffDetailRecord[]>([]);
+  const [attendanceRecords, setAttendanceRecords] = useState<TeacherAttendanceRecord[]>([]);
+  const [leaveApplications, setLeaveApplications] = useState<LeaveApplication[]>([]);
+  const [onDutyRecords, setOnDutyRecords] = useState<OnDutyRecord[]>([]);
+  const [currentDate] = useState<string>(() => new Date().toISOString().split('T')[0]);
   const [loading, setLoading] = useState(true);
   const [isDetecting, setIsDetecting] = useState(false);
 
@@ -150,18 +158,7 @@ export const PortfolioRoleManager: React.FC<PortfolioRoleManagerProps> = ({
   const [editingRespId, setEditingRespId] = useState<string | null>(null);
   const [quickAddMemberCode, setQuickAddMemberCode] = useState('');
 
-  // Modals: Delegation
-  const [selectedTemplateForDelegation, setSelectedTemplateForDelegation] = useState<PortfolioTemplate | null>(null);
-  const [selectedRespId, setSelectedRespId] = useState('');
-  const [selectedDelegatedTeacherCode, setSelectedDelegatedTeacherCode] = useState('');
-  const [delegationNotes, setDelegationNotes] = useState('');
-
-  // Modals: Request Review
-  const [selectedRequestForReview, setSelectedRequestForReview] = useState<ResponsibilityRequest | null>(null);
-  const [reviewAction, setReviewAction] = useState<'Approved' | 'Rejected'>('Approved');
-  const [principalRemarks, setPrincipalRemarks] = useState('');
-
-  // Modals: Create Portfolio
+  // Modals: Create Custom Portfolio
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
   const [newPortfolioName, setNewPortfolioName] = useState('');
   const [newPortfolioCategory, setNewPortfolioCategory] = useState<PortfolioCategory>('Academic & Administration');
@@ -169,6 +166,24 @@ export const PortfolioRoleManager: React.FC<PortfolioRoleManagerProps> = ({
   const [newPortfolioRespTitle, setNewPortfolioRespTitle] = useState('');
   const [newPortfolioSubCategory, setNewPortfolioSubCategory] = useState('');
   const [newPortfolioRespFreq, setNewPortfolioRespFreq] = useState<ResponsibilityFrequency>('Monthly');
+
+  // Modals: Delegation
+  const [selectedTemplateForDelegation, setSelectedTemplateForDelegation] = useState<PortfolioTemplate | null>(null);
+  const [selectedRespId, setSelectedRespId] = useState('');
+  const [selectedDelegatedTeacherCode, setSelectedDelegatedTeacherCode] = useState('');
+  const [delegationNotes, setDelegationNotes] = useState('');
+
+  // Modals: Proposal Request (Phase 3)
+  const [isRequestModalOpen, setIsRequestModalOpen] = useState(false);
+  const [requestTargetTemplateId, setRequestTargetTemplateId] = useState<string>('');
+  const [requestTitle, setRequestTitle] = useState<string>('');
+  const [requestDesc, setRequestDesc] = useState<string>('');
+  const [requestFreq, setRequestFreq] = useState<ResponsibilityFrequency>('Monthly');
+
+  // Principal Review Dialog (Phase 3)
+  const [selectedRequestForReview, setSelectedRequestForReview] = useState<ResponsibilityRequest | null>(null);
+  const [reviewAction, setReviewAction] = useState<'Approved' | 'Rejected'>('Approved');
+  const [principalRemarks, setPrincipalRemarks] = useState('');
 
   // Modals: Bulk Import
   const [isImportModalOpen, setIsImportModalOpen] = useState(false);
@@ -193,6 +208,11 @@ export const PortfolioRoleManager: React.FC<PortfolioRoleManagerProps> = ({
     );
   }, [staffList, memberSearchQuery]);
 
+  const showNotification = (text: string, type: 'success' | 'error' = 'success') => {
+    setMsg({ text, type });
+    setTimeout(() => setMsg(null), 3500);
+  };
+
   useEffect(() => {
     loadAllData();
 
@@ -202,23 +222,39 @@ export const PortfolioRoleManager: React.FC<PortfolioRoleManagerProps> = ({
 
     window.addEventListener('kvs-portfolios-updated', handlePortfolioUpdate);
     window.addEventListener('kvs-auth-changed', handlePortfolioUpdate);
+    window.addEventListener('kvs-attendance-updated', handlePortfolioUpdate);
     return () => {
       window.removeEventListener('kvs-portfolios-updated', handlePortfolioUpdate);
       window.removeEventListener('kvs-auth-changed', handlePortfolioUpdate);
+      window.removeEventListener('kvs-attendance-updated', handlePortfolioUpdate);
     };
   }, []);
 
   const loadAllData = async () => {
     try {
       setLoading(true);
-      const [tData, aData, dData, rData, sData, staffData, userAccounts] = await Promise.all([
+      const [
+        tData,
+        aData,
+        dData,
+        rData,
+        sData,
+        staffData,
+        userAccounts,
+        attData,
+        leaveData,
+        odData
+      ] = await Promise.all([
         db.get<PortfolioTemplate[]>('setup:portfolio_templates'),
         db.get<PortfolioAssignment[]>('setup:portfolio_assignments'),
         db.get<ResponsibilityDelegation[]>('setup:responsibility_delegations'),
         db.get<ResponsibilityRequest[]>('setup:responsibility_requests'),
         db.get<PortfolioSuggestion[]>('setup:portfolio_suggestions'),
         db.get<StaffDetailRecord[]>('setup:staff_details'),
-        getUserAccounts()
+        getUserAccounts(),
+        db.get<TeacherAttendanceRecord[]>('setup:teacher_attendance'),
+        db.get<LeaveApplication[]>('setup:leave_applications'),
+        db.get<OnDutyRecord[]>('setup:on_duty_records')
       ]);
 
       const loadedTemplates = tData && tData.length > 0 ? tData : DEFAULT_PORTFOLIO_TEMPLATES;
@@ -226,6 +262,10 @@ export const PortfolioRoleManager: React.FC<PortfolioRoleManagerProps> = ({
       setAssignments(aData && aData.length > 0 ? aData : DEFAULT_PORTFOLIO_ASSIGNMENTS);
       setDelegations(dData && dData.length > 0 ? dData : DEFAULT_RESPONSIBILITY_DELEGATIONS);
       setRequests(rData && rData.length > 0 ? rData : DEFAULT_RESPONSIBILITY_REQUESTS);
+
+      if (attData && attData.length > 0) setAttendanceRecords(attData);
+      if (leaveData && leaveData.length > 0) setLeaveApplications(leaveData);
+      if (odData && odData.length > 0) setOnDutyRecords(odData);
 
       const loadedSuggestions = sData && sData.length > 0 ? sData : DEFAULT_PORTFOLIO_SUGGESTIONS;
       setSuggestions(loadedSuggestions);
@@ -296,11 +336,6 @@ export const PortfolioRoleManager: React.FC<PortfolioRoleManagerProps> = ({
     } finally {
       setLoading(false);
     }
-  };
-
-  const showNotification = (text: string, type: 'success' | 'error' = 'success') => {
-    setMsg({ text, type });
-    setTimeout(() => setMsg(null), 3500);
   };
 
   // --------------------------------------------------------------------------
@@ -1335,6 +1370,82 @@ export const PortfolioRoleManager: React.FC<PortfolioRoleManagerProps> = ({
       {/* ========================================================================= */}
       {activeTab === 'committees' && (
         <div className="space-y-4">
+          {/* Absence & Incharge Delegation Alert Banner (Rule iii) */}
+          {(() => {
+            const absentIncharges = templates.filter(t => {
+              const inc = assignments.find(
+                a => a.portfolioTemplateId === t.id && a.role === 'In-charge' && a.status === 'Active'
+              );
+              if (!inc) return false;
+              const abs = checkTeacherAbsenceOnDate(
+                inc.teacherEmployeeCode,
+                currentDate,
+                attendanceRecords,
+                leaveApplications,
+                onDutyRecords
+              );
+              return abs.isAbsent;
+            });
+
+            if (absentIncharges.length === 0) return null;
+
+            return (
+              <div className="p-4 rounded-2xl bg-gradient-to-r from-amber-950/40 via-purple-950/40 to-slate-900 border border-amber-500/40 shadow-lg space-y-2.5 animate-fadeIn">
+                <div className="flex items-start gap-3">
+                  <div className="p-2 rounded-xl bg-amber-500/20 border border-amber-500/40 text-amber-300 shrink-0">
+                    <AlertTriangle className="w-5 h-5" />
+                  </div>
+                  <div className="space-y-0.5 flex-1">
+                    <h4 className="text-xs font-bold text-white uppercase tracking-wider flex items-center gap-2 m-0">
+                      <span>In-Charge Absence & Temporary Shift Notice</span>
+                      <span className="px-2 py-0.2 rounded-full bg-amber-500 text-slate-950 text-[10px] font-black font-mono">
+                        {absentIncharges.length} Committee(s) Affected
+                      </span>
+                    </h4>
+                    <p className="text-xs text-amber-200/90 m-0">
+                      Primary In-Charges of the following committees are currently on Leave / Official OD. Committee oversight and responsibility deadlines have temporarily shifted to Co-Incharges and available senior members.
+                    </p>
+                  </div>
+                </div>
+
+                <div className="flex items-center gap-2 flex-wrap pt-1 border-t border-amber-500/20">
+                  {absentIncharges.map(t => {
+                    const inc = assignments.find(
+                      a => a.portfolioTemplateId === t.id && a.role === 'In-charge' && a.status === 'Active'
+                    );
+                    const members = assignments.filter(
+                      a => a.portfolioTemplateId === t.id && a.role === 'Member' && a.status === 'Active'
+                    );
+                    const acting = members.find(
+                      m =>
+                        !checkTeacherAbsenceOnDate(
+                          m.teacherEmployeeCode,
+                          currentDate,
+                          attendanceRecords,
+                          leaveApplications,
+                          onDutyRecords
+                        ).isAbsent
+                    );
+
+                    return (
+                      <div
+                        key={t.id}
+                        className="inline-flex items-center gap-2 px-3 py-1.5 rounded-xl bg-slate-950/80 border border-amber-500/30 text-xs text-white"
+                      >
+                        <span className="font-bold text-amber-300">{t.name}:</span>
+                        <span className="text-slate-400 line-through">{inc?.teacherName}</span>
+                        <ArrowRight className="w-3.5 h-3.5 text-amber-400" />
+                        <span className="font-bold text-emerald-400">
+                          {acting ? `${acting.teacherName} (Acting)` : 'Next Committee Member'}
+                        </span>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            );
+          })()}
+
           <div className="p-3 bg-slate-900 border border-slate-800 rounded-2xl flex flex-wrap items-center justify-between gap-3">
             <div className="relative flex-1 min-w-[220px]">
               <Search className="w-4 h-4 text-slate-400 absolute left-3 top-2.5" />
@@ -1430,17 +1541,68 @@ export const PortfolioRoleManager: React.FC<PortfolioRoleManagerProps> = ({
 
                     {/* Committee Members Block */}
                     <div className="p-3 rounded-xl bg-slate-950 border border-slate-800 space-y-2 text-xs">
-                      <div className="flex items-center justify-between">
-                        <span className="text-slate-400 font-medium">Primary In-charge (Role):</span>
-                        {incharge ? (
-                          <strong className="text-white flex items-center gap-1">
-                            <UserCheck className="w-3.5 h-3.5 text-purple-400" />
-                            <span>{incharge.teacherName}</span>
-                          </strong>
-                        ) : (
-                          <span className="text-amber-400 text-[11px] italic font-medium">Unassigned</span>
-                        )}
-                      </div>
+                      {(() => {
+                        const inchargeAbsence = incharge
+                          ? checkTeacherAbsenceOnDate(
+                              incharge.teacherEmployeeCode,
+                              currentDate,
+                              attendanceRecords,
+                              leaveApplications,
+                              onDutyRecords
+                            )
+                          : { isAbsent: false };
+
+                        const actingMember = inchargeAbsence.isAbsent
+                          ? members.find(
+                              m =>
+                                !checkTeacherAbsenceOnDate(
+                                  m.teacherEmployeeCode,
+                                  currentDate,
+                                  attendanceRecords,
+                                  leaveApplications,
+                                  onDutyRecords
+                                ).isAbsent
+                            )
+                          : null;
+
+                        return (
+                          <div className="space-y-1.5">
+                            <div className="flex items-center justify-between">
+                              <span className="text-slate-400 font-medium">Primary In-charge (Role):</span>
+                              {incharge ? (
+                                <div className="flex items-center gap-1.5">
+                                  <strong className="text-white flex items-center gap-1">
+                                    <UserCheck className="w-3.5 h-3.5 text-purple-400" />
+                                    <span>{incharge.teacherName}</span>
+                                  </strong>
+                                  {inchargeAbsence.isAbsent && (
+                                    <span className="px-1.5 py-0.2 rounded text-[9px] font-bold uppercase bg-amber-500/20 text-amber-300 border border-amber-500/40">
+                                      On {inchargeAbsence.leaveType || inchargeAbsence.status}
+                                    </span>
+                                  )}
+                                </div>
+                              ) : (
+                                <span className="text-amber-400 text-[11px] italic font-medium">Unassigned</span>
+                              )}
+                            </div>
+
+                            {/* Temporary Responsibility Shift to Acting In-Charge (Rule ii) */}
+                            {incharge && inchargeAbsence.isAbsent && (
+                              <div className="p-2 rounded-lg bg-amber-950/30 border border-amber-500/40 text-[11px] text-amber-200 flex items-start gap-1.5">
+                                <Sparkles className="w-3.5 h-3.5 text-amber-400 shrink-0 mt-0.5" />
+                                <div>
+                                  <span className="font-bold text-white">
+                                    Acting In-Charge: {actingMember ? actingMember.teacherName : 'Next Committee Member'}
+                                  </span>
+                                  <p className="text-[10px] text-amber-300/80 m-0">
+                                    Committee responsibilities shifted temporarily during {incharge.teacherName}'s leave ({inchargeAbsence.fromDate} to {inchargeAbsence.toDate}).
+                                  </p>
+                                </div>
+                              </div>
+                            )}
+                          </div>
+                        );
+                      })()}
 
                       <div className="space-y-1 pt-1 border-t border-slate-800/80">
                         <div className="flex items-center justify-between text-[11px]">

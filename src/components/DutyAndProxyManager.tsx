@@ -12,8 +12,11 @@ import {
 } from '../types/academic';
 import { UserAccount } from '../types/auth';
 import { db, DEFAULT_STAFF_DETAILS, getUserAccounts } from '../lib/storage';
+import { resolveTeacherAttendance, checkTeacherAbsenceOnDate, normalizeFacultyKey } from '../lib/attendanceAbsenceEngine';
+import { useActiveWorkingDate } from '../lib/activeDateContext';
 import { getTeacherScopedStorageKey } from '../lib/teacherContext';
 import { DevModeBadge } from './DevModeBadge';
+import { AutomaticProxyPlannerModal } from './AutomaticProxyPlannerModal';
 import {
   Clock,
   UserCheck,
@@ -103,19 +106,25 @@ export const DutyAndProxyManager: React.FC<DutyAndProxyManagerProps> = ({
   const [periodTimings, setPeriodTimings] = useState<Record<number, { time: string; label: string }>>({});
   const [loading, setLoading] = useState(true);
 
-  // Selected Date for Proxy Substitution
-  const [selectedDate, setSelectedDate] = useState<string>(() => {
-    return new Date().toISOString().split('T')[0];
-  });
+  const { activeDate } = useActiveWorkingDate();
 
-  // Modal: New Proxy Substitution
+  // Selected Date for Proxy Substitution
+  const [selectedDate, setSelectedDate] = useState<string>(activeDate);
+
+  useEffect(() => {
+    if (activeDate) {
+      setSelectedDate(activeDate);
+    }
+  }, [activeDate]);
+
+  // Modal: Automatic Proxy Planner Modal
   const [isProxyModalOpen, setIsProxyModalOpen] = useState(false);
-  const [absentTeacherCode, setAbsentTeacherCode] = useState('');
-  const [absentPeriodNumber, setAbsentPeriodNumber] = useState<number>(1);
-  const [absentClass, setAbsentClass] = useState('VI-A');
-  const [absentSubject, setAbsentSubject] = useState('General');
-  const [substituteTeacherCode, setSubstituteTeacherCode] = useState('');
-  const [proxyNotes, setProxyNotes] = useState('');
+  const [plannerInitialStaff, setPlannerInitialStaff] = useState<StaffDetailRecord | null>(null);
+
+  const handleOpenProxyPlanner = (staff?: StaffDetailRecord | null) => {
+    setPlannerInitialStaff(staff || null);
+    setIsProxyModalOpen(true);
+  };
 
   // Modal: New Campus Duty (Multi-Teacher Selection)
   const [isCampusDutyModalOpen, setIsCampusDutyModalOpen] = useState(false);
@@ -177,32 +186,40 @@ export const DutyAndProxyManager: React.FC<DutyAndProxyManagerProps> = ({
           db.get<Record<number, { time: string; label: string }>>('setup:period_timings')
         ]);
 
-      // Merge Staff
+      // Merge Staff by normalized name key
       const staffMap = new Map<string, StaffDetailRecord>();
       DEFAULT_STAFF_DETAILS.forEach(s => {
-        if (s.employeeCode) staffMap.set(s.employeeCode, s);
+        const key = normalizeFacultyKey(s.name);
+        if (key) staffMap.set(key, s);
       });
       if (savedStaff && savedStaff.length > 0) {
         savedStaff.forEach(s => {
-          if (s.employeeCode) staffMap.set(s.employeeCode, s);
+          const key = normalizeFacultyKey(s.name);
+          if (key) {
+            const existing = staffMap.get(key) || s;
+            staffMap.set(key, { ...existing, ...s });
+          }
         });
       }
       if (userAccounts && userAccounts.length > 0) {
         userAccounts.forEach(u => {
-          if (u.employeeCode) {
-            const existing = staffMap.get(u.employeeCode);
+          const key = normalizeFacultyKey(u.name);
+          if (key) {
+            const existing = staffMap.get(key);
             if (existing) {
-              staffMap.set(u.employeeCode, {
+              staffMap.set(key, {
                 ...existing,
+                employeeCode: u.employeeCode || existing.employeeCode,
                 name: u.name || existing.name,
-                designation: u.designation || existing.designation
+                designation: u.designation || existing.designation,
+                email: existing.email || u.email
               });
             } else {
-              staffMap.set(u.employeeCode, {
+              staffMap.set(key, {
                 id: u.id,
                 serialNo: staffMap.size + 1,
                 name: u.name,
-                employeeCode: u.employeeCode,
+                employeeCode: u.employeeCode || u.id,
                 designation: u.designation || 'Teacher',
                 employmentType: 'Regular',
                 socialCategory: 'GENERAL',
@@ -228,7 +245,7 @@ export const DutyAndProxyManager: React.FC<DutyAndProxyManagerProps> = ({
         });
       }
 
-      const allStaff = Array.from(staffMap.values());
+      const allStaff = Array.from(staffMap.values()).map((s, idx) => ({ ...s, serialNo: idx + 1 }));
       setStaffList(allStaff);
       if (savedTT && savedTT.length > 0) setTimetable(savedTT);
       if (savedProxies && savedProxies.length > 0) setProxyAssignments(savedProxies);
@@ -352,22 +369,17 @@ export const DutyAndProxyManager: React.FC<DutyAndProxyManagerProps> = ({
     return days[dayIndex] || 'Monday';
   }, [selectedDate]);
 
-  // Today's Absent Teachers
+  // Today's Absent / On Leave / OD Teachers
   const absentTeachersToday = useMemo(() => {
     return staffList.filter(s => {
-      const att = attendanceRecords.find(a => a.date === selectedDate && a.employeeCode === s.employeeCode);
-      if (att && (att.status === 'Leave' || att.status === 'OD' || (att as any).status === 'Absent')) return true;
-
-      const leave = leaveApplications.find(
-        l =>
-          l.employeeCode === s.employeeCode &&
-          l.status === 'Sanctioned' &&
-          l.fromDate <= selectedDate &&
-          l.toDate >= selectedDate
+      const abs = checkTeacherAbsenceOnDate(
+        s.employeeCode,
+        selectedDate,
+        attendanceRecords,
+        leaveApplications,
+        []
       );
-      if (leave) return true;
-
-      return false;
+      return abs.isAbsent;
     });
   }, [staffList, attendanceRecords, leaveApplications, selectedDate]);
 
@@ -400,92 +412,7 @@ export const DutyAndProxyManager: React.FC<DutyAndProxyManagerProps> = ({
     });
   };
 
-  // --------------------------------------------------------------------------
-  // ACTION: Assign Proxy Period Substitution
-  // --------------------------------------------------------------------------
-  const handleCreateProxySubstitution = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!substituteTeacherCode || !absentTeacherCode) {
-      alert('Please select both absent teacher and substitute teacher.');
-      return;
-    }
 
-    const absentTeacher = staffList.find(s => s.employeeCode === absentTeacherCode);
-    const subTeacher = staffList.find(s => s.employeeCode === substituteTeacherCode);
-
-    if (!subTeacher) return;
-
-    try {
-      const [cls, sec] = absentClass.includes('-') ? absentClass.split('-') : [absentClass, 'A'];
-      const proxyId = `proxy-${selectedDate}-p${absentPeriodNumber}-${absentClass.toLowerCase().replace(/[^a-z0-9]/g, '')}`;
-
-      const newProxy: ProxyDutyAssignment = {
-        id: proxyId,
-        date: selectedDate,
-        dayOfWeek: selectedDayOfWeek,
-        periodNumber: absentPeriodNumber,
-        timeSlot: periodTimings[absentPeriodNumber]?.time || `Period ${absentPeriodNumber}`,
-        className: cls || 'VI',
-        section: sec || 'A',
-        subjectName: absentSubject || 'Substitution Class',
-        absentTeacherCode: absentTeacherCode,
-        absentTeacherName: absentTeacher?.name || absentTeacherCode,
-        absenceReason: 'On Official Leave / Absent',
-        substituteTeacherCode: subTeacher.employeeCode,
-        substituteTeacherName: subTeacher.name,
-        substituteDesignation: subTeacher.designation,
-        isFreePeriod: true,
-        assignedBy: currentUser?.name
-          ? `${currentUser.name} (Timetable In-charge)`
-          : 'Timetable Committee In-charge',
-        assignedAt: new Date().toISOString(),
-        status: 'Assigned',
-        syncedToTaskSystem: true,
-        notes: proxyNotes.trim() || undefined
-      };
-
-      const updatedProxies = [newProxy, ...proxyAssignments.filter(p => p.id !== proxyId)];
-      setProxyAssignments(updatedProxies);
-      await db.set('setup:proxy_duty_assignments', updatedProxies);
-
-      const subTaskKey = getTeacherScopedStorageKey('setup:tasks', subTeacher.employeeCode);
-      const existingTasks = (await db.get<TeacherTask[]>(subTaskKey)) || [];
-
-      const proxyTask: TeacherTask = {
-        id: `task-proxy-${Date.now()}`,
-        title: `🚨 PROXY DUTY: Period ${absentPeriodNumber} in Class ${absentClass} (${newProxy.timeSlot})`,
-        description: `Substitute teaching duty assigned for absent teacher ${newProxy.absentTeacherName}. Subject: ${newProxy.subjectName}. Note: ${proxyNotes || 'Maintain classroom discipline and academic activity.'}`,
-        priority: 'Do First (Urgent & Important)',
-        status: 'Pending',
-        category: 'Arrangement / Proxy Duty',
-        dueDate: selectedDate,
-        dueTime: periodTimings[absentPeriodNumber]?.time?.split('-')?.[0]?.trim() || '09:00',
-        tags: ['Proxy Substitution', 'Timetable Duty'],
-        subtasks: [],
-        assignedBy: currentUser?.name || 'Timetable Committee',
-        assignedByRole: 'Incharge',
-        createdAt: new Date().toISOString(),
-        updatedAt: new Date().toISOString()
-      };
-
-      const updatedTasks = [proxyTask, ...existingTasks.filter(t => t.id !== proxyTask.id)];
-      await db.set(subTaskKey, updatedTasks);
-
-      window.dispatchEvent(new CustomEvent('kvs-timetable-updated'));
-      window.dispatchEvent(new CustomEvent('kvs-tasks-updated'));
-
-      showNotification(
-        `Assigned Period ${absentPeriodNumber} (${absentClass}) to ${subTeacher.name}. Substitution task added to their task desk!`
-      );
-
-      setIsProxyModalOpen(false);
-      setSubstituteTeacherCode('');
-      setProxyNotes('');
-    } catch (err) {
-      console.error('Error creating proxy assignment:', err);
-      showNotification('Failed to create proxy assignment.', 'error');
-    }
-  };
 
   const handleRemoveProxy = async (proxyId: string, subName: string) => {
     if (!window.confirm(`Cancel proxy substitution assigned to ${subName}?`)) return;
@@ -1424,7 +1351,7 @@ export const DutyAndProxyManager: React.FC<DutyAndProxyManagerProps> = ({
             </div>
 
             <button
-              onClick={() => setIsProxyModalOpen(true)}
+              onClick={() => handleOpenProxyPlanner(null)}
               className="px-3.5 py-1.5 rounded-xl bg-amber-600 hover:bg-amber-500 text-white font-bold text-xs flex items-center gap-1.5 cursor-pointer shadow-md shadow-amber-600/30"
             >
               <Plus className="w-4 h-4" />
@@ -1436,17 +1363,22 @@ export const DutyAndProxyManager: React.FC<DutyAndProxyManagerProps> = ({
             <div className="p-4 rounded-2xl bg-rose-950/40 border border-rose-500/40 space-y-2">
               <div className="flex items-center gap-2 text-xs font-bold text-rose-300">
                 <AlertTriangle className="w-4 h-4 text-rose-400" />
-                <span>Teachers On Leave / Absent for {selectedDate} ({selectedDayOfWeek}):</span>
+                <span>Teachers On Leave / Absent for {selectedDate} ({selectedDayOfWeek}) &bull; Click to plan proxy:</span>
               </div>
               <div className="flex items-center gap-2 flex-wrap">
                 {absentTeachersToday.map(t => (
-                  <span
+                  <button
                     key={t.employeeCode}
-                    className="px-2.5 py-1 rounded-xl bg-rose-950/90 border border-rose-500/50 text-rose-200 text-xs font-bold flex items-center gap-1.5"
+                    type="button"
+                    onClick={() => handleOpenProxyPlanner(t)}
+                    className="px-3 py-1 rounded-xl bg-rose-950/90 hover:bg-rose-900 border border-rose-500/50 hover:border-rose-400 text-rose-200 text-xs font-bold flex items-center gap-2 transition-all cursor-pointer shadow-sm hover:scale-105"
                   >
                     <span>{t.name}</span>
-                    <span className="text-[10px] text-rose-300/80 font-mono">({t.designation || 'Teacher'} - {t.employeeCode})</span>
-                  </span>
+                    <span className="text-[10px] text-rose-300/80 font-mono">({t.designation || 'Teacher'})</span>
+                    <span className="px-1.5 py-0.2 rounded bg-rose-500/30 text-[9px] text-rose-200 font-mono font-bold uppercase">
+                      Plan Proxy
+                    </span>
+                  </button>
                 ))}
               </div>
             </div>
@@ -1622,157 +1554,16 @@ export const DutyAndProxyManager: React.FC<DutyAndProxyManagerProps> = ({
       )}
 
       {/* ========================================================================= */}
-      {/* MODAL: ASSIGN PROXY PERIOD SUBSTITUTION */}
+      {/* MODAL: AUTOMATIC PROXY & SUBSTITUTION PLANNER */}
       {/* ========================================================================= */}
-      {isProxyModalOpen && (
-        <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-          <div className="bg-slate-900 border border-slate-800 rounded-3xl w-full max-w-lg p-6 space-y-4 shadow-2xl relative animate-scaleUp">
-            <div className="flex items-center justify-between pb-3 border-b border-slate-800">
-              <div className="space-y-0.5">
-                <span className="text-[10px] font-mono text-amber-400 font-bold uppercase">
-                  Daily Period Arrangement
-                </span>
-                <h3 className="text-base font-bold text-white m-0">Assign Proxy Substitution</h3>
-              </div>
-              <button
-                onClick={() => setIsProxyModalOpen(false)}
-                className="text-slate-400 hover:text-white p-1 rounded cursor-pointer"
-              >
-                <X className="w-5 h-5" />
-              </button>
-            </div>
-
-            <form onSubmit={handleCreateProxySubstitution} className="space-y-4">
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="text-xs font-bold text-slate-300 block mb-1">Date *</label>
-                  <input
-                    type="date"
-                    required
-                    value={selectedDate}
-                    onChange={e => setSelectedDate(e.target.value)}
-                    className="w-full px-3 py-2 text-xs bg-slate-950 border border-slate-800 rounded-xl text-white font-mono font-bold"
-                  />
-                </div>
-
-                <div>
-                  <label className="text-xs font-bold text-slate-300 block mb-1">Period Number *</label>
-                  <select
-                    value={absentPeriodNumber}
-                    onChange={e => setAbsentPeriodNumber(Number(e.target.value))}
-                    className="w-full px-3 py-2 text-xs bg-slate-950 border border-slate-800 rounded-xl text-white font-bold"
-                  >
-                    {[1, 2, 3, 4, 5, 6, 7, 8].map(p => (
-                      <option key={p} value={p}>
-                        Period {p} ({periodTimings[p]?.time || `Slot ${p}`})
-                      </option>
-                    ))}
-                  </select>
-                </div>
-              </div>
-
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="text-xs font-bold text-slate-300 block mb-1">Class & Section *</label>
-                  <select
-                    value={absentClass}
-                    onChange={e => setAbsentClass(e.target.value)}
-                    className="w-full px-3 py-2 text-xs bg-slate-950 border border-slate-800 rounded-xl text-white font-bold"
-                  >
-                    {['VI-A', 'VII-A', 'VIII-A', 'IX-A', 'X-A', 'XI-A', 'XII-A', 'I-A', 'II-A', 'III-A', 'IV-A', 'V-A'].map(
-                      cls => (
-                        <option key={cls} value={cls}>
-                          Class {cls}
-                        </option>
-                      )
-                    )}
-                  </select>
-                </div>
-
-                <div>
-                  <label className="text-xs font-bold text-slate-300 block mb-1">Subject / Activity:</label>
-                  <input
-                    type="text"
-                    placeholder="e.g. Science / Mathematics"
-                    value={absentSubject}
-                    onChange={e => setAbsentSubject(e.target.value)}
-                    className="w-full px-3 py-2 text-xs bg-slate-950 border border-slate-800 rounded-xl text-white font-bold"
-                  />
-                </div>
-              </div>
-
-              <div>
-                <label className="text-xs font-bold text-slate-300 block mb-1">Absent Teacher *</label>
-                <select
-                  required
-                  value={absentTeacherCode}
-                  onChange={e => setAbsentTeacherCode(e.target.value)}
-                  className="w-full px-3 py-2 text-xs bg-slate-950 border border-slate-800 rounded-xl text-white font-bold focus:outline-none focus:border-rose-500"
-                >
-                  <option value="">-- Select Absent / Leave Teacher --</option>
-                  {staffList.map(s => (
-                    <option key={s.id || s.employeeCode} value={s.employeeCode}>
-                      {s.name} ({s.designation || 'Teacher'} - {s.employeeCode})
-                    </option>
-                  ))}
-                </select>
-              </div>
-
-              <div>
-                <div className="flex items-center justify-between mb-1">
-                  <label className="text-xs font-bold text-slate-300">
-                    Substitute Teacher (Available / Free) *
-                  </label>
-                  <span className="text-[10px] text-emerald-400 font-mono font-bold">
-                    {getFreeTeachersForPeriod(absentPeriodNumber, selectedDayOfWeek).length} Free Teachers
-                  </span>
-                </div>
-                <select
-                  required
-                  value={substituteTeacherCode}
-                  onChange={e => setSubstituteTeacherCode(e.target.value)}
-                  className="w-full px-3 py-2 text-xs bg-slate-950 border border-slate-800 rounded-xl text-emerald-300 font-bold focus:outline-none focus:border-emerald-500"
-                >
-                  <option value="">-- Choose Free Substitute Teacher --</option>
-                  {getFreeTeachersForPeriod(absentPeriodNumber, selectedDayOfWeek).map(s => (
-                    <option key={s.id || s.employeeCode} value={s.employeeCode}>
-                      ✓ {s.name} ({s.designation || 'Teacher'} - {s.employeeCode}) [Free Slot]
-                    </option>
-                  ))}
-                </select>
-              </div>
-
-              <div>
-                <label className="text-xs font-bold text-slate-300 block mb-1">Special Instructions / Tasks:</label>
-                <textarea
-                  rows={2}
-                  placeholder="e.g. Supervise textbook reading / exercise problem solving..."
-                  value={proxyNotes}
-                  onChange={e => setProxyNotes(e.target.value)}
-                  className="w-full px-3 py-2 text-xs bg-slate-950 border border-slate-800 rounded-xl text-white focus:outline-none focus:border-amber-500 resize-none"
-                />
-              </div>
-
-              <div className="flex items-center justify-end gap-3 pt-3 border-t border-slate-800">
-                <button
-                  type="button"
-                  onClick={() => setIsProxyModalOpen(false)}
-                  className="px-4 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 font-bold text-xs cursor-pointer"
-                >
-                  Cancel
-                </button>
-
-                <button
-                  type="submit"
-                  className="px-5 py-2 rounded-xl bg-amber-600 hover:bg-amber-500 text-white font-bold text-xs cursor-pointer shadow-lg shadow-amber-600/30"
-                >
-                  Assign & Sync Task
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
+      <AutomaticProxyPlannerModal
+        isOpen={isProxyModalOpen}
+        onClose={() => setIsProxyModalOpen(false)}
+        initialStaff={plannerInitialStaff}
+        initialDate={selectedDate}
+        currentUser={currentUser}
+        onProxySaved={loadAllData}
+      />
 
       {/* ========================================================================= */}
       {/* MODAL: SCHEDULE CAMPUS DUTY (WITH MULTI-TEACHER CHECKBOX SELECTION) */}

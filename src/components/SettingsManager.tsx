@@ -31,9 +31,17 @@ import {
   LogOut,
   ExternalLink,
   Globe,
-  X
+  X,
+  Calendar
 } from 'lucide-react';
 import { db, resetDatabaseToDefaults, initializeDatabaseIfEmpty, exportAllHistoryJSON, importBackupJSON } from '../lib/storage';
+import {
+  useActiveWorkingDate,
+  addDaysToDate,
+  getLocalTodayDateString,
+  parseAnyDateStringToISO,
+  getDayOfWeekFromDate
+} from '../lib/activeDateContext';
 import { DevModeBadge } from './DevModeBadge';
 import { SchoolDetails, TeacherProfile } from '../types/academic';
 import { UserAccount, getRoleBadgeInfo } from '../types/auth';
@@ -65,6 +73,36 @@ export const SettingsManager: React.FC<SettingsManagerProps> = ({
   const [designation, setDesignation] = useState('TGT Mathematics');
   const [isEditingAccount, setIsEditingAccount] = useState(false);
   const [accountSaveMsg, setAccountSaveMsg] = useState<string | null>(null);
+  // Unified Active Working Date System State
+  const { activeDate, activeDayName, formattedDate, isWeekend, setActiveDate } = useActiveWorkingDate();
+  const [typedDateInput, setTypedDateInput] = useState<string>(activeDate);
+  const [dateSavedMsg, setDateSavedMsg] = useState<string | null>(null);
+  const [dateInputError, setDateInputError] = useState<string | null>(null);
+  const datePickerInputRef = React.useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    setTypedDateInput(activeDate);
+  }, [activeDate]);
+
+  const handleCommitTypedDate = async () => {
+    if (!typedDateInput || typedDateInput.trim() === '') {
+      setTypedDateInput(activeDate);
+      setDateInputError(null);
+      return;
+    }
+    const parsed = parseAnyDateStringToISO(typedDateInput);
+    if (parsed) {
+      setDateInputError(null);
+      await setActiveDate(parsed);
+      setTypedDateInput(parsed);
+      setDateSavedMsg(`Active working date updated to ${parsed} (${getDayOfWeekFromDate(parsed)})!`);
+      setTimeout(() => setDateSavedMsg(null), 3500);
+    } else {
+      setDateInputError(`Invalid date format. Please enter YYYY-MM-DD or DD/MM/YYYY`);
+      setTypedDateInput(activeDate);
+      setTimeout(() => setDateInputError(null), 4000);
+    }
+  };
 
   // System Permissions & Feature Toggles
   const [aiAssistantEnabled, setAiAssistantEnabled] = useState(true);
@@ -355,8 +393,231 @@ export const SettingsManager: React.FC<SettingsManagerProps> = ({
 
       {/* Admin Only: Staff Account Directory & Dynamic Subject Allocations */}
       {currentUser?.role === 'admin' && (
-        <UserAccountManager currentUserId={currentUser.id} />
+        <UserAccountManager currentUserId={currentUser.id} theme={theme} />
       )}
+
+      {/* Principal / Admin Control: Unified Active Working Date System */}
+      <div className={`border rounded-2xl p-6 space-y-4 shadow-md transition-all ${
+        theme === 'light'
+          ? 'bg-gradient-to-r from-emerald-50 via-teal-50 to-white border-emerald-300 text-slate-900'
+          : 'bg-gradient-to-r from-emerald-950/50 via-teal-950/30 to-slate-900 border-emerald-500/40 text-slate-100'
+      }`}>
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-emerald-500/20 pb-3">
+          <div className="flex items-center gap-3">
+            <div className="p-2.5 rounded-xl bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 shrink-0">
+              <Calendar className="w-5 h-5" />
+            </div>
+            <div>
+              <div className="flex items-center gap-2 flex-wrap">
+                <h3 className={`font-black text-base m-0 ${theme === 'light' ? 'text-slate-900' : 'text-white'}`}>
+                  Unified Active Working Date System
+                </h3>
+                <span className="px-2 py-0.5 rounded-full text-[10px] font-black bg-emerald-500/20 text-emerald-400 border border-emerald-500/40">
+                  Principal / Admin Authority
+                </span>
+              </div>
+              <p className={`text-xs m-0 mt-0.5 ${theme === 'light' ? 'text-slate-600' : 'text-slate-400'}`}>
+                This date drives the Dashboard, Attendance, Timetable, Proxy, Duties, Calendar views, and all default dates in dialogs.
+              </p>
+            </div>
+          </div>
+
+          <div className="flex items-center gap-2">
+            <span className="px-3 py-1.5 rounded-xl bg-slate-950/80 border border-emerald-500/40 text-emerald-300 font-mono font-bold text-xs flex items-center gap-1.5 shadow-sm">
+              <span>{activeDayName || 'Unknown Day'}</span>
+              <span>•</span>
+              <span>{formattedDate || activeDate}</span>
+            </span>
+          </div>
+        </div>
+
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-5 pt-1">
+          {/* Interactive Date Picker with Live Calculation */}
+          <div className="space-y-2">
+            <label className={`text-xs font-bold block ${theme === 'light' ? 'text-slate-700' : 'text-slate-300'}`}>
+              Set Active Academic Working Date:
+            </label>
+            <div className="flex items-center gap-2 flex-wrap sm:flex-nowrap">
+              {/* Text / Date input container with calendar picker button */}
+              <div className="relative flex items-center">
+                <input
+                  type="text"
+                  value={typedDateInput}
+                  placeholder="YYYY-MM-DD or DD/MM/YYYY"
+                  onChange={e => {
+                    setTypedDateInput(e.target.value);
+                    setDateInputError(null);
+                  }}
+                  onBlur={handleCommitTypedDate}
+                  onKeyDown={e => {
+                    if (e.key === 'Enter') {
+                      e.preventDefault();
+                      handleCommitTypedDate();
+                    }
+                  }}
+                  className={`pl-3.5 pr-10 py-2 rounded-xl border text-sm font-mono font-bold focus:outline-none shadow-inner w-44 ${
+                    theme === 'light'
+                      ? 'bg-white border-emerald-400 text-slate-900 focus:border-emerald-600'
+                      : 'bg-slate-950 border-emerald-500/50 text-white focus:border-emerald-400'
+                  }`}
+                  title="Type date in YYYY-MM-DD or DD/MM/YYYY and press Enter"
+                />
+                
+                {/* Hidden native date picker triggered by calendar icon */}
+                <input
+                  ref={datePickerInputRef}
+                  type="date"
+                  value={activeDate}
+                  onChange={async e => {
+                    if (e.target.value) {
+                      await setActiveDate(e.target.value);
+                      setTypedDateInput(e.target.value);
+                      setDateInputError(null);
+                      setDateSavedMsg(`Active working date updated to ${e.target.value} (${getDayOfWeekFromDate(e.target.value)})!`);
+                      setTimeout(() => setDateSavedMsg(null), 3000);
+                    }
+                  }}
+                  className="absolute opacity-0 pointer-events-none w-0 h-0"
+                  tabIndex={-1}
+                />
+
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (datePickerInputRef.current) {
+                      if ('showPicker' in HTMLInputElement.prototype) {
+                        try {
+                          datePickerInputRef.current.showPicker();
+                        } catch (_) {
+                          datePickerInputRef.current.focus();
+                        }
+                      } else {
+                        datePickerInputRef.current.focus();
+                      }
+                    }
+                  }}
+                  className="absolute right-2.5 p-1 text-emerald-400 hover:text-emerald-300 hover:bg-emerald-500/20 rounded-lg transition-colors cursor-pointer"
+                  title="Open Calendar Date Picker"
+                >
+                  <Calendar className="w-4 h-4" />
+                </button>
+              </div>
+
+              <span className={`px-3 py-2 rounded-xl font-mono font-bold text-xs flex items-center gap-1.5 shrink-0 ${
+                isWeekend
+                  ? 'bg-amber-500/20 text-amber-300 border border-amber-500/40'
+                  : 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/40'
+              }`}>
+                <span>{activeDayName}</span>
+                {isWeekend && <span className="text-[10px] uppercase font-sans font-bold">(Weekend)</span>}
+              </span>
+            </div>
+
+            {dateInputError && (
+              <p className="text-[11px] text-rose-400 font-bold flex items-center gap-1 animate-fadeIn m-0">
+                <AlertTriangle className="w-3.5 h-3.5 shrink-0" />
+                <span>{dateInputError}</span>
+              </p>
+            )}
+
+            {dateSavedMsg && !dateInputError && (
+              <p className="text-[11px] text-emerald-400 font-bold flex items-center gap-1 animate-fadeIn m-0">
+                <CheckCircle2 className="w-3.5 h-3.5 shrink-0" />
+                <span>{dateSavedMsg}</span>
+              </p>
+            )}
+          </div>
+
+          {/* Quick Presets */}
+          <div className="space-y-2">
+            <label className={`text-xs font-bold block ${theme === 'light' ? 'text-slate-700' : 'text-slate-300'}`}>
+              Quick Working Date Presets:
+            </label>
+            <div className="flex items-center gap-2 flex-wrap">
+              <button
+                type="button"
+                onClick={async () => {
+                  await setActiveDate('2026-08-18');
+                  setTypedDateInput('2026-08-18');
+                  setDateInputError(null);
+                  setDateSavedMsg('Switched to Session Date (18 Aug 2026 - Tuesday)!');
+                  setTimeout(() => setDateSavedMsg(null), 3000);
+                }}
+                className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer border ${
+                  activeDate === '2026-08-18'
+                    ? 'bg-emerald-500 text-slate-950 border-emerald-400 shadow-md font-black'
+                    : theme === 'light'
+                    ? 'bg-slate-100 hover:bg-slate-200 text-slate-700 border-slate-300'
+                    : 'bg-slate-950/70 hover:bg-slate-900 text-slate-300 border-slate-700'
+                }`}
+              >
+                18 Aug 2026 (Tuesday Session)
+              </button>
+
+              <button
+                type="button"
+                onClick={async () => {
+                  const today = getLocalTodayDateString();
+                  await setActiveDate(today);
+                  setTypedDateInput(today);
+                  setDateInputError(null);
+                  setDateSavedMsg(`Switched to Real Calendar Today (${today})!`);
+                  setTimeout(() => setDateSavedMsg(null), 3000);
+                }}
+                className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer border ${
+                  activeDate === getLocalTodayDateString()
+                    ? 'bg-emerald-500 text-slate-950 border-emerald-400 shadow-md font-black'
+                    : theme === 'light'
+                    ? 'bg-slate-100 hover:bg-slate-200 text-slate-700 border-slate-300'
+                    : 'bg-slate-950/70 hover:bg-slate-900 text-slate-300 border-slate-700'
+                }`}
+              >
+                Real Calendar Today
+              </button>
+
+              <button
+                type="button"
+                onClick={async () => {
+                  const prevStr = addDaysToDate(activeDate, -1);
+                  await setActiveDate(prevStr);
+                  setTypedDateInput(prevStr);
+                  setDateInputError(null);
+                  setDateSavedMsg(`Stepped back to ${prevStr} (${getDayOfWeekFromDate(prevStr)})!`);
+                  setTimeout(() => setDateSavedMsg(null), 3000);
+                }}
+                className={`px-2.5 py-1.5 rounded-xl text-xs font-mono font-bold transition-all cursor-pointer border ${
+                  theme === 'light'
+                    ? 'bg-slate-100 hover:bg-slate-200 text-slate-700 border-slate-300'
+                    : 'bg-slate-950/70 hover:bg-slate-900 text-slate-300 border-slate-700'
+                }`}
+                title="Previous Day (-1)"
+              >
+                &larr; Prev Day
+              </button>
+
+              <button
+                type="button"
+                onClick={async () => {
+                  const nextStr = addDaysToDate(activeDate, 1);
+                  await setActiveDate(nextStr);
+                  setTypedDateInput(nextStr);
+                  setDateInputError(null);
+                  setDateSavedMsg(`Advanced to ${nextStr} (${getDayOfWeekFromDate(nextStr)})!`);
+                  setTimeout(() => setDateSavedMsg(null), 3000);
+                }}
+                className={`px-2.5 py-1.5 rounded-xl text-xs font-mono font-bold transition-all cursor-pointer border ${
+                  theme === 'light'
+                    ? 'bg-slate-100 hover:bg-slate-200 text-slate-700 border-slate-300'
+                    : 'bg-slate-950/70 hover:bg-slate-900 text-slate-300 border-slate-700'
+                }`}
+                title="Next Day (+1)"
+              >
+                Next Day &rarr;
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
 
       {/* Grid Layout for Settings Sections */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">

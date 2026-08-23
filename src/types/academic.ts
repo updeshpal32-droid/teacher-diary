@@ -11,6 +11,12 @@ export interface SchoolDetails {
   website: string;
   schoolCode?: string;
   academicYear?: string;
+  portalName?: string;
+  cbseAffiliationNo?: string;
+  cbseSchoolCode?: string;
+  udiseCode?: string;
+  bannerSubtitle?: string;
+  logoUrl?: string;
 }
 
 export interface AcademicTarget {
@@ -193,7 +199,7 @@ export interface TimetableSlot {
   period: number; // 1 to 9
   className: string;
   subjectName: string;
-  roomNo: string;
+  roomNo?: string;
   teacherName?: string;
   teacherId?: string; // Teacher_ID foreign key
   timeSlot?: string;  // e.g. "07:50 - 08:30"
@@ -1851,6 +1857,8 @@ export interface LeaveApplication {
   recommendedBy?: string; // e.g. "Vice Principal / Incharge"
   sanctionedBy?: string;  // e.g. "Sh. Hemananda Barik (Principal I/c)"
   sanctionedAt?: string;
+  cancelledBy?: string;
+  cancelledAt?: string;
   principalRemarks?: string;
   proxyArrangementsConfirmed?: boolean;
 }

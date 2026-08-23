@@ -179,6 +179,10 @@ export const db = {
 export const DEFAULT_SCHOOL: SchoolDetails = {
   schoolName: 'Kendriya Vidyalaya Kutra',
   kvCode: '2218',
+  cbseAffiliationNo: '1500052',
+  cbseSchoolCode: '19133',
+  udiseCode: '21050903372',
+  bannerSubtitle: 'An autonomous body under the Ministry of Education, Government of India | KV Code: 2218, CBSE Affiliation Number: 1500052, CBSE School Code: 19133, UDISE Code: 21050903372',
   region: 'Bhubaneswar Region',
   officialEmail: 'kvkutra1@gmail.com',
   address: 'At Centre Primary School Campus, Kutra, Sundargarh, Odisha - 770018',
@@ -187,7 +191,8 @@ export const DEFAULT_SCHOOL: SchoolDetails = {
   vicePrincipalName: 'Nil',
   phoneNo: '+91 6001419689',
   website: 'https://kutra.kvs.ac.in/',
-  academicYear: '2026 - 2027'
+  academicYear: '2026 - 2027',
+  portalName: "KVS Teacher's Diary"
 };
 
 export const DEFAULT_TEACHER: TeacherProfile = {
@@ -403,155 +408,9 @@ export const DEFAULT_SUBJECTS: SubjectItem[] = [
   { id: 'sbj-017', subjectName: 'Physical Education (048)', subjectCode: '048', classLevel: 'XI & XII', targetPassRate: 100, targetA1Count: 20 }
 ];
 
-export const DEFAULT_TIMETABLE: TimetableSlot[] = [
-  // Monday
-  { id: 'tt-mon-1a', day: 'Monday', period: 1, className: 'X-A', subjectName: 'Mathematics', roomNo: 'Room 24', teacherName: 'UPDESH SINGH PAL' },
-  { id: 'tt-mon-1b', day: 'Monday', period: 1, className: 'VI-A', subjectName: 'Science', roomNo: 'Room 16', teacherName: 'A GAYATRI' },
-  { id: 'tt-mon-1c', day: 'Monday', period: 1, className: 'IV-A', subjectName: 'Environmental Studies (EVS)', roomNo: 'Room 10', teacherName: 'SANTWANA DASH' },
-  { id: 'tt-mon-sr-1', day: 'Monday', period: 1, className: 'VI-A', subjectName: 'Art Education', roomNo: 'Art Room', teacherName: 'SAMYA RAHA', teacherId: '106020' },
-  { id: 'tt-mon-sk-1', day: 'Monday', period: 1, className: 'VII-A', subjectName: 'English', roomNo: 'Room 19', teacherName: 'SANJUKTA KUJUR', teacherId: '106019' },
-  { id: 'tt-mon-2a', day: 'Monday', period: 2, className: 'XII-A', subjectName: 'Mathematics', roomNo: 'Room 32', teacherName: 'UPDESH SINGH PAL' },
-  { id: 'tt-mon-2b', day: 'Monday', period: 2, className: 'VIII-A', subjectName: 'Science', roomNo: 'Room 20', teacherName: 'A GAYATRI' },
-  { id: 'tt-mon-pp-2', day: 'Monday', period: 2, className: 'VI-A', subjectName: 'Hindi', roomNo: 'Room 16', teacherName: 'PRIYABRATA PADHAN', teacherId: '76958' },
-  { id: 'tt-mon-3a', day: 'Monday', period: 3, className: 'XI-B', subjectName: 'Mathematics', roomNo: 'Lab 2', teacherName: 'UPDESH SINGH PAL' },
-  { id: 'tt-mon-3b', day: 'Monday', period: 3, className: 'V-A', subjectName: 'English', roomNo: 'Room 12', teacherName: 'SANTWANA DASH' },
-  { id: 'tt-mon-sr-3', day: 'Monday', period: 3, className: 'VII-A', subjectName: 'Art Education', roomNo: 'Art Room', teacherName: 'SAMYA RAHA', teacherId: '106020' },
-  { id: 'tt-mon-dm-3', day: 'Monday', period: 3, className: 'IX-A', subjectName: 'Library Science', roomNo: 'Library', teacherName: 'DIPANWITA MANDAL', teacherId: '102725' },
-  { id: 'tt-mon-4a', day: 'Monday', period: 4, className: 'X-A', subjectName: 'Maths Practical / Lab', roomNo: 'Math Lab', teacherName: 'UPDESH SINGH PAL' },
-  { id: 'tt-mon-4b', day: 'Monday', period: 4, className: 'XI-B', subjectName: 'Biology', roomNo: 'Bio Lab', teacherName: 'A GAYATRI' },
-  { id: 'tt-mon-sk-4', day: 'Monday', period: 4, className: 'IX-A', subjectName: 'English Language & Literature', roomNo: 'Room 18', teacherName: 'SANJUKTA KUJUR', teacherId: '106019' },
-  { id: 'tt-mon-5a', day: 'Monday', period: 5, className: 'XII-A', subjectName: 'Mathematics', roomNo: 'Room 32', teacherName: 'UPDESH SINGH PAL' },
-  { id: 'tt-mon-5b', day: 'Monday', period: 5, className: 'VII-A', subjectName: 'Science', roomNo: 'Room 19', teacherName: 'A GAYATRI' },
-  { id: 'tt-mon-sr-5', day: 'Monday', period: 5, className: 'VIII-A', subjectName: 'Art Education', roomNo: 'Art Room', teacherName: 'SAMYA RAHA', teacherId: '106020' },
-  { id: 'tt-mon-dm-5', day: 'Monday', period: 5, className: 'VI-A', subjectName: 'Library Science', roomNo: 'Library', teacherName: 'DIPANWITA MANDAL', teacherId: '102725' },
-  { id: 'tt-mon-6a', day: 'Monday', period: 6, className: 'IX-B', subjectName: 'Mathematics Support', roomNo: 'Room 18', teacherName: 'UPDESH SINGH PAL' },
-  { id: 'tt-mon-jkd-2', day: 'Monday', period: 2, className: 'IX-A', subjectName: 'Work Education (W.E.)', roomNo: 'Room 18', teacherName: 'JYOTI KUMARI DHUMA', teacherId: '51951' },
-  { id: 'tt-mon-jkd-4', day: 'Monday', period: 4, className: 'VII-A', subjectName: 'Work Education (W.E.)', roomNo: 'Room 19', teacherName: 'JYOTI KUMARI DHUMA', teacherId: '51951' },
-  { id: 'tt-mon-jkd-6', day: 'Monday', period: 6, className: 'VI-A', subjectName: 'Work Education (W.E.)', roomNo: 'Room 16', teacherName: 'JYOTI KUMARI DHUMA', teacherId: '51951' },
-  { id: 'tt-mon-6b', day: 'Monday', period: 6, className: 'VI-B', subjectName: 'English', roomNo: 'Room 15', teacherName: 'SANTWANA DASH' },
-  { id: 'tt-mon-7a', day: 'Monday', period: 7, className: 'Free / Planning', subjectName: 'Lesson Plan Preparation', roomNo: 'Staff Room', teacherName: 'UPDESH SINGH PAL' },
-  { id: 'tt-mon-8a', day: 'Monday', period: 8, className: 'X-A', subjectName: 'Class Teacher Hour', roomNo: 'Room 24', teacherName: 'UPDESH SINGH PAL' },
-  { id: 'tt-mon-9a', day: 'Monday', period: 9, className: 'X-A', subjectName: 'Remedial Class / Extra Time', roomNo: 'Room 24', teacherName: 'UPDESH SINGH PAL' },
+import { AUTHENTIC_KVS_TIMETABLE } from '../data/defaultTimetableData';
 
-  // Tuesday
-  { id: 'tt-tue-1a', day: 'Tuesday', period: 1, className: 'XII-A', subjectName: 'Mathematics', roomNo: 'Room 32', teacherName: 'UPDESH SINGH PAL' },
-  { id: 'tt-tue-jkd-1', day: 'Tuesday', period: 1, className: 'VIII-A', subjectName: 'Work Education (W.E.)', roomNo: 'Room 20', teacherName: 'JYOTI KUMARI DHUMA', teacherId: '51951' },
-  { id: 'tt-tue-1b', day: 'Tuesday', period: 1, className: 'VI-A', subjectName: 'Science', roomNo: 'Room 16', teacherName: 'A GAYATRI' },
-  { id: 'tt-tue-1c', day: 'Tuesday', period: 1, className: 'V-A', subjectName: 'English', roomNo: 'Room 12', teacherName: 'SANTWANA DASH' },
-  { id: 'tt-tue-sk-1', day: 'Tuesday', period: 1, className: 'VI-A', subjectName: 'English', roomNo: 'Room 16', teacherName: 'SANJUKTA KUJUR', teacherId: '106019' },
-  
-  { id: 'tt-tue-2a', day: 'Tuesday', period: 2, className: 'X-A', subjectName: 'Mathematics', roomNo: 'Room 24', teacherName: 'UPDESH SINGH PAL' },
-  { id: 'tt-tue-2b', day: 'Tuesday', period: 2, className: 'VIII-A', subjectName: 'Science', roomNo: 'Room 20', teacherName: 'A GAYATRI' },
-  { id: 'tt-tue-2c', day: 'Tuesday', period: 2, className: 'IV-A', subjectName: 'Environmental Studies (EVS)', roomNo: 'Room 10', teacherName: 'SANTWANA DASH' },
-  { id: 'tt-tue-sr-2', day: 'Tuesday', period: 2, className: 'IX-A', subjectName: 'Art Education', roomNo: 'Art Room', teacherName: 'SAMYA RAHA', teacherId: '106020' },
-  { id: 'tt-tue-dm-2', day: 'Tuesday', period: 2, className: 'VII-A', subjectName: 'Library Science', roomNo: 'Library', teacherName: 'DIPANWITA MANDAL', teacherId: '102725' },
-
-  { id: 'tt-tue-3a', day: 'Tuesday', period: 3, className: 'XI-B', subjectName: 'Mathematics', roomNo: 'Lab 2', teacherName: 'UPDESH SINGH PAL' },
-  { id: 'tt-tue-jkd-3', day: 'Tuesday', period: 3, className: 'X-A', subjectName: 'Work Education (W.E.)', roomNo: 'Room 24', teacherName: 'JYOTI KUMARI DHUMA', teacherId: '51951' },
-  { id: 'tt-tue-pp-3', day: 'Tuesday', period: 3, className: 'VIII-A', subjectName: 'Hindi', roomNo: 'Room 20', teacherName: 'PRIYABRATA PADHAN', teacherId: '76958' },
-  {
-    id: 'tt-tue-3b',
-    day: 'Tuesday',
-    period: 3,
-    className: 'IX-A',
-    subjectName: 'Mathematics (Practice Drill)',
-    roomNo: 'Room 18',
-    teacherName: 'SANTWANA DASH',
-    isArrangement: true,
-    originalTeacherName: 'UPDESH SINGH PAL',
-    arrangementTeacherName: 'SANTWANA DASH',
-    arrangementReason: 'Regular Teacher on External School Inspection Duty'
-  },
-  { id: 'tt-tue-3c', day: 'Tuesday', period: 3, className: 'VI-A', subjectName: 'General Science', roomNo: 'Room 16', teacherName: 'A GAYATRI' },
-
-  { id: 'tt-tue-4a', day: 'Tuesday', period: 4, className: 'IX-B', subjectName: 'Mathematics', roomNo: 'Room 18', teacherName: 'UPDESH SINGH PAL' },
-  { id: 'tt-tue-4b', day: 'Tuesday', period: 4, className: 'XI-B', subjectName: 'Biology', roomNo: 'Bio Lab', teacherName: 'A GAYATRI' },
-  { id: 'tt-tue-4c', day: 'Tuesday', period: 4, className: 'VI-B', subjectName: 'English Reading', roomNo: 'Room 15', teacherName: 'SANTWANA DASH' },
-  { id: 'tt-tue-sr-4', day: 'Tuesday', period: 4, className: 'X-A', subjectName: 'Art Education', roomNo: 'Art Room', teacherName: 'SAMYA RAHA', teacherId: '106020' },
-  { id: 'tt-tue-dm-4', day: 'Tuesday', period: 4, className: 'VIII-A', subjectName: 'Library Science', roomNo: 'Library', teacherName: 'DIPANWITA MANDAL', teacherId: '102725' },
-
-  { id: 'tt-tue-5a', day: 'Tuesday', period: 5, className: 'X-A', subjectName: 'Remedial Class', roomNo: 'Room 24', teacherName: 'UPDESH SINGH PAL' },
-  { id: 'tt-tue-jkd-5', day: 'Tuesday', period: 5, className: 'IX-A', subjectName: 'Work Education (W.E.)', roomNo: 'Room 18', teacherName: 'JYOTI KUMARI DHUMA', teacherId: '51951' },
-  { id: 'tt-tue-5b', day: 'Tuesday', period: 5, className: 'VII-A', subjectName: 'Science', roomNo: 'Room 19', teacherName: 'A GAYATRI' },
-
-  { id: 'tt-tue-6a', day: 'Tuesday', period: 6, className: 'XII-A', subjectName: 'Maths Lab / Project', roomNo: 'Math Lab', teacherName: 'UPDESH SINGH PAL' },
-  { id: 'tt-tue-6b', day: 'Tuesday', period: 6, className: 'VIII-A', subjectName: 'Science Practical', roomNo: 'Physics Lab', teacherName: 'A GAYATRI' },
-  { id: 'tt-tue-sr-6', day: 'Tuesday', period: 6, className: 'VI-A', subjectName: 'Art Education', roomNo: 'Art Room', teacherName: 'SAMYA RAHA', teacherId: '106020' },
-
-  { id: 'tt-tue-7a', day: 'Tuesday', period: 7, className: 'Free / Duty', subjectName: 'Academic Planning & Record Updating', roomNo: 'Staff Room', teacherName: 'UPDESH SINGH PAL' },
-  { id: 'tt-tue-7b', day: 'Tuesday', period: 7, className: 'V-A', subjectName: 'Activity & Joyful Learning', roomNo: 'Room 12', teacherName: 'SANTWANA DASH' },
-
-  { id: 'tt-tue-8a', day: 'Tuesday', period: 8, className: 'XI-B', subjectName: 'Mathematics', roomNo: 'Lab 2', teacherName: 'UPDESH SINGH PAL' },
-  { id: 'tt-tue-8b', day: 'Tuesday', period: 8, className: 'VI-A', subjectName: 'Science Revision', roomNo: 'Room 16', teacherName: 'A GAYATRI' },
-
-  { id: 'tt-tue-9a', day: 'Tuesday', period: 9, className: 'IX-A', subjectName: 'Extra Class / Slow Learners', roomNo: 'Room 18', teacherName: 'UPDESH SINGH PAL' },
-
-  // Wednesday
-  { id: 'tt-wed-1', day: 'Wednesday', period: 1, className: 'X-A', subjectName: 'Mathematics', roomNo: 'Room 24', teacherName: 'UPDESH SINGH PAL' },
-  { id: 'tt-wed-sr-1', day: 'Wednesday', period: 1, className: 'VII-A', subjectName: 'Art Education', roomNo: 'Art Room', teacherName: 'SAMYA RAHA', teacherId: '106020' },
-  { id: 'tt-wed-dm-1', day: 'Wednesday', period: 1, className: 'X-A', subjectName: 'Library Science', roomNo: 'Library', teacherName: 'DIPANWITA MANDAL', teacherId: '102725' },
-  { id: 'tt-wed-jkd-2', day: 'Wednesday', period: 2, className: 'VI-A', subjectName: 'Work Education (W.E.)', roomNo: 'Room 16', teacherName: 'JYOTI KUMARI DHUMA', teacherId: '51951' },
-  { id: 'tt-wed-2', day: 'Wednesday', period: 2, className: 'XI-B', subjectName: 'Mathematics', roomNo: 'Lab 2', teacherName: 'UPDESH SINGH PAL' },
-  { id: 'tt-wed-3', day: 'Wednesday', period: 3, className: 'XII-A', subjectName: 'Mathematics', roomNo: 'Room 32', teacherName: 'UPDESH SINGH PAL' },
-  { id: 'tt-wed-sr-3', day: 'Wednesday', period: 3, className: 'VIII-A', subjectName: 'Art Education', roomNo: 'Art Room', teacherName: 'SAMYA RAHA', teacherId: '106020' },
-  { id: 'tt-wed-4', day: 'Wednesday', period: 4, className: 'IX-B', subjectName: 'Mathematics', roomNo: 'Room 18', teacherName: 'UPDESH SINGH PAL' },
-  { id: 'tt-wed-jkd-4', day: 'Wednesday', period: 4, className: 'VII-A', subjectName: 'Work Education (W.E.)', roomNo: 'Room 19', teacherName: 'JYOTI KUMARI DHUMA', teacherId: '51951' },
-  { id: 'tt-wed-dm-4', day: 'Wednesday', period: 4, className: 'VI-A', subjectName: 'Library Science', roomNo: 'Library', teacherName: 'DIPANWITA MANDAL', teacherId: '102725' },
-  { id: 'tt-wed-5', day: 'Wednesday', period: 5, className: 'Co-Curricular', subjectName: 'House Activity / CCA', roomNo: 'Assembly Hall', teacherName: 'A GAYATRI' },
-  { id: 'tt-wed-sr-5', day: 'Wednesday', period: 5, className: 'IX-A', subjectName: 'Art Education', roomNo: 'Art Room', teacherName: 'SAMYA RAHA', teacherId: '106020' },
-  { id: 'tt-wed-6', day: 'Wednesday', period: 6, className: 'X-A', subjectName: 'Mathematics', roomNo: 'Room 24', teacherName: 'UPDESH SINGH PAL' },
-  { id: 'tt-wed-jkd-6', day: 'Wednesday', period: 6, className: 'VIII-A', subjectName: 'Work Education (W.E.)', roomNo: 'Room 20', teacherName: 'JYOTI KUMARI DHUMA', teacherId: '51951' },
-  { id: 'tt-wed-9', day: 'Wednesday', period: 9, className: 'XI-A', subjectName: 'Remedial & Doubt Clearing', roomNo: 'Room 32', teacherName: 'UPDESH SINGH PAL' },
-
-  // Thursday
-  { id: 'tt-thu-1', day: 'Thursday', period: 1, className: 'XII-A', subjectName: 'Mathematics', roomNo: 'Room 32', teacherName: 'UPDESH SINGH PAL' },
-  { id: 'tt-thu-jkd-1', day: 'Thursday', period: 1, className: 'X-A', subjectName: 'Work Education (W.E.)', roomNo: 'Room 24', teacherName: 'JYOTI KUMARI DHUMA', teacherId: '51951' },
-  { id: 'tt-thu-2', day: 'Thursday', period: 2, className: 'X-A', subjectName: 'Mathematics', roomNo: 'Room 24', teacherName: 'UPDESH SINGH PAL' },
-  { id: 'tt-thu-sr-2', day: 'Thursday', period: 2, className: 'X-A', subjectName: 'Art Education', roomNo: 'Art Room', teacherName: 'SAMYA RAHA', teacherId: '106020' },
-  { id: 'tt-thu-3', day: 'Thursday', period: 3, className: 'XI-B', subjectName: 'Mathematics', roomNo: 'Lab 2', teacherName: 'UPDESH SINGH PAL' },
-  { id: 'tt-thu-jkd-3', day: 'Thursday', period: 3, className: 'IX-A', subjectName: 'Work Education (W.E.)', roomNo: 'Room 18', teacherName: 'JYOTI KUMARI DHUMA', teacherId: '51951' },
-  { id: 'tt-thu-dm-3', day: 'Thursday', period: 3, className: 'VII-A', subjectName: 'Library Science', roomNo: 'Library', teacherName: 'DIPANWITA MANDAL', teacherId: '102725' },
-  { id: 'tt-thu-4', day: 'Thursday', period: 4, className: 'IX-B', subjectName: 'Mathematics', roomNo: 'Room 18', teacherName: 'UPDESH SINGH PAL' },
-  { id: 'tt-thu-sr-4', day: 'Thursday', period: 4, className: 'VI-A', subjectName: 'Art Education', roomNo: 'Art Room', teacherName: 'SAMYA RAHA', teacherId: '106020' },
-  { id: 'tt-thu-5', day: 'Thursday', period: 5, className: 'XII-A', subjectName: 'Problem Solving Session', roomNo: 'Room 32', teacherName: 'UPDESH SINGH PAL' },
-  { id: 'tt-thu-jkd-5', day: 'Thursday', period: 5, className: 'VI-A', subjectName: 'Work Education (W.E.)', roomNo: 'Room 16', teacherName: 'JYOTI KUMARI DHUMA', teacherId: '51951' },
-  { id: 'tt-thu-dm-5', day: 'Thursday', period: 5, className: 'VIII-A', subjectName: 'Library Science', roomNo: 'Library', teacherName: 'DIPANWITA MANDAL', teacherId: '102725' },
-  { id: 'tt-thu-6', day: 'Thursday', period: 6, className: 'X-A', subjectName: 'Art Integrated Math Project', roomNo: 'Room 24', teacherName: 'UPDESH SINGH PAL' },
-  { id: 'tt-thu-sr-6', day: 'Thursday', period: 6, className: 'VII-A', subjectName: 'Art Education', roomNo: 'Art Room', teacherName: 'SAMYA RAHA', teacherId: '106020' },
-  { id: 'tt-thu-9', day: 'Thursday', period: 9, className: 'X-A', subjectName: 'Extra Time / Competency Prep', roomNo: 'Room 24', teacherName: 'UPDESH SINGH PAL' },
-
-  // Friday
-  { id: 'tt-fri-1', day: 'Friday', period: 1, className: 'X-A', subjectName: 'Mathematics', roomNo: 'Room 24', teacherName: 'UPDESH SINGH PAL' },
-  { id: 'tt-fri-jkd-1', day: 'Friday', period: 1, className: 'IX-A', subjectName: 'Work Education (W.E.)', roomNo: 'Room 18', teacherName: 'JYOTI KUMARI DHUMA', teacherId: '51951' },
-  { id: 'tt-fri-2', day: 'Friday', period: 2, className: 'XII-A', subjectName: 'Mathematics', roomNo: 'Room 32', teacherName: 'UPDESH SINGH PAL' },
-  { id: 'tt-fri-sr-2', day: 'Friday', period: 2, className: 'VIII-A', subjectName: 'Art Education', roomNo: 'Art Room', teacherName: 'SAMYA RAHA', teacherId: '106020' },
-  { id: 'tt-fri-dm-2', day: 'Friday', period: 2, className: 'VI-A', subjectName: 'Library Science', roomNo: 'Library', teacherName: 'DIPANWITA MANDAL', teacherId: '102725' },
-  { id: 'tt-fri-3', day: 'Friday', period: 3, className: 'XI-B', subjectName: 'Mathematics', roomNo: 'Lab 2', teacherName: 'UPDESH SINGH PAL' },
-  { id: 'tt-fri-jkd-3', day: 'Friday', period: 3, className: 'VII-A', subjectName: 'Work Education (W.E.)', roomNo: 'Room 19', teacherName: 'JYOTI KUMARI DHUMA', teacherId: '51951' },
-  { id: 'tt-fri-4', day: 'Friday', period: 4, className: 'IX-B', subjectName: 'Mathematics', roomNo: 'Room 18', teacherName: 'UPDESH SINGH PAL' },
-  { id: 'tt-fri-sr-4', day: 'Friday', period: 4, className: 'IX-A', subjectName: 'Art Education', roomNo: 'Art Room', teacherName: 'SAMYA RAHA', teacherId: '106020' },
-  { id: 'tt-fri-dm-4', day: 'Friday', period: 4, className: 'VII-A', subjectName: 'Library Science', roomNo: 'Library', teacherName: 'DIPANWITA MANDAL', teacherId: '102725' },
-  { id: 'tt-fri-jkd-4', day: 'Friday', period: 4, className: 'VIII-A', subjectName: 'Work Education (W.E.)', roomNo: 'Room 20', teacherName: 'JYOTI KUMARI DHUMA', teacherId: '51951' },
-  { id: 'tt-fri-5', day: 'Friday', period: 5, className: 'Staff Meeting', subjectName: 'Weekly Subject Committee', roomNo: 'Conference Hall', teacherName: 'Shri Hemananda Barik (Principal I/c)' },
-  { id: 'tt-fri-sr-5', day: 'Friday', period: 5, className: 'X-A', subjectName: 'Art Education', roomNo: 'Art Room', teacherName: 'SAMYA RAHA', teacherId: '106020' },
-  { id: 'tt-fri-jkd-6', day: 'Friday', period: 6, className: 'X-A', subjectName: 'Work Education (W.E.)', roomNo: 'Room 24', teacherName: 'JYOTI KUMARI DHUMA', teacherId: '51951' },
-  { id: 'tt-fri-dm-6', day: 'Friday', period: 6, className: 'IX-A', subjectName: 'Library Science', roomNo: 'Library', teacherName: 'DIPANWITA MANDAL', teacherId: '102725' },
-  { id: 'tt-fri-jkd-8', day: 'Friday', period: 8, className: 'VI-A', subjectName: 'Work Education (W.E.)', roomNo: 'Room 16', teacherName: 'JYOTI KUMARI DHUMA', teacherId: '51951' },
-  { id: 'tt-fri-9', day: 'Friday', period: 9, className: 'VI-A', subjectName: 'Remedial / P&HE Extra Practice', roomNo: 'Ground', teacherName: 'A GAYATRI' },
-
-  // Saturday
-  { id: 'tt-sat-1', day: 'Saturday', period: 1, className: 'XII-A', subjectName: 'Mathematics', roomNo: 'Room 32', teacherName: 'UPDESH SINGH PAL' },
-  { id: 'tt-sat-sr-1', day: 'Saturday', period: 1, className: 'VII-A', subjectName: 'Art Integrated Project', roomNo: 'Art Room', teacherName: 'SAMYA RAHA', teacherId: '106020' },
-  { id: 'tt-sat-2', day: 'Saturday', period: 2, className: 'X-A', subjectName: 'Mathematics', roomNo: 'Room 24', teacherName: 'UPDESH SINGH PAL' },
-  { id: 'tt-sat-jkd-2', day: 'Saturday', period: 2, className: 'VIII-A', subjectName: 'Work Education (W.E.)', roomNo: 'Room 20', teacherName: 'JYOTI KUMARI DHUMA', teacherId: '51951' },
-  { id: 'tt-sat-dm-2', day: 'Saturday', period: 2, className: 'X-A', subjectName: 'Library Science', roomNo: 'Library', teacherName: 'DIPANWITA MANDAL', teacherId: '102725' },
-  { id: 'tt-sat-3', day: 'Saturday', period: 3, className: 'XI-B', subjectName: 'Mathematics', roomNo: 'Lab 2', teacherName: 'UPDESH SINGH PAL' },
-  { id: 'tt-sat-sr-3', day: 'Saturday', period: 3, className: 'IX-A', subjectName: 'Sculpture & Clay Modelling', roomNo: 'Art Room', teacherName: 'SAMYA RAHA', teacherId: '106020' },
-  { id: 'tt-sat-dm-3', day: 'Saturday', period: 3, className: 'VIII-A', subjectName: 'Library Science', roomNo: 'Library', teacherName: 'DIPANWITA MANDAL', teacherId: '102725' },
-  { id: 'tt-sat-4', day: 'Saturday', period: 4, className: 'Clubs / Scouts', subjectName: 'Guide Captain / Club Activity', roomNo: 'Ground', teacherName: 'JYOTI KUMARI DHUMA' },
-  { id: 'tt-sat-jkd-4', day: 'Saturday', period: 4, className: 'X-A', subjectName: 'Work Education (W.E.)', roomNo: 'Room 24', teacherName: 'JYOTI KUMARI DHUMA', teacherId: '51951' },
-  { id: 'tt-sat-9', day: 'Saturday', period: 9, className: 'All Classes', subjectName: 'Extra Time / Remedial Coaching', roomNo: 'Resource Room', teacherName: 'All Teachers' }
-];
+export const DEFAULT_TIMETABLE: TimetableSlot[] = AUTHENTIC_KVS_TIMETABLE;
 
 export const DEFAULT_PERIOD_TIMINGS: Record<number, { time: string; label: string }> = {
   1: { time: '07:50 AM - 08:30 AM', label: 'Period 1' },
@@ -1968,37 +1827,14 @@ export async function initializeDatabaseIfEmpty() {
   }
 
   const existingTimetable = await db.get<TimetableSlot[]>('setup:timetable');
-  if (!existingTimetable || existingTimetable.length === 0) {
+  if (!existingTimetable || existingTimetable.length < 200) {
     await db.set('setup:timetable', DEFAULT_TIMETABLE);
   } else {
-    // Purge legacy dummy/conflicting entries and normalize teacher names
-    const cleansedTT = existingTimetable
-      .filter(
-        s => s.id !== 'tt-fri-6' &&
-             s.id !== 'tt-fri-sr-7' &&
-             !(s.day === 'Friday' && s.period === 6 && s.subjectName === 'Competency Test') &&
-             !(s.day === 'Friday' && s.period === 7 && s.className === 'VI-A' && s.subjectName.includes('Art Education')) &&
-             !(s.teacherName && (s.teacherName.includes('Vikram Mehta') || s.teacherName.includes('Data Entry')))
-      )
-      .map(s => {
-        let tName = s.teacherName || '';
-        let tId = s.teacherId;
-        if (tName.includes('Updesh Kumar') || tName.includes('UPDESH SINGH PAL')) {
-          tName = 'UPDESH SINGH PAL';
-          tId = '108894';
-        } else if (tName.includes('Sunita Verma')) {
-          tName = 'A GAYATRI';
-          tId = 'CS.107859';
-        } else if (tName.includes('Anjali Deshmukh')) {
-          tName = 'SANTWANA DASH';
-          tId = '106024';
-        }
-        return { ...s, teacherName: tName, teacherId: tId };
-      });
-    const existingIds = new Set(cleansedTT.map(s => s.id));
-    const missingSlots = DEFAULT_TIMETABLE.filter(s => !existingIds.has(s.id));
-    const mergedTT = [...cleansedTT, ...missingSlots];
-    await db.set('setup:timetable', mergedTT);
+    // Merge existing user custom imports with DEFAULT_TIMETABLE
+    const mergedMap = new Map<string, TimetableSlot>();
+    DEFAULT_TIMETABLE.forEach(s => { if (s.id) mergedMap.set(s.id, s); });
+    existingTimetable.forEach(s => { if (s.id) mergedMap.set(s.id, s); });
+    await db.set('setup:timetable', Array.from(mergedMap.values()));
   }
 
   const existingTimings = await db.get<Record<number, { time: string; label: string }>>('setup:period_timings');
@@ -2009,6 +1845,11 @@ export async function initializeDatabaseIfEmpty() {
   const existingCalendar = await db.get<CalendarEvent[]>('setup:calendar');
   if (!existingCalendar) {
     await db.set('setup:calendar', DEFAULT_CALENDAR);
+  }
+
+  const existingActiveDate = await db.get<string>('setup:active_working_date');
+  if (!existingActiveDate) {
+    await db.set('setup:active_working_date', '2026-08-18');
   }
 
   const existingExams = await db.get<ExamSchedule[]>('setup:exams');
@@ -8086,3 +7927,6 @@ export async function initCloudSync(): Promise<void> {
     console.warn('[Firestore] Initial cloud sync notice:', err);
   }
 }
+
+// Unified Active Working Date System Exports
+export * from './activeDateContext';

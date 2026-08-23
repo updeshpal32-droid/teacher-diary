@@ -22,8 +22,19 @@ import {
   DEFAULT_ON_DUTY_RECORDS,
   DEFAULT_TIMETABLE,
   DEFAULT_PROXY_DUTIES,
-  DEFAULT_LEAVE_SETTINGS
+  DEFAULT_LEAVE_SETTINGS,
+  getCurrentUser,
+  getUserAccounts
 } from '../lib/storage';
+import {
+  resolveTeacherAttendance,
+  ResolvedTeacherAttendance,
+  checkTeacherAbsenceOnDate,
+  normalizeFacultyKey,
+  cancelOrSupersedeLeaveForStaffDate,
+  cancelOrSupersedeOnDutyForStaffDate,
+  isDateInRange
+} from '../lib/attendanceAbsenceEngine';
 import {
   getLeaveBalance,
   canApplyLeave,
@@ -32,6 +43,8 @@ import {
   LeaveValidationResult
 } from '../lib/leaveEngine';
 import { getTeacherScopedStorageKey } from '../lib/teacherContext';
+import { useActiveWorkingDate, getDayOfWeekFromDate, formatDisplayDate } from '../lib/activeDateContext';
+import { AutomaticProxyPlannerModal } from './AutomaticProxyPlannerModal';
 import * as XLSX from 'xlsx';
 import {
   Calendar as CalIcon,
@@ -62,6 +75,7 @@ import {
   LayoutDashboard,
   FileSpreadsheet,
   CheckSquare,
+  Check,
   Square,
   Percent,
   TrendingUp,
@@ -99,9 +113,16 @@ export const TeacherAttendanceManager: React.FC<TeacherAttendanceManagerProps> =
   onSaved
 }) => {
   const [activeTab, setActiveTab] = useState<SubTab>('daily');
+  const { activeDate } = useActiveWorkingDate();
 
-  // Current selected date for attendance (defaults to Today)
-  const [selectedDate, setSelectedDate] = useState<string>(new Date().toISOString().split('T')[0]);
+  // Current selected date for attendance (defaults to Unified Active Working Date)
+  const [selectedDate, setSelectedDate] = useState<string>(activeDate);
+
+  useEffect(() => {
+    if (activeDate) {
+      setSelectedDate(activeDate);
+    }
+  }, [activeDate]);
   const [staffList, setStaffList] = useState<StaffDetailRecord[]>([]);
   const [attendanceRecords, setAttendanceRecords] = useState<TeacherAttendanceRecord[]>([]);
   const [leaveApplications, setLeaveApplications] = useState<LeaveApplication[]>([]);
@@ -151,10 +172,41 @@ export const TeacherAttendanceManager: React.FC<TeacherAttendanceManagerProps> =
   const [odFromDate, setOdFromDate] = useState<string>(selectedDate);
   const [odToDate, setOdToDate] = useState<string>(selectedDate);
 
-  // Permissions & Roles
-  const isPrincipalOrAdmin = currentUser?.role === 'admin' || currentUser?.activePersona === 'admin';
-  const isDataEntryManager = currentUser?.role === 'data_entry_manager' || currentUser?.activePersona === 'data_entry_manager';
-  const canMarkAttendance = isPrincipalOrAdmin || isDataEntryManager;
+  // Staged Attendance & Save State
+  const [hasUnsavedChanges, setHasUnsavedChanges] = useState<boolean>(false);
+  const [unsavedStaffCodes, setUnsavedStaffCodes] = useState<Set<string>>(new Set());
+  const [isSaving, setIsSaving] = useState<boolean>(false);
+
+  // Leave Override Confirmation Modal
+  const [confirmOverrideModal, setConfirmOverrideModal] = useState<{
+    isOpen: boolean;
+    staff: StaffDetailRecord;
+    targetStatus: AttendanceStatus;
+    activeLeaveInfo?: { leaveType?: LeaveType; fromDate?: string; toDate?: string; reason?: string };
+    activeODInfo?: { purpose?: string; venue?: string };
+  } | null>(null);
+
+  // Permissions & Roles (Admin, Data Entry Manager, and Assigned Teachers)
+  const [activeUser, setActiveUser] = useState<UserAccount | null>(currentUser || null);
+
+  useEffect(() => {
+    if (currentUser) {
+      setActiveUser(currentUser);
+    } else {
+      getCurrentUser().then(u => setActiveUser(u));
+    }
+  }, [currentUser]);
+
+  const isPrincipalOrAdmin =
+    activeUser?.role === 'admin' ||
+    activeUser?.activePersona === 'admin' ||
+    Boolean(activeUser?.designation && activeUser.designation.toLowerCase().includes('principal'));
+  const isDataEntryManager =
+    activeUser?.role === 'data_entry_manager' ||
+    activeUser?.activePersona === 'data_entry_manager';
+  
+  // All staff roles (Admin, Data Manager, and Assigned Teachers) have full access to mark attendance, apply leaves, and record OD
+  const canMarkAttendance = true;
 
   useEffect(() => {
     loadInitialData();
@@ -171,8 +223,9 @@ export const TeacherAttendanceManager: React.FC<TeacherAttendanceManagerProps> =
   const loadInitialData = async () => {
     try {
       setLoading(true);
-      const [storedStaff, storedAttendance, storedLeaves, storedOD, storedTimetable, storedProxy, storedSettings] = await Promise.all([
+      const [storedStaff, userAccounts, storedAttendance, storedLeaves, storedOD, storedTimetable, storedProxy, storedSettings] = await Promise.all([
         db.get<StaffDetailRecord[]>('setup:staff_details'),
+        getUserAccounts(),
         db.get<TeacherAttendanceRecord[]>('setup:teacher_attendance'),
         db.get<LeaveApplication[]>('setup:leave_applications'),
         db.get<OnDutyRecord[]>('setup:on_duty_records'),
@@ -181,7 +234,72 @@ export const TeacherAttendanceManager: React.FC<TeacherAttendanceManagerProps> =
         db.get<LeaveSettingsConfig>('setup:leave_settings')
       ]);
 
-      setStaffList(storedStaff && storedStaff.length > 0 ? storedStaff : DEFAULT_STAFF_DETAILS);
+      const staffMap = new Map<string, StaffDetailRecord>();
+
+      // 1. Seed with DEFAULT_STAFF_DETAILS (keyed by normalized teacher name)
+      DEFAULT_STAFF_DETAILS.forEach(s => {
+        const key = normalizeFacultyKey(s.name);
+        if (key) staffMap.set(key, s);
+      });
+
+      // 2. Merge storedStaff from IndexedDB (preserve custom edits)
+      if (storedStaff && storedStaff.length > 0) {
+        storedStaff.forEach(s => {
+          const key = normalizeFacultyKey(s.name);
+          if (key) {
+            const existing = staffMap.get(key) || s;
+            staffMap.set(key, { ...existing, ...s });
+          }
+        });
+      }
+
+      // 3. Merge user accounts (to ensure official login employee codes and emails match)
+      if (userAccounts && userAccounts.length > 0) {
+        userAccounts.forEach(u => {
+          const key = normalizeFacultyKey(u.name);
+          if (key) {
+            const existing = staffMap.get(key);
+            if (existing) {
+              staffMap.set(key, {
+                ...existing,
+                employeeCode: u.employeeCode || existing.employeeCode,
+                designation: existing.designation || u.designation || 'Teacher',
+                email: existing.email || u.email
+              });
+            } else {
+              staffMap.set(key, {
+                id: `stf-${u.employeeCode || u.id}`,
+                serialNo: staffMap.size + 1,
+                name: u.name,
+                employeeCode: u.employeeCode || u.id,
+                designation: u.designation || 'Teacher',
+                employmentType: 'Regular',
+                socialCategory: 'GEN',
+                dob: '01/01/1990',
+                joiningDateKVSWithDesignation: '01/04/2020',
+                joiningDatePresentKVWithDesignation: '01/04/2020',
+                bankAccountNo: '',
+                ifscCode: '',
+                bankName: '',
+                highestAcademicAndProfessionalQual: 'Post Graduate / B.Ed.',
+                permanentPostalAddress: 'KV Campus',
+                email: u.email || '',
+                phoneCalls: u.phone || '',
+                phoneWhatsapp: u.phone || '',
+                aadharNo: '',
+                pranOrPanNo: '',
+                isMinority: 'No',
+                seniorityNumber: 'KVS-FAC-00',
+                approvalStatus: 'Verified & Approved'
+              });
+            }
+          }
+        });
+      }
+
+      const mergedStaff = Array.from(staffMap.values()).map((s, idx) => ({ ...s, serialNo: idx + 1 }));
+
+      setStaffList(mergedStaff);
       setAttendanceRecords(storedAttendance && storedAttendance.length > 0 ? storedAttendance : DEFAULT_TEACHER_ATTENDANCE);
       setLeaveApplications(storedLeaves && storedLeaves.length > 0 ? storedLeaves : DEFAULT_LEAVE_APPLICATIONS);
       setOnDutyRecords(storedOD && storedOD.length > 0 ? storedOD : DEFAULT_ON_DUTY_RECORDS);
@@ -217,15 +335,86 @@ export const TeacherAttendanceManager: React.FC<TeacherAttendanceManagerProps> =
     setSelectedDate(new Date().toISOString().split('T')[0]);
   };
 
-  // Quick Attendance Mark
-  const handleMarkAttendance = async (staff: StaffDetailRecord, status: AttendanceStatus, customLeaveType?: LeaveType) => {
-    if (!canMarkAttendance) {
-      alert('Only Principal / Admin or Authorized Attendance Incharge can mark daily staff attendance.');
+  // Quick Attendance Mark with Overwrite Protection & Bidirectional Switching
+  const handleMarkAttendance = async (
+    staff: StaffDetailRecord,
+    status: AttendanceStatus,
+    customLeaveType?: LeaveType,
+    bypassConfirmation: boolean = false
+  ) => {
+    // Check if teacher currently has an active leave application on selectedDate
+    const codeMatch = (code?: string) =>
+      Boolean(code && staff.employeeCode && String(code).trim().toLowerCase() === String(staff.employeeCode).trim().toLowerCase());
+    const nameMatch = (name?: string) => {
+      if (!staff.name || !name) return false;
+      const k1 = normalizeFacultyKey(staff.name);
+      const k2 = normalizeFacultyKey(name);
+      return Boolean(k1 && k2 && k1 === k2);
+    };
+
+    const activeLeave = leaveApplications.find(
+      l =>
+        (codeMatch(l.employeeCode) || nameMatch(l.teacherName)) &&
+        (l.status === 'Sanctioned' || (l.status as string) === 'Approved' || (l.status as string) === 'Pending') &&
+        isDateInRange(selectedDate, l.fromDate, l.toDate)
+    );
+
+    const activeOD = onDutyRecords.find(
+      o =>
+        (codeMatch(o.employeeCode) || nameMatch(o.teacherName)) &&
+        isDateInRange(selectedDate, o.fromDate, o.toDate)
+    );
+
+    // If teacher is currently on sanctioned Leave or OD, and status is changing to Present or Absent
+    if (!bypassConfirmation && (activeLeave || activeOD) && (status === 'Present' || status === 'Absent')) {
+      setConfirmOverrideModal({
+        isOpen: true,
+        staff,
+        targetStatus: status,
+        activeLeaveInfo: activeLeave ? {
+          leaveType: activeLeave.leaveType,
+          fromDate: activeLeave.fromDate,
+          toDate: activeLeave.toDate,
+          reason: activeLeave.reason
+        } : undefined,
+        activeODInfo: activeOD ? {
+          purpose: activeOD.purpose,
+          venue: activeOD.venue
+        } : undefined
+      });
       return;
     }
 
+    let updatedLeavesList = leaveApplications;
+    let updatedStaffList = staffList;
+    let updatedODsList = onDutyRecords;
+
+    // If overriding active leave -> cancel/supersede leave for selectedDate and refund balance
+    if (activeLeave) {
+      const res = cancelOrSupersedeLeaveForStaffDate(
+        staff,
+        selectedDate,
+        leaveApplications,
+        activeUser?.name || 'Principal',
+        `Attendance corrected to ${status} by Principal`
+      );
+      updatedLeavesList = res.updatedLeaves;
+      updatedStaffList = staffList.map(s => (s.employeeCode === staff.employeeCode ? res.updatedStaff : s));
+      setLeaveApplications(updatedLeavesList);
+      setStaffList(updatedStaffList);
+    }
+
+    // If overriding active OD -> cancel/trim OD for selectedDate
+    if (activeOD) {
+      const odRes = cancelOrSupersedeOnDutyForStaffDate(staff, selectedDate, onDutyRecords);
+      updatedODsList = odRes.updatedODs;
+      setOnDutyRecords(updatedODsList);
+    }
+
     const recId = `att-staff-${staff.employeeCode}-${selectedDate}`;
-    const existingIndex = attendanceRecords.findIndex(r => r.id === recId || (r.employeeCode === staff.employeeCode && r.date === selectedDate));
+    const existingIndex = attendanceRecords.findIndex(
+      r => r.id === recId || (codeMatch(r.employeeCode) && r.date === selectedDate)
+    );
 
     const newRecord: TeacherAttendanceRecord = {
       id: recId,
@@ -238,9 +427,9 @@ export const TeacherAttendanceManager: React.FC<TeacherAttendanceManagerProps> =
       leaveType: customLeaveType,
       inTime: status === 'Present' ? '07:35 AM' : undefined,
       outTime: status === 'Present' ? '02:10 PM' : undefined,
-      markedBy: currentUser?.name || 'Admin',
+      markedBy: activeUser?.name || 'Principal',
       markedAt: new Date().toISOString(),
-      verifiedByPrincipal: isPrincipalOrAdmin
+      verifiedByPrincipal: true
     };
 
     let updatedList: TeacherAttendanceRecord[];
@@ -252,9 +441,54 @@ export const TeacherAttendanceManager: React.FC<TeacherAttendanceManagerProps> =
     }
 
     setAttendanceRecords(updatedList);
-    await db.set('setup:teacher_attendance', updatedList);
-    showFeedback(`Marked ${staff.name} as ${status}${customLeaveType ? ` (${customLeaveType})` : ''} for ${selectedDate}`);
+
+    // Track staged change
+    setUnsavedStaffCodes(prev => new Set(prev).add(staff.employeeCode));
+    setHasUnsavedChanges(true);
+
+    // Persist to storage immediately and update event
+    await Promise.all([
+      db.set('setup:staff_details', updatedStaffList),
+      db.set('setup:leave_applications', updatedLeavesList),
+      db.set('setup:on_duty_records', updatedODsList),
+      db.set('setup:teacher_attendance', updatedList)
+    ]);
+
+    window.dispatchEvent(new CustomEvent('kvs-attendance-updated'));
+    showFeedback(`Updated ${staff.name} to ${status}${customLeaveType ? ` (${customLeaveType})` : ''} for ${selectedDate}`);
     if (onSaved) onSaved();
+  };
+
+  // Save All Attendance for Selected Date
+  const handleSaveAllAttendanceForDate = async () => {
+    setIsSaving(true);
+    try {
+      await Promise.all([
+        db.set('setup:staff_details', staffList),
+        db.set('setup:leave_applications', leaveApplications),
+        db.set('setup:on_duty_records', onDutyRecords),
+        db.set('setup:teacher_attendance', attendanceRecords)
+      ]);
+      setHasUnsavedChanges(false);
+      setUnsavedStaffCodes(new Set());
+      window.dispatchEvent(new CustomEvent('kvs-attendance-updated'));
+      showFeedback(`Daily Attendance & Leave records successfully committed for ${selectedDate}`);
+      if (onSaved) onSaved();
+    } catch (err) {
+      console.error(err);
+      showFeedback('Error saving attendance records', 'error');
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  // Discard Staged Changes
+  const handleDiscardStagedChanges = async () => {
+    if (!window.confirm(`Discard unsaved attendance changes for ${selectedDate}?`)) return;
+    await loadInitialData();
+    setHasUnsavedChanges(false);
+    setUnsavedStaffCodes(new Set());
+    showFeedback('Unsaved changes discarded');
   };
 
   // Open Leave Modal for a specific teacher
@@ -302,10 +536,10 @@ export const TeacherAttendanceManager: React.FC<TeacherAttendanceManagerProps> =
       reason: leaveReason.trim() || 'Personal Work',
       stationLeavingPermission: stationLeaving,
       stationAddress: stationLeaving ? stationAddress : undefined,
-      status: isPrincipalOrAdmin ? 'Sanctioned' : 'Pending',
+      status: 'Sanctioned',
       appliedAt: new Date().toISOString(),
-      sanctionedBy: isPrincipalOrAdmin ? (currentUser?.name || 'Principal') : undefined,
-      sanctionedAt: isPrincipalOrAdmin ? new Date().toISOString() : undefined,
+      sanctionedBy: activeUser?.name || 'Principal',
+      sanctionedAt: new Date().toISOString(),
       principalRemarks: principalOverrideAllowed
         ? (principalOverrideRemarks.trim() || 'Sanctioned under Principal Discretionary Override.')
         : undefined
@@ -332,9 +566,9 @@ export const TeacherAttendanceManager: React.FC<TeacherAttendanceManagerProps> =
       leaveType,
       leaveApplicationId: newLeave.id,
       remarks: leaveReason || `Sanctioned ${leaveType}`,
-      markedBy: currentUser?.name || 'Admin',
+      markedBy: activeUser?.name || 'Admin',
       markedAt: new Date().toISOString(),
-      verifiedByPrincipal: isPrincipalOrAdmin
+      verifiedByPrincipal: true
     };
 
     const updatedAttList = [
@@ -350,6 +584,7 @@ export const TeacherAttendanceManager: React.FC<TeacherAttendanceManagerProps> =
       db.set('setup:teacher_attendance', updatedAttList)
     ]);
 
+    window.dispatchEvent(new CustomEvent('kvs-attendance-updated'));
     setIsLeaveModalOpen(false);
     showFeedback(`Leave (${leaveType} - ${days} day(s)) sanctioned for ${activeStaffForLeave.name}`);
     if (onSaved) onSaved();
@@ -407,7 +642,7 @@ export const TeacherAttendanceManager: React.FC<TeacherAttendanceManagerProps> =
       leaveType: 'OD',
       onDutyRecordId: newOD.id,
       remarks: `On-Duty: ${odPurpose} at ${odVenue || 'Deputed Venue'}`,
-      markedBy: currentUser?.name || 'Admin',
+      markedBy: activeUser?.name || 'Admin',
       markedAt: new Date().toISOString(),
       verifiedByPrincipal: true
     };
@@ -424,6 +659,7 @@ export const TeacherAttendanceManager: React.FC<TeacherAttendanceManagerProps> =
       db.set('setup:teacher_attendance', updatedAttList)
     ]);
 
+    window.dispatchEvent(new CustomEvent('kvs-attendance-updated'));
     setIsOnDutyModalOpen(false);
     showFeedback(`On-Duty deputation recorded for ${activeStaffForOD.name}`);
     if (onSaved) onSaved();
@@ -431,38 +667,38 @@ export const TeacherAttendanceManager: React.FC<TeacherAttendanceManagerProps> =
 
   // Mark All Present Shortcut (1-Tap for Quick Morning Registration)
   const handleMarkAllPresent = async () => {
-    if (!canMarkAttendance) return;
-    if (!window.confirm(`Mark all unassigned teachers as 'Present' for ${selectedDate}?`)) return;
+    if (!window.confirm(`Mark all ${staffList.length} faculty as 'Present' for ${selectedDate}?`)) return;
 
     const updatedList = [...attendanceRecords];
 
     for (const staff of staffList) {
-      const existing = updatedList.find(r => r.employeeCode === staff.employeeCode && r.date === selectedDate);
-      if (!existing || existing.status === 'Holiday') {
-        const recId = `att-staff-${staff.employeeCode}-${selectedDate}`;
-        const newRecord: TeacherAttendanceRecord = {
-          id: recId,
-          employeeCode: staff.employeeCode,
-          teacherName: staff.name,
-          designation: staff.designation,
-          employmentType: staff.employmentType || 'Regular',
-          date: selectedDate,
-          status: 'Present',
-          inTime: '07:30 AM',
-          outTime: '02:10 PM',
-          markedBy: currentUser?.name || 'Admin',
-          markedAt: new Date().toISOString(),
-          verifiedByPrincipal: isPrincipalOrAdmin
-        };
-        const idx = updatedList.findIndex(r => r.id === recId);
-        if (idx >= 0) updatedList[idx] = newRecord;
-        else updatedList.push(newRecord);
+      const recId = `att-staff-${staff.employeeCode}-${selectedDate}`;
+      const newRecord: TeacherAttendanceRecord = {
+        id: recId,
+        employeeCode: staff.employeeCode,
+        teacherName: staff.name,
+        designation: staff.designation,
+        employmentType: staff.employmentType || 'Regular',
+        date: selectedDate,
+        status: 'Present',
+        inTime: '07:30 AM',
+        outTime: '02:10 PM',
+        markedBy: activeUser?.name || 'Admin',
+        markedAt: new Date().toISOString(),
+        verifiedByPrincipal: true
+      };
+      const idx = updatedList.findIndex(r => r.id === recId || (r.employeeCode === staff.employeeCode && r.date === selectedDate));
+      if (idx >= 0) {
+        updatedList[idx] = newRecord;
+      } else {
+        updatedList.push(newRecord);
       }
     }
 
     setAttendanceRecords(updatedList);
     await db.set('setup:teacher_attendance', updatedList);
-    showFeedback(`All active staff marked Present for ${selectedDate}`);
+    window.dispatchEvent(new CustomEvent('kvs-attendance-updated'));
+    showFeedback(`All ${staffList.length} faculty successfully marked Present for ${selectedDate}`);
     if (onSaved) onSaved();
   };
 
@@ -704,16 +940,25 @@ export const TeacherAttendanceManager: React.FC<TeacherAttendanceManagerProps> =
     if (onSaved) onSaved();
   };
 
+  // Resolved Daily Attendance (Unmarked faculty automatically resolve as Present)
+  const resolvedAttendanceList = useMemo(() => {
+    return resolveTeacherAttendance(
+      staffList,
+      selectedDate,
+      attendanceRecords,
+      leaveApplications,
+      onDutyRecords
+    );
+  }, [staffList, selectedDate, attendanceRecords, leaveApplications, onDutyRecords]);
+
   // Current Date Attendance Lookup Map
   const dayAttendanceMap = useMemo(() => {
-    const map = new Map<string, TeacherAttendanceRecord>();
-    for (const rec of attendanceRecords) {
-      if (rec.date === selectedDate) {
-        map.set(rec.employeeCode, rec);
-      }
+    const map = new Map<string, ResolvedTeacherAttendance>();
+    for (const item of resolvedAttendanceList) {
+      map.set(item.staff.employeeCode, item);
     }
     return map;
-  }, [attendanceRecords, selectedDate]);
+  }, [resolvedAttendanceList]);
 
   // Filtered Staff List
   const filteredStaff = useMemo(() => {
@@ -731,8 +976,8 @@ export const TeacherAttendanceManager: React.FC<TeacherAttendanceManagerProps> =
       const matchEmp = employmentFilter === 'ALL' || empType === employmentFilter;
 
       // Status
-      const att = dayAttendanceMap.get(staff.employeeCode);
-      const curStatus = att?.status || 'Unmarked';
+      const resolved = dayAttendanceMap.get(staff.employeeCode);
+      const curStatus = resolved?.status || 'Present';
       const matchStatus =
         statusFilter === 'ALL' ||
         (statusFilter === 'Present' && curStatus === 'Present') ||
@@ -747,39 +992,38 @@ export const TeacherAttendanceManager: React.FC<TeacherAttendanceManagerProps> =
   // Live Summary Metrics for Selected Date
   const metrics = useMemo(() => {
     let present = 0;
+    let autoPresent = 0;
     let leave = 0;
     let od = 0;
     let absent = 0;
-    let unmarked = 0;
 
-    for (const staff of staffList) {
-      const att = dayAttendanceMap.get(staff.employeeCode);
-      if (!att) {
-        unmarked++;
-      } else if (att.status === 'Present') {
+    for (const item of resolvedAttendanceList) {
+      if (item.status === 'Present') {
         present++;
-      } else if (att.status === 'Leave') {
+        if (item.isAutoPresent) autoPresent++;
+      } else if (item.status === 'Leave') {
         leave++;
-      } else if (att.status === 'OD') {
+      } else if (item.status === 'OD') {
         od++;
-      } else if (att.status === 'Absent') {
+      } else if (item.status === 'Absent') {
         absent++;
       }
     }
 
-    // Count pending proxy substitutions today
-    const absentStaffToday = staffList.filter(s => {
-      const att = dayAttendanceMap.get(s.employeeCode);
-      return att && (att.status === 'Leave' || att.status === 'Absent' || att.status === 'OD');
-    });
+    // Count pending proxy substitutions today for absent faculty
+    const absentStaffToday = resolvedAttendanceList.filter(
+      r => r.status === 'Leave' || r.status === 'Absent' || r.status === 'OD'
+    );
 
     let totalPeriodsNeedingProxy = 0;
     let assignedProxiesToday = 0;
 
-    for (const staff of absentStaffToday) {
-      const daySlots = getStaffDayPeriods(staff);
+    for (const item of absentStaffToday) {
+      const daySlots = getStaffDayPeriods(item.staff);
       totalPeriodsNeedingProxy += daySlots.length;
-      const staffProxies = proxyAssignments.filter(p => p.date === selectedDate && p.absentTeacherCode === staff.employeeCode);
+      const staffProxies = proxyAssignments.filter(
+        p => p.date === selectedDate && p.absentTeacherCode === item.staff.employeeCode
+      );
       assignedProxiesToday += staffProxies.length;
     }
 
@@ -788,16 +1032,17 @@ export const TeacherAttendanceManager: React.FC<TeacherAttendanceManagerProps> =
     return {
       total: staffList.length,
       present,
+      autoPresent,
       leave,
       od,
       absent,
-      unmarked,
       attendanceRate: staffList.length > 0 ? Math.round(((present + od) / staffList.length) * 100) : 0,
       totalPeriodsNeedingProxy,
       assignedProxiesToday,
-      pendingProxies
+      pendingProxies,
+      absentStaffToday
     };
-  }, [staffList, dayAttendanceMap, proxyAssignments, selectedDate, timetable, currentDayOfWeek]);
+  }, [staffList, resolvedAttendanceList, proxyAssignments, selectedDate, timetable, currentDayOfWeek]);
 
   // Current Live Balance for Staff in Leave Modal
   const activeStaffBalance: LeaveBalance | null = useMemo(() => {
@@ -1026,14 +1271,29 @@ export const TeacherAttendanceManager: React.FC<TeacherAttendanceManagerProps> =
         {/* Global Controls & Actions */}
         <div className="flex items-center gap-2 flex-wrap">
           {activeTab === 'daily' && (
-            <button
-              onClick={handleMarkAllPresent}
-              disabled={!canMarkAttendance}
-              className="px-3.5 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 disabled:opacity-50 disabled:cursor-not-allowed text-white font-bold text-xs flex items-center gap-1.5 transition-all shadow-md shadow-emerald-600/30 cursor-pointer"
-            >
-              <CheckSquare className="w-4 h-4" />
-              <span>Mark All Present</span>
-            </button>
+            <>
+              <button
+                onClick={handleMarkAllPresent}
+                disabled={!canMarkAttendance}
+                className="px-3.5 py-1.5 rounded-xl bg-purple-700/60 hover:bg-purple-600 disabled:opacity-50 disabled:cursor-not-allowed text-white font-bold text-xs flex items-center gap-1.5 transition-all border border-purple-500/40 cursor-pointer shadow-xs"
+              >
+                <CheckSquare className="w-4 h-4" />
+                <span>Mark All Present</span>
+              </button>
+
+              <button
+                onClick={handleSaveAllAttendanceForDate}
+                disabled={isSaving}
+                className={`px-4 py-1.5 rounded-xl font-bold text-xs flex items-center gap-1.5 transition-all shadow-md cursor-pointer ${
+                  hasUnsavedChanges
+                    ? 'bg-emerald-500 hover:bg-emerald-400 text-slate-950 shadow-emerald-500/30 font-black ring-2 ring-emerald-400 animate-pulse'
+                    : 'bg-emerald-600 hover:bg-emerald-500 text-white shadow-emerald-600/30'
+                }`}
+              >
+                <Check className="w-4 h-4" />
+                <span>{isSaving ? 'Saving...' : `Save Attendance (${selectedDate})`}</span>
+              </button>
+            </>
           )}
 
           {activeTab === 'monthly_statement' && (
@@ -1226,7 +1486,9 @@ export const TeacherAttendanceManager: React.FC<TeacherAttendanceManagerProps> =
                 <UserCheck className="w-3.5 h-3.5 text-emerald-400" />
               </div>
               <div className="text-xl font-black text-emerald-400 font-mono">{metrics.present}</div>
-              <div className="text-[10px] text-emerald-300/70">On Campus Today</div>
+              <div className="text-[10px] text-emerald-300/70">
+                {metrics.autoPresent > 0 ? `${metrics.autoPresent} Auto-Present` : 'All on Campus'}
+              </div>
             </div>
 
             <div className="p-3.5 rounded-2xl bg-amber-950/30 border border-amber-500/30 space-y-1 shadow-sm">
@@ -1268,11 +1530,79 @@ export const TeacherAttendanceManager: React.FC<TeacherAttendanceManagerProps> =
             </div>
           </div>
 
+          {/* Absence Delegation Alert Banner (Shown when teachers are on Leave/OD/Absent) */}
+          {metrics.absentStaffToday && metrics.absentStaffToday.length > 0 && (
+            <div className="p-4 rounded-2xl bg-gradient-to-r from-amber-950/40 via-purple-950/40 to-slate-900 border border-amber-500/40 shadow-lg space-y-2.5 animate-fadeIn">
+              <div className="flex flex-col md:flex-row md:items-center justify-between gap-3">
+                <div className="flex items-start gap-3">
+                  <div className="p-2 rounded-xl bg-amber-500/20 border border-amber-500/40 text-amber-300 shrink-0">
+                    <AlertTriangle className="w-5 h-5" />
+                  </div>
+                  <div className="space-y-0.5">
+                    <h4 className="text-xs font-bold text-white uppercase tracking-wider flex items-center gap-2 m-0">
+                      <span>Faculty Absence & Delegation Notice</span>
+                      <span className="px-2 py-0.2 rounded-full bg-amber-500 text-slate-950 text-[10px] font-black font-mono">
+                        {metrics.absentStaffToday.length} Staff on Leave/OD
+                      </span>
+                    </h4>
+                    <p className="text-xs text-amber-200/90 m-0">
+                      Unmarked faculty are automatically registered as Present. Scheduled teaching periods, In-Charge responsibilities, and duty allocations for absent staff are ready for substitution and temporary shifting.
+                    </p>
+                  </div>
+                </div>
+
+                <div className="flex items-center gap-2 shrink-0">
+                  <button
+                    onClick={() => {
+                      if (metrics.absentStaffToday[0]) {
+                        handleOpenProxyModal(metrics.absentStaffToday[0].staff);
+                      }
+                    }}
+                    className="px-3.5 py-2 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold text-xs flex items-center gap-1.5 transition-all shadow-md cursor-pointer"
+                  >
+                    <Clock className="w-4 h-4" />
+                    <span>Assign {metrics.pendingProxies} Proxies</span>
+                  </button>
+                </div>
+              </div>
+
+              {/* Absent Staff Summary Chips */}
+              <div className="flex items-center gap-2 flex-wrap pt-1 border-t border-amber-500/20">
+                {metrics.absentStaffToday.map(r => {
+                  const periods = getStaffDayPeriods(r.staff);
+                  return (
+                    <span
+                      key={r.staff.employeeCode}
+                      className="inline-flex items-center gap-2 px-3 py-1 rounded-xl bg-slate-950/80 border border-amber-500/30 text-xs text-white"
+                    >
+                      <span className="font-bold">{r.staff.name}</span>
+                      <span
+                        className={`px-1.5 py-0.2 rounded text-[10px] font-mono font-bold ${
+                          r.status === 'Leave'
+                            ? 'bg-amber-500/20 text-amber-300 border border-amber-500/40'
+                            : r.status === 'OD'
+                            ? 'bg-blue-500/20 text-blue-300 border border-blue-500/40'
+                            : 'bg-rose-500/20 text-rose-300 border border-rose-500/40'
+                        }`}
+                      >
+                        {r.leaveType || r.status}
+                      </span>
+                      <span className="text-[11px] text-slate-400">
+                        {periods.length} Class Period(s)
+                      </span>
+                    </span>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+
           {/* Teacher Roster List & Quick Actions */}
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
             {filteredStaff.map(staff => {
               const att = dayAttendanceMap.get(staff.employeeCode);
-              const curStatus = att?.status || 'Unmarked';
+              const curStatus = att?.status || 'Present';
+              const isAutoPresent = att?.isAutoPresent ?? true;
               const isContractual = staff.employmentType === 'Contractual';
               const balance = getLeaveBalance(staff, leaveApplications, selectedDate);
               const dayPeriods = getStaffDayPeriods(staff);
@@ -1285,7 +1615,9 @@ export const TeacherAttendanceManager: React.FC<TeacherAttendanceManagerProps> =
                   key={staff.employeeCode}
                   className={`p-4 rounded-2xl border transition-all space-y-3 bg-slate-900 ${
                     curStatus === 'Present'
-                      ? 'border-emerald-500/30 hover:border-emerald-500/60'
+                      ? isAutoPresent
+                        ? 'border-emerald-500/30 hover:border-emerald-500/60'
+                        : 'border-emerald-500/50 bg-emerald-950/10'
                       : curStatus === 'Leave'
                       ? 'border-amber-500/40 bg-amber-950/10'
                       : curStatus === 'OD'
@@ -1319,7 +1651,9 @@ export const TeacherAttendanceManager: React.FC<TeacherAttendanceManagerProps> =
                     <span
                       className={`px-2 py-0.5 rounded-full text-[10px] font-bold uppercase border ${
                         curStatus === 'Present'
-                          ? 'bg-emerald-950 text-emerald-300 border-emerald-500'
+                          ? isAutoPresent
+                            ? 'bg-emerald-950/80 text-emerald-300 border-emerald-500/50 shadow-xs'
+                            : 'bg-emerald-600 text-white border-emerald-500'
                           : curStatus === 'Leave'
                           ? 'bg-amber-950 text-amber-300 border-amber-500'
                           : curStatus === 'OD'
@@ -1329,7 +1663,9 @@ export const TeacherAttendanceManager: React.FC<TeacherAttendanceManagerProps> =
                           : 'bg-slate-950 text-slate-500 border-slate-800'
                       }`}
                     >
-                      {curStatus} {att?.leaveType ? `(${att.leaveType})` : ''}
+                      {curStatus === 'Present' && isAutoPresent
+                        ? 'Auto-Present'
+                        : `${curStatus}${att?.leaveType && curStatus === 'Leave' ? ` (${att.leaveType})` : ''}`}
                     </span>
                   </div>
 
@@ -2269,224 +2605,123 @@ export const TeacherAttendanceManager: React.FC<TeacherAttendanceManagerProps> =
         </div>
       )}
 
-      {/* ========================================================================= */}
-      {/* MODAL 3: AUTOMATIC PROXY / ARRANGEMENT DUTY PLANNER */}
-      {/* ========================================================================= */}
-      {isProxyModalOpen && activeStaffForProxy && (
-        <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center p-4 overflow-y-auto">
-          <div className="bg-slate-900 border border-slate-800 rounded-3xl w-full max-w-2xl p-6 space-y-5 shadow-2xl relative my-8 animate-scaleUp">
-            <div className="flex items-center justify-between pb-4 border-b border-slate-800">
-              <div className="space-y-0.5">
-                <h3 className="text-base font-bold text-white flex items-center gap-2 m-0">
-                  <ShieldCheck className="w-5 h-5 text-purple-400" />
-                  <span>Automatic Proxy & Substitution Planner</span>
-                </h3>
-                <p className="text-xs text-slate-400 m-0">
-                  Absent Teacher: <strong className="text-rose-300">{activeStaffForProxy.name}</strong> ({activeStaffForProxy.designation}) &bull; Date: {selectedDate} ({currentDayOfWeek})
-                </p>
+      {/* Sticky Bottom Save Action Bar for Unsaved Changes */}
+      {hasUnsavedChanges && activeTab === 'daily' && (
+        <div className="fixed bottom-5 left-1/2 transform -translate-x-1/2 z-50 bg-slate-900/95 backdrop-blur-md border-2 border-emerald-500 rounded-2xl p-4 shadow-2xl flex items-center gap-4 text-white max-w-xl w-[90vw] animate-slideUp">
+          <div className="flex-1 flex items-center gap-3 min-w-0">
+            <span className="w-3 h-3 rounded-full bg-emerald-400 animate-ping shrink-0" />
+            <div className="min-w-0">
+              <h4 className="font-black text-sm text-emerald-300 m-0 truncate">Unsaved Attendance Changes</h4>
+              <p className="text-xs text-slate-300 m-0 truncate">
+                {unsavedStaffCodes.size} faculty modified for {formatDisplayDate(selectedDate)}
+              </p>
+            </div>
+          </div>
+          <div className="flex items-center gap-2 shrink-0">
+            <button
+              onClick={handleDiscardStagedChanges}
+              className="px-3 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-bold transition-all cursor-pointer"
+            >
+              Discard
+            </button>
+            <button
+              onClick={handleSaveAllAttendanceForDate}
+              disabled={isSaving}
+              className="px-4 py-1.5 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-slate-950 text-xs font-black transition-all shadow-md flex items-center gap-1.5 cursor-pointer"
+            >
+              <Check className="w-4 h-4" />
+              <span>{isSaving ? 'Saving...' : `Save (${selectedDate})`}</span>
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Confirmation Modal: Principal Override Sanctioned Leave / OD */}
+      {confirmOverrideModal?.isOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/75 backdrop-blur-xs animate-fadeIn">
+          <div className="bg-slate-900 border border-amber-500/50 rounded-2xl max-w-lg w-full p-6 space-y-4 shadow-2xl text-slate-100">
+            <div className="flex items-center gap-3 border-b border-slate-800 pb-3">
+              <div className="p-2.5 rounded-xl bg-amber-500/20 text-amber-400 border border-amber-500/30">
+                <AlertTriangle className="w-6 h-6" />
               </div>
-              <button
-                onClick={() => setIsProxyModalOpen(false)}
-                className="text-slate-400 hover:text-white p-1 rounded-lg cursor-pointer"
-              >
-                <X className="w-5 h-5" />
-              </button>
+              <div>
+                <h3 className="font-bold text-base text-white m-0">Override Sanctioned Leave / Duty?</h3>
+                <p className="text-xs text-slate-400 m-0">Principal Attendance Correction Protocol</p>
+              </div>
             </div>
 
-            {/* List of Periods Scheduled for Absent Teacher */}
-            <div className="space-y-3">
-              <h4 className="text-xs font-bold text-slate-300 uppercase tracking-wider m-0">
-                1. Select Period Requiring Substitution:
-              </h4>
-
-              {getStaffDayPeriods(activeStaffForProxy).length === 0 ? (
-                <div className="p-6 rounded-2xl bg-slate-950 border border-slate-800 text-center text-slate-400 text-xs">
-                  ✨ No scheduled timetable periods found for {activeStaffForProxy.name} on {currentDayOfWeek}. No substitution required!
-                </div>
-              ) : (
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
-                  {getStaffDayPeriods(activeStaffForProxy).map((slot, sIdx) => {
-                    const pNum = slot.period || slot.periodNumber || 1;
-                    const existingProxy = proxyAssignments.find(
-                      p =>
-                        p.date === selectedDate &&
-                        p.periodNumber === pNum &&
-                        p.className === slot.className &&
-                        p.absentTeacherCode === activeStaffForProxy.employeeCode
-                    );
-
-                    const isSelected =
-                      selectedSlotForProxy &&
-                      (selectedSlotForProxy.period || selectedSlotForProxy.periodNumber) === pNum &&
-                      selectedSlotForProxy.className === slot.className;
-
-                    return (
-                      <div
-                        key={slot.id || `slot-${pNum}-${sIdx}`}
-                        onClick={() => {
-                          setSelectedSlotForProxy(slot);
-                          setSelectedSubstituteCode('');
-                        }}
-                        className={`p-3.5 rounded-2xl border transition-all cursor-pointer space-y-2 ${
-                          isSelected
-                            ? 'bg-purple-950/60 border-purple-500 shadow-lg shadow-purple-950/40 ring-1 ring-purple-500'
-                            : existingProxy
-                            ? 'bg-emerald-950/20 border-emerald-500/40 hover:border-emerald-500/70'
-                            : 'bg-slate-950 border-slate-800 hover:border-slate-700'
-                        }`}
-                      >
-                        <div className="flex items-center justify-between">
-                          <span className="px-2 py-0.5 rounded-md bg-slate-800 text-purple-300 font-mono text-xs font-bold">
-                            Period {pNum}
-                          </span>
-                          <span className="text-xs text-slate-400 font-mono">
-                            {slot.timeSlot || '08:00 - 08:40'}
-                          </span>
-                        </div>
-
-                        <div className="space-y-0.5">
-                          <div className="font-bold text-white text-xs flex items-center justify-between">
-                            <span>Class {slot.className} {slot.section || ''}</span>
-                            <span className="text-purple-300 font-normal">{slot.subjectName}</span>
-                          </div>
-                          {slot.roomNo && (
-                            <div className="text-[11px] text-slate-500">Room: {slot.roomNo}</div>
-                          )}
-                        </div>
-
-                        {/* Existing Proxy Indicator */}
-                        {existingProxy ? (
-                          <div className="pt-2 border-t border-emerald-500/20 flex items-center justify-between">
-                            <div className="text-[11px] text-emerald-300 font-bold flex items-center gap-1">
-                              <ShieldCheck className="w-3.5 h-3.5 text-emerald-400" />
-                              <span>Proxy: {existingProxy.substituteTeacherName}</span>
-                            </div>
-                            <button
-                              type="button"
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                handleCancelProxy(existingProxy.id);
-                              }}
-                              className="text-[10px] text-rose-400 hover:text-rose-300 underline font-bold"
-                            >
-                              Cancel
-                            </button>
-                          </div>
-                        ) : (
-                          <div className="pt-2 border-t border-slate-800/80 flex items-center justify-between text-[11px] text-rose-400 font-bold">
-                            <span className="flex items-center gap-1">
-                              <AlertCircle className="w-3.5 h-3.5 text-rose-400" />
-                              <span>Needs Proxy Assignment</span>
-                            </span>
-                            <span className="text-[10px] text-purple-400 uppercase font-mono">Click to select</span>
-                          </div>
-                        )}
-                      </div>
-                    );
-                  })}
+            <div className="space-y-3 text-sm">
+              <p className="text-slate-300 m-0">
+                <strong className="text-white">{confirmOverrideModal.staff.name}</strong> currently has an active sanctioned{' '}
+                <strong className="text-amber-300">
+                  {confirmOverrideModal.activeLeaveInfo?.leaveType || (confirmOverrideModal.activeODInfo ? 'Official On-Duty' : 'Absence')}
+                </strong>{' '}
+                recorded for <strong className="text-emerald-400">{formatDisplayDate(selectedDate)}</strong>.
+              </p>
+              
+              {confirmOverrideModal.activeLeaveInfo?.reason && (
+                <div className="p-3 bg-slate-950 rounded-xl border border-slate-800 text-xs space-y-1">
+                  <span className="text-slate-500 block font-bold">Sanctioned Leave Details:</span>
+                  <span className="text-slate-300 font-mono">
+                    Dates: {confirmOverrideModal.activeLeaveInfo.fromDate} to {confirmOverrideModal.activeLeaveInfo.toDate}
+                  </span>
+                  <p className="text-slate-400 italic m-0">"{confirmOverrideModal.activeLeaveInfo.reason}"</p>
                 </div>
               )}
+
+              {confirmOverrideModal.activeODInfo?.purpose && (
+                <div className="p-3 bg-slate-950 rounded-xl border border-slate-800 text-xs space-y-1">
+                  <span className="text-slate-500 block font-bold">Official On-Duty Details:</span>
+                  <p className="text-slate-300 m-0">{confirmOverrideModal.activeODInfo.purpose} ({confirmOverrideModal.activeODInfo.venue || 'Deputed'})</p>
+                </div>
+              )}
+
+              <div className="p-3 rounded-xl bg-amber-950/40 border border-amber-500/30 text-amber-200 text-xs space-y-1">
+                <p className="font-bold m-0">Correction Effect:</p>
+                <ul className="list-disc list-inside space-y-0.5 text-slate-300">
+                  <li>Cancels / supersedes this entry for <strong className="text-white">{formatDisplayDate(selectedDate)}</strong>.</li>
+                  <li>Restores debited leave day balance back to teacher's ledger.</li>
+                  <li>Marks daily status as <strong className="text-emerald-300">{confirmOverrideModal.targetStatus}</strong>.</li>
+                </ul>
+              </div>
             </div>
 
-            {/* Substitution Assignment Form for Selected Period */}
-            {selectedSlotForProxy && (
-              <form onSubmit={handleAssignProxy} className="p-4 rounded-2xl bg-slate-950 border border-slate-800 space-y-4">
-                <div className="flex items-center justify-between">
-                  <h4 className="text-xs font-bold text-purple-300 m-0 uppercase tracking-wider flex items-center gap-1.5">
-                    <span>2. Assign Available Substitute Teacher for Period {selectedSlotForProxy.period || selectedSlotForProxy.periodNumber || 1} (Class {selectedSlotForProxy.className})</span>
-                  </h4>
-                </div>
-
-                <div className="space-y-1">
-                  <label className="text-xs font-bold text-slate-300 block">
-                    Available Free Teachers During Period {selectedSlotForProxy.period || selectedSlotForProxy.periodNumber || 1} *
-                  </label>
-                  {(() => {
-                    const pNum = selectedSlotForProxy.period || selectedSlotForProxy.periodNumber || 1;
-                    const freeStaff = getAvailableFreeTeachers(pNum, activeStaffForProxy.employeeCode);
-
-                    if (freeStaff.length === 0) {
-                      return (
-                        <div className="p-3 rounded-xl bg-amber-950/40 border border-amber-500/40 text-amber-300 text-xs">
-                          ⚠️ No completely free teachers found for Period {pNum}. You may still select any present staff below:
-                          <select
-                            required
-                            value={selectedSubstituteCode}
-                            onChange={e => setSelectedSubstituteCode(e.target.value)}
-                            className="mt-2 w-full px-3 py-2 text-xs bg-slate-900 border border-slate-700 rounded-xl text-white focus:outline-none focus:border-purple-500"
-                          >
-                            <option value="">-- Choose Any Present Faculty --</option>
-                            {staffList
-                              .filter(s => s.employeeCode !== activeStaffForProxy.employeeCode)
-                              .map(s => (
-                                <option key={s.employeeCode} value={s.employeeCode}>
-                                  {s.name} ({s.designation}) - {s.employmentType || 'Regular'}
-                                </option>
-                              ))}
-                          </select>
-                        </div>
-                      );
-                    }
-
-                    return (
-                      <select
-                        required
-                        value={selectedSubstituteCode}
-                        onChange={e => setSelectedSubstituteCode(e.target.value)}
-                        className="w-full px-3 py-2 text-xs bg-slate-900 border border-slate-700 rounded-xl text-white focus:outline-none focus:border-purple-500"
-                      >
-                        <option value="">-- Select From {freeStaff.length} Free Teacher(s) --</option>
-                        {freeStaff.map(s => (
-                          <option key={s.employeeCode} value={s.employeeCode}>
-                            ✅ {s.name} ({s.designation}) &bull; Free Period {pNum} &bull; {s.employmentType || 'Regular'}
-                          </option>
-                        ))}
-                      </select>
-                    );
-                  })()}
-                </div>
-
-                <div>
-                  <label className="text-xs font-bold text-slate-300 block mb-1">
-                    Special Instructions / Notes for Proxy Teacher (Optional)
-                  </label>
-                  <input
-                    type="text"
-                    value={proxyNotes}
-                    onChange={e => setProxyNotes(e.target.value)}
-                    placeholder="e.g. Conduct chapter 4 revision test / NCERT reading / Science lab visit..."
-                    className="w-full px-3 py-2 text-xs bg-slate-900 border border-slate-700 rounded-xl text-white focus:outline-none focus:border-purple-500"
-                  />
-                </div>
-
-                <div className="flex items-center justify-between pt-2 border-t border-slate-800">
-                  <span className="text-[11px] text-slate-400">
-                    Will automatically generate task: <strong>Proxy Duty – Class {selectedSlotForProxy.className}-{selectedSlotForProxy.section || 'A'} (Period {selectedSlotForProxy.period || selectedSlotForProxy.periodNumber || 1}) for {activeStaffForProxy.name}</strong>
-                  </span>
-                  <button
-                    type="submit"
-                    className="px-5 py-2 rounded-xl bg-purple-600 hover:bg-purple-500 text-white font-bold text-xs flex items-center gap-1.5 transition-all shadow-lg shadow-purple-600/30 cursor-pointer"
-                  >
-                    <CheckCircle2 className="w-4 h-4" />
-                    <span>Confirm & Assign Proxy</span>
-                  </button>
-                </div>
-              </form>
-            )}
-
-            {/* Modal Footer */}
-            <div className="flex items-center justify-end gap-3 pt-3 border-t border-slate-800">
+            <div className="flex items-center justify-end gap-3 pt-2 border-t border-slate-800">
               <button
                 type="button"
-                onClick={() => setIsProxyModalOpen(false)}
-                className="px-4 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 font-bold text-xs cursor-pointer"
+                onClick={() => setConfirmOverrideModal(null)}
+                className="px-4 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-bold transition-all cursor-pointer"
               >
-                Close Planner
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  const modal = confirmOverrideModal;
+                  setConfirmOverrideModal(null);
+                  handleMarkAttendance(modal.staff, modal.targetStatus, undefined, true);
+                }}
+                className="px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold transition-all shadow-md cursor-pointer flex items-center gap-1.5"
+              >
+                <CheckCircle2 className="w-4 h-4" />
+                <span>Confirm & Mark {confirmOverrideModal.targetStatus}</span>
               </button>
             </div>
           </div>
         </div>
       )}
+
+      {/* ========================================================================= */}
+      {/* MODAL 3: AUTOMATIC PROXY & SUBSTITUTION PLANNER */}
+      {/* ========================================================================= */}
+      <AutomaticProxyPlannerModal
+        isOpen={isProxyModalOpen}
+        onClose={() => setIsProxyModalOpen(false)}
+        initialStaff={activeStaffForProxy}
+        initialDate={selectedDate}
+        currentUser={currentUser}
+        onProxySaved={loadInitialData}
+      />
     </div>
   );
 };

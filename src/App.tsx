@@ -28,10 +28,11 @@ import { AuthLoginModal } from './components/AuthLoginModal';
 import { FloatingTicketButton } from './components/FloatingTicketButton';
 
 import { getActiveInspectedTeacher, getTeacherScopedStorageKey } from './lib/teacherContext';
-import { StaffDetailRecord, TeacherProfile } from './types/academic';
+import { StaffDetailRecord, TeacherProfile, SchoolDetails } from './types/academic';
 import { UserAccount } from './types/auth';
-import { getCurrentUser, setCurrentUser } from './lib/storage';
-import { Sparkles, Loader2 } from 'lucide-react';
+import { getCurrentUser, setCurrentUser, DEFAULT_SCHOOL } from './lib/storage';
+import { KvsLogo } from './components/common/KvsLogo';
+import { Sparkles } from 'lucide-react';
 
 export type DiaryMode = 'middle-secondary' | 'foundational-preparatory';
 export type TabKey = string;
@@ -81,6 +82,7 @@ export default function App() {
   const [currentUser, setCurrentUserAccount] = useState<UserAccount | null>(null);
   const [isLoginModalOpen, setIsLoginModalOpen] = useState<boolean>(false);
   const [activeInspectedTeacher, setActiveInspectedTeacherState] = useState<StaffDetailRecord | null>(null);
+  const [schoolDetails, setSchoolDetails] = useState<SchoolDetails>(DEFAULT_SCHOOL);
 
   // KVS Samagam Assign Roles Dropdown & Modal State (Admin Only)
   const [isAssignRolesModalOpen, setIsAssignRolesModalOpen] = useState<boolean>(false);
@@ -105,7 +107,14 @@ export default function App() {
   useEffect(() => {
     initApp();
 
-    const handleSchoolUpdate = async () => {
+    const handleSchoolUpdate = async (e?: any) => {
+      if (e?.detail) {
+        setSchoolDetails(e.detail);
+      } else {
+        const savedSchool = await db.get<SchoolDetails>('setup:school');
+        if (savedSchool) setSchoolDetails(savedSchool);
+      }
+
       const user = await getCurrentUser();
       if (user) {
         if (user.employeeCode) {
@@ -168,10 +177,15 @@ export default function App() {
       setTheme(savedTheme);
     }
 
-    const [user, inspectedTeacher] = await Promise.all([
+    const [user, inspectedTeacher, savedSchool] = await Promise.all([
       getCurrentUser(),
-      getActiveInspectedTeacher()
+      getActiveInspectedTeacher(),
+      db.get<SchoolDetails>('setup:school')
     ]);
+
+    if (savedSchool) {
+      setSchoolDetails(savedSchool);
+    }
 
     if (user) {
       const savedPersona = await db.get<'teacher' | 'data_entry_manager' | 'admin'>(`settings:active_persona:${user.employeeCode || user.id}`);
@@ -280,9 +294,7 @@ export default function App() {
       setActiveModule('office');
     } else if (['tasks', 'taskmanager'].includes(target)) {
       setActiveModule('tasks');
-    } else if (['tickets'].includes(target)) {
-      setActiveModule('tickets');
-    } else if (['settings'].includes(target)) {
+    } else if (['settings', 'tickets'].includes(target)) {
       setActiveModule('settings');
     } else {
       setActiveModule('dashboard');
@@ -291,22 +303,44 @@ export default function App() {
 
   if (!initialized) {
     return (
-      <div className="min-h-screen bg-[#0F111A] flex items-center justify-center text-purple-300 font-sans">
-        <div className="flex flex-col items-center gap-4">
-          <div className="w-12 h-12 rounded-2xl bg-gradient-to-tr from-indigo-500 to-purple-600 flex items-center justify-center text-white shadow-xl shadow-indigo-500/20 animate-pulse">
-            <Sparkles className="w-6 h-6" />
+      <div className="min-h-screen bg-[#0B0D14] flex flex-col items-center justify-center relative overflow-hidden select-none">
+        {/* Ambient atmospheric glows */}
+        <div className="absolute w-96 h-96 bg-purple-600/20 rounded-full blur-3xl animate-pulse pointer-events-none -top-10 -left-10" />
+        <div className="absolute w-96 h-96 bg-indigo-600/20 rounded-full blur-3xl animate-pulse pointer-events-none -bottom-10 -right-10" style={{ animationDelay: '1s' }} />
+
+        {/* Central Animated Orbital Emblem with KVS / School Logo */}
+        <div className="relative flex items-center justify-center">
+          {/* Outer glowing aura */}
+          <div className="absolute w-36 h-36 rounded-full bg-gradient-to-tr from-indigo-500/30 via-purple-500/30 to-amber-500/30 blur-xl animate-pulse" />
+          
+          {/* Outer Spinning Dashed Orbit Ring */}
+          <div className="absolute w-32 h-32 rounded-full border-2 border-dashed border-purple-500/40 animate-spin" style={{ animationDuration: '6s' }} />
+
+          {/* Reverse Spinning Gradient Arc Ring */}
+          <div className="absolute w-24 h-24 rounded-full border-2 border-t-indigo-400 border-r-transparent border-b-purple-400 border-l-transparent animate-spin" style={{ animationDuration: '2.2s', animationDirection: 'reverse' }} />
+
+          {/* Core Floating Glowing Icon Card */}
+          <div className="relative p-2.5 rounded-2xl bg-gradient-to-tr from-indigo-950 via-purple-950 to-slate-900 flex items-center justify-center text-white shadow-2xl shadow-indigo-500/40 border border-purple-500/40 transform animate-bounce" style={{ animationDuration: '2.5s' }}>
+            <KvsLogo logoUrl={schoolDetails.logoUrl} size="lg" isDark={true} />
           </div>
-          <div className="flex items-center gap-2 text-sm font-semibold text-slate-300">
-            <Loader2 className="w-4 h-4 animate-spin text-indigo-400" />
-            <span>Loading KVS Teacher Diary...</span>
-          </div>
+        </div>
+
+        {/* Dynamic 3-Dot Wave Pulse (No text) */}
+        <div className="mt-8 flex items-center gap-2">
+          <div className="w-2.5 h-2.5 rounded-full bg-indigo-400 animate-bounce" style={{ animationDelay: '0ms' }} />
+          <div className="w-2.5 h-2.5 rounded-full bg-purple-400 animate-bounce" style={{ animationDelay: '150ms' }} />
+          <div className="w-2.5 h-2.5 rounded-full bg-pink-400 animate-bounce" style={{ animationDelay: '300ms' }} />
         </div>
       </div>
     );
   }
 
+  const isDark = theme !== 'light';
+
   return (
-    <div className="min-h-screen font-sans text-slate-100 dark:text-slate-100 light:text-slate-900 bg-[#0F111A] dark:bg-[#0B0D14] light:bg-[#F8FAFC] flex flex-col selection:bg-indigo-500 selection:text-white transition-colors duration-200">
+    <div className={`min-h-screen font-sans flex flex-col selection:bg-indigo-500 selection:text-white transition-colors duration-200 ${
+      isDark ? 'bg-[#0B0D14] text-slate-100' : 'bg-[#F8FAFC] text-slate-900'
+    }`}>
       {/* 1. Desktop & Mobile New Navigation Shell */}
       <TopNavBar
         activeModule={activeModule}
@@ -364,7 +398,7 @@ export default function App() {
             />
           )}
 
-          {activeModule === 'school' && <SchoolModule devMode={devMode} />}
+          {activeModule === 'school' && <SchoolModule devMode={devMode} theme={theme} />}
 
           {activeModule === 'calendar' && (
             <div className="space-y-4 animate-fadeIn">
@@ -427,8 +461,6 @@ export default function App() {
           {activeModule === 'office' && <OfficeModule devMode={devMode} />}
 
           {activeModule === 'tasks' && <TasksModule devMode={devMode} />}
-
-          {activeModule === 'tickets' && <TicketsModule devMode={devMode} />}
 
           {activeModule === 'settings' && (
             <SettingsModule

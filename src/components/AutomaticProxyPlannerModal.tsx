@@ -245,30 +245,7 @@ export const AutomaticProxyPlannerModal: React.FC<AutomaticProxyPlannerModalProp
         }
       }
     }
-
-    // Check Active Subject Responsibilities (e.g. Sipika Patel -> Odia in V-A, Karishma Kerketta -> Math support in V-A)
-    const slotClass = (slot.className || '').toLowerCase();
-    const slotSubj = (slot.subjectName || '').toLowerCase();
-    const hasSubjectResp = subjectResponsibilities.some(sra => {
-      if (sra.status !== 'Active') return false;
-      const empMatch = sra.employeeCode && staff.employeeCode && sra.employeeCode.toLowerCase() === staff.employeeCode.toLowerCase();
-      const nameMatch = sra.teacherName && normalizeFacultyKey(sra.teacherName) === staffKey;
-      if (!empMatch && !nameMatch) return false;
-
-      // Check date range if specific period
-      if (sra.assignmentType === 'Specific Period') {
-        if (sra.fromDate && selectedDate < sra.fromDate) return false;
-        if (sra.toDate && selectedDate > sra.toDate) return false;
-      }
-
-      const sraClass = sra.className.toLowerCase().replace('class ', '').trim();
-      const sraSubj = sra.subjectName.toLowerCase().trim();
-      const classMatch = slotClass.includes(sraClass) || sraClass.includes(slotClass.replace('class ', '').trim());
-      const subjMatch = slotSubj.includes(sraSubj) || sraSubj.includes(slotSubj);
-      return classMatch && subjMatch;
-    });
-
-    return hasSubjectResp;
+    return false;
   };
 
   const LANGUAGE_KEYWORDS = ['hindi', 'english', 'sanskrit', 'odia', 'language'];
@@ -488,26 +465,41 @@ export const AutomaticProxyPlannerModal: React.FC<AutomaticProxyPlannerModalProp
       activeStaffForProxy.name
     );
 
-    return timetable
-      .filter(slot => {
-        const slotDay = (slot.dayOfWeek || slot.day || '').trim().toLowerCase();
-        const targetDay = currentDayOfWeek.toLowerCase();
-        if (slotDay !== targetDay) return false;
+    const directSlots = timetable.filter(slot => {
+      const slotDay = (slot.dayOfWeek || slot.day || '').trim().toLowerCase();
+      const targetDay = currentDayOfWeek.toLowerCase();
+      if (slotDay !== targetDay) return false;
 
-        const pNum = Number(slot.period || slot.periodNumber || 1);
-        if (absence.isAbsent && absence.halfDay && absence.halfDaySession) {
-          if (absence.halfDaySession === 'First Half' && pNum > 4) {
-            return false; // Present in 2nd half (periods 5-9)
-          }
-          if (absence.halfDaySession === 'Second Half' && pNum <= 4) {
-            return false; // Present in 1st half (periods 1-4)
-          }
+      const pNum = Number(slot.period || slot.periodNumber || 1);
+      if (absence.isAbsent && absence.halfDay && absence.halfDaySession) {
+        if (absence.halfDaySession === 'First Half' && pNum > 4) {
+          return false; // Present in 2nd half (periods 5-9)
         }
+        if (absence.halfDaySession === 'Second Half' && pNum <= 4) {
+          return false; // Present in 1st half (periods 1-4)
+        }
+      }
 
-        return isSlotAssignedToStaff(slot, activeStaffForProxy);
-      })
-      .sort((a, b) => Number(a.period || a.periodNumber || 1) - Number(b.period || b.periodNumber || 1));
-  }, [activeStaffForProxy, timetable, currentDayOfWeek, selectedDate, attendanceRecords, leaveApplications, onDutyRecords, subjectResponsibilities]);
+      return isSlotAssignedToStaff(slot, activeStaffForProxy);
+    });
+
+    // Deduplicate by period number so the same period is never shown multiple times
+    const periodMap = new Map<number, TimetableSlot>();
+    for (const slot of directSlots) {
+      const pNum = Number(slot.period || slot.periodNumber || 1);
+      if (!periodMap.has(pNum)) {
+        periodMap.set(pNum, slot);
+      }
+    }
+
+    const finalSlots = Array.from(periodMap.values()).sort(
+      (a, b) => Number(a.period || a.periodNumber || 1) - Number(b.period || b.periodNumber || 1)
+    );
+
+    console.log(`[TEACHER SCHEDULED PERIODS] ${activeStaffForProxy.name} on ${currentDayOfWeek} (Total: ${finalSlots.length} periods):`, finalSlots.map(s => `P${s.period || s.periodNumber}: ${s.className} (${s.subjectName})`));
+
+    return finalSlots;
+  }, [activeStaffForProxy, timetable, currentDayOfWeek, selectedDate, attendanceRecords, leaveApplications, onDutyRecords]);
 
   const getAvailableFreeTeachers = (
     periodNum: number,

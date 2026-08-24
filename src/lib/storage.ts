@@ -7537,92 +7537,52 @@ export async function getMergedStaffList(): Promise<StaffDetailRecord[]> {
   const userAccounts = await getUserAccounts();
   const staffMap = new Map<string, StaffDetailRecord>();
 
+  const getStaffKey = (name?: string, code?: string) => {
+    const k = normalizeStaffKey(name);
+    if (k) return k;
+    if (code) return String(code).trim().toLowerCase();
+    return '';
+  };
+
   // 1. Seed with ALL 21 DEFAULT_STAFF_DETAILS
   DEFAULT_STAFF_DETAILS.forEach(s => {
-    const codeKey = s.employeeCode ? String(s.employeeCode).trim().toLowerCase() : '';
-    const nameKey = normalizeStaffKey(s.name);
-    if (codeKey) staffMap.set(codeKey, s);
-    if (nameKey) staffMap.set(nameKey, s);
+    const key = getStaffKey(s.name, s.employeeCode);
+    if (key) staffMap.set(key, s);
   });
 
   // 2. Merge storedStaff (preserve any user edits)
   if (storedStaff && storedStaff.length > 0) {
     storedStaff.forEach(s => {
-      const codeKey = s.employeeCode ? String(s.employeeCode).trim().toLowerCase() : '';
-      const nameKey = normalizeStaffKey(s.name);
-      const existing = (codeKey && staffMap.get(codeKey)) || (nameKey && staffMap.get(nameKey)) || s;
-      const merged = { ...existing, ...s };
-      if (codeKey) staffMap.set(codeKey, merged);
-      if (nameKey) staffMap.set(nameKey, merged);
+      const key = getStaffKey(s.name, s.employeeCode);
+      if (key) {
+        const existing = staffMap.get(key) || s;
+        staffMap.set(key, { ...existing, ...s });
+      }
     });
   }
 
   // 3. Merge user accounts
   if (userAccounts && userAccounts.length > 0) {
     userAccounts.forEach(u => {
-      const codeKey = u.employeeCode ? String(u.employeeCode).trim().toLowerCase() : '';
-      const nameKey = normalizeStaffKey(u.name);
-      const existing = (codeKey && staffMap.get(codeKey)) || (nameKey && staffMap.get(nameKey));
-      if (existing) {
-        const merged = {
-          ...existing,
-          employeeCode: u.employeeCode || existing.employeeCode,
-          name: existing.name || u.name,
-          designation: existing.designation || u.designation || 'Teacher',
-          email: existing.email || u.email
-        };
-        if (codeKey) staffMap.set(codeKey, merged);
-        if (nameKey) staffMap.set(nameKey, merged);
-      } else {
-        const newRecord: StaffDetailRecord = {
-          id: `stf-${u.employeeCode || u.id}`,
-          serialNo: staffMap.size + 1,
-          name: u.name,
-          employeeCode: u.employeeCode || u.id,
-          designation: u.designation || 'Teacher',
-          employmentType: 'Regular',
-          socialCategory: 'GEN',
-          dob: '01/01/1990',
-          joiningDateKVSWithDesignation: '01/04/2020',
-          joiningDatePresentKVWithDesignation: '01/04/2020',
-          bankAccountNo: '',
-          ifscCode: '',
-          bankName: '',
-          highestAcademicAndProfessionalQual: 'Post Graduate / B.Ed.',
-          permanentPostalAddress: 'KV Campus',
-          email: u.email || '',
-          phoneCalls: u.phone || '',
-          phoneWhatsapp: u.phone || '',
-          aadharNo: '',
-          pranOrPanNo: '',
-          isMinority: 'No',
-          seniorityNumber: 'KVS-FAC-00',
-          approvalStatus: 'Verified & Approved'
-        };
-        if (codeKey) staffMap.set(codeKey, newRecord);
-        if (nameKey) staffMap.set(nameKey, newRecord);
+      const key = getStaffKey(u.name, u.employeeCode);
+      if (key) {
+        const existing = staffMap.get(key);
+        if (existing) {
+          staffMap.set(key, {
+            ...existing,
+            employeeCode: u.employeeCode || existing.employeeCode,
+            name: existing.name || u.name,
+            designation: existing.designation || u.designation || 'Teacher',
+            email: existing.email || u.email
+          });
+        }
       }
     });
   }
 
-  // Deduplicate by employeeCode and normalized name
-  const uniqueStaff: StaffDetailRecord[] = [];
-  const seenKeys = new Set<string>();
+  const finalStaff = Array.from(staffMap.values()).map((s, idx) => ({ ...s, serialNo: idx + 1 }));
 
-  for (const staff of staffMap.values()) {
-    const codeKey = staff.employeeCode ? String(staff.employeeCode).trim().toLowerCase() : '';
-    const nameKey = normalizeStaffKey(staff.name);
-    const primaryKey = codeKey || nameKey;
-    if (primaryKey && !seenKeys.has(primaryKey) && (!nameKey || !seenKeys.has(nameKey))) {
-      if (codeKey) seenKeys.add(codeKey);
-      if (nameKey) seenKeys.add(nameKey);
-      uniqueStaff.push(staff);
-    }
-  }
-
-  const finalStaff = uniqueStaff.map((s, idx) => ({ ...s, serialNo: idx + 1 }));
-  
-  // Persist if missing entries
+  // Always keep storage updated with full 21 staff list
   if (!storedStaff || storedStaff.length < finalStaff.length) {
     await db.set('setup:staff_details', finalStaff);
   }

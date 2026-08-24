@@ -108,7 +108,7 @@ export const AutomaticProxyPlannerModal: React.FC<AutomaticProxyPlannerModalProp
       setSelectedSubstituteCode('');
       setProxyNotes('');
     }
-  }, [isOpen]);
+  }, [isOpen, selectedDate]);
 
   useEffect(() => {
     if (initialStaff) {

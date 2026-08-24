@@ -314,11 +314,39 @@ export const AutomaticProxyPlannerModal: React.FC<AutomaticProxyPlannerModalProp
     return false;
   };
 
+  const ROMAN_TO_DECIMAL: Record<string, string> = {
+    'I': '1', 'II': '2', 'III': '3', 'IV': '4', 'V': '5',
+    'VI': '6', 'VII': '7', 'VIII': '8', 'IX': '9', 'X': '10',
+    'XI': '11', 'XII': '12'
+  };
+
   const normalizeClassSectionKey = (className?: string, section?: string): string => {
-    const c = (className || '').toLowerCase().replace(/^(class|grade)\s*/i, '').trim();
-    const s = (section || '').toLowerCase().trim();
-    if (c.includes('-')) return c;
-    return s ? `${c}-${s}` : c;
+    if (!className) return '';
+    let str = className.trim().toUpperCase();
+    str = str.replace(/^(CLASS|GRADE|ROOM)\s+/i, '').trim();
+
+    let classPart = str;
+    let secPart = (section || '').trim().toUpperCase();
+
+    if (str.includes('-')) {
+      const parts = str.split('-');
+      classPart = parts[0].trim();
+      if (parts[1]) secPart = parts[1].trim();
+    } else if (str.includes(' ')) {
+      const parts = str.split(/\s+/);
+      classPart = parts[0].trim();
+      if (parts[1]) secPart = parts[1].trim();
+    } else {
+      const match = str.match(/^([IVXLCDM0-9]+)([A-Z])?$/i);
+      if (match) {
+        classPart = match[1];
+        if (match[2]) secPart = match[2];
+      }
+    }
+
+    const stdClass = ROMAN_TO_DECIMAL[classPart.toUpperCase()] || classPart.toUpperCase();
+    const stdSec = secPart ? secPart.toUpperCase() : 'A';
+    return `${stdClass}-${stdSec}`;
   };
 
   const currentDayOfWeek = useMemo((): DayOfWeek | 'Sunday' => {
@@ -463,9 +491,13 @@ export const AutomaticProxyPlannerModal: React.FC<AutomaticProxyPlannerModalProp
 
           const hasCoLanguageSlotInSameClass = Boolean(targetClassKey && candidateTeachingSlots.some(candSlot => {
             const candClassKey = normalizeClassSectionKey(candSlot.className, candSlot.section);
-            const isSameClass = candClassKey === targetClassKey || candClassKey.includes(targetClassKey) || targetClassKey.includes(candClassKey);
+            const isExactSameClass = candClassKey === targetClassKey;
             const isSlotLang = isLanguageTeacher(staff, candSlot.className, candSlot.subjectName);
-            return isSameClass && isSlotLang;
+            if (isExactSameClass && isSlotLang) {
+              console.log(`[PROXY CO-LANGUAGE ACCEPTED] Staff: ${staff.name} | Target: ${targetClassKey} === Candidate: ${candClassKey} | Subj: ${candSlot.subjectName}`);
+              return true;
+            }
+            return false;
           }));
 
           const qualifiesAsCoLanguageTeacher = isAbsentSlotLanguage && (isStaffLanguage || isSipika) && hasCoLanguageSlotInSameClass;
@@ -532,9 +564,9 @@ export const AutomaticProxyPlannerModal: React.FC<AutomaticProxyPlannerModalProp
         const candidateTeachingSlots = daySlots.filter(slot => isSlotAssignedToStaff(slot, staff));
         const hasCoLanguageSlotInSameClass = Boolean(targetClassKey && candidateTeachingSlots.some(candSlot => {
           const candClassKey = normalizeClassSectionKey(candSlot.className, candSlot.section);
-          const isSameClass = candClassKey === targetClassKey || candClassKey.includes(targetClassKey) || targetClassKey.includes(candClassKey);
+          const isExactSameClass = candClassKey === targetClassKey;
           const isSlotLang = isLanguageTeacher(staff, candSlot.className, candSlot.subjectName);
-          return isSameClass && isSlotLang;
+          return isExactSameClass && isSlotLang;
         }));
         const isCandidateLanguage = isLanguageTeacher(
           staff,

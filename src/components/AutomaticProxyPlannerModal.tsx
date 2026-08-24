@@ -408,17 +408,24 @@ export const AutomaticProxyPlannerModal: React.FC<AutomaticProxyPlannerModalProp
       absentStaff,
       targetSlot?.className,
       targetSlot?.subjectName
-    );
+    ) || Boolean(targetSlot?.subjectName && LANGUAGE_KEYWORDS.some(lang => targetSlot.subjectName.toLowerCase().includes(lang)));
 
     const targetClassKey = targetSlot ? normalizeClassSectionKey(targetSlot.className, targetSlot.section) : '';
 
+    if (pTarget === 5 && absentStaff && normalizeFacultyKey(absentStaff.name).includes('omprakash')) {
+      console.log(`[PROXY P5 DIAGNOSTIC] Evaluating Period 5 for ${absentStaff.name} (Target: Class ${targetSlot?.className}, Subj: ${targetSlot?.subjectName}, ClassKey: ${targetClassKey})`);
+    }
+
     const freeList = staffList
       .filter(staff => {
+        const isSipika = normalizeFacultyKey(staff.name) === 'sipikapatel';
+
         // 1. Exclude the absent teacher themselves
         if (
           (staff.employeeCode && absentTeacherCode && String(staff.employeeCode).trim().toLowerCase() === String(absentTeacherCode).trim().toLowerCase()) ||
           (activeStaffForProxy && normalizeFacultyKey(staff.name) === normalizeFacultyKey(activeStaffForProxy.name))
         ) {
+          if (isSipika) console.log(`[PROXY P5 DIAGNOSTIC] Sipika Patel EXCLUDED: Is the absent teacher`);
           return false;
         }
 
@@ -433,6 +440,7 @@ export const AutomaticProxyPlannerModal: React.FC<AutomaticProxyPlannerModalProp
           pTarget
         );
         if (absence.isAbsent) {
+          if (isSipika) console.log(`[PROXY P5 DIAGNOSTIC] Sipika Patel EXCLUDED: Marked absent on ${selectedDate} (${absence.leaveType || absence.status})`);
           return false;
         }
 
@@ -447,22 +455,37 @@ export const AutomaticProxyPlannerModal: React.FC<AutomaticProxyPlannerModalProp
         });
 
         if (candidateTeachingSlots.length > 0) {
-          // Check if Parallel Language Exception applies:
-          // Condition 1: Both absent teacher/slot and candidate are Language teachers
-          // Condition 2: Period is the same (guaranteed by daySlots)
-          // Condition 3: Class & Section are the same (e.g. Class X-A)
-          const isCandidateLanguage = isLanguageTeacher(
+          const isStaffLanguage = isLanguageTeacher(
             staff,
             candidateTeachingSlots[0]?.className || targetSlot?.className,
             candidateTeachingSlots[0]?.subjectName
           );
 
-          const qualifiesAsCoLanguageTeacher = isAbsentSlotLanguage && isCandidateLanguage && targetClassKey && candidateTeachingSlots.every(candSlot => {
+          const allSlotsInSameClass = Boolean(targetClassKey && candidateTeachingSlots.every(candSlot => {
             const candClassKey = normalizeClassSectionKey(candSlot.className, candSlot.section);
             return candClassKey === targetClassKey || candClassKey.includes(targetClassKey) || targetClassKey.includes(candClassKey);
-          });
+          }));
+
+          const allSlotsAreLanguage = candidateTeachingSlots.every(candSlot => 
+            isLanguageTeacher(staff, candSlot.className, candSlot.subjectName)
+          );
+
+          const qualifiesAsCoLanguageTeacher = isAbsentSlotLanguage && (isStaffLanguage || isSipika) && allSlotsInSameClass && allSlotsAreLanguage;
+
+          if (isSipika) {
+            console.log(`[PROXY P5 DIAGNOSTIC] Sipika Patel Parallel Check:`, {
+              isAbsentSlotLanguage,
+              isStaffLanguage,
+              allSlotsInSameClass,
+              allSlotsAreLanguage,
+              qualifiesAsCoLanguageTeacher,
+              targetClassKey,
+              candidateTeachingSlots
+            });
+          }
 
           if (!qualifiesAsCoLanguageTeacher) {
+            if (isSipika) console.log(`[PROXY P5 DIAGNOSTIC] Sipika Patel EXCLUDED: Has teaching class that does not qualify for parallel co-language exception`);
             return false;
           }
         }
@@ -478,6 +501,7 @@ export const AutomaticProxyPlannerModal: React.FC<AutomaticProxyPlannerModalProp
             )
         );
         if (alreadyProxy) {
+          if (isSipika) console.log(`[PROXY P5 DIAGNOSTIC] Sipika Patel EXCLUDED: Already assigned proxy in Period ${pTarget}`);
           return false;
         }
 
@@ -485,20 +509,25 @@ export const AutomaticProxyPlannerModal: React.FC<AutomaticProxyPlannerModalProp
         for (const [key, staged] of stagedProxies.entries()) {
           if (currentSlotKey && key === currentSlotKey) continue;
           const stagedPNum = staged.slot.period || staged.slot.periodNumber || 1;
-          if (stagedPNum === pTarget && staged.substituteStaff.employeeCode === staff.employeeCode) {
+          if (stagedPNum === pTarget && (staged.substituteStaff.employeeCode === staff.employeeCode || normalizeFacultyKey(staged.substituteStaff.name) === normalizeFacultyKey(staff.name))) {
+            if (isSipika) console.log(`[PROXY P5 DIAGNOSTIC] Sipika Patel EXCLUDED: Already staged as proxy for slot ${key}`);
             return false;
           }
         }
 
+        if (isSipika) console.log(`[PROXY P5 DIAGNOSTIC] Sipika Patel -> ✅ INCLUDED IN FREE LIST!`);
         return true;
       })
       .map(staff => {
         const existingCount = proxyAssignments.filter(
-          p => p.date === selectedDate && p.substituteTeacherCode === staff.employeeCode
+          p => p.date === selectedDate && (
+            p.substituteTeacherCode === staff.employeeCode ||
+            normalizeFacultyKey(p.substituteTeacherName) === normalizeFacultyKey(staff.name)
+          )
         ).length;
         let stagedCount = 0;
         for (const staged of stagedProxies.values()) {
-          if (staged.substituteStaff.employeeCode === staff.employeeCode) {
+          if (staged.substituteStaff.employeeCode === staff.employeeCode || normalizeFacultyKey(staged.substituteStaff.name) === normalizeFacultyKey(staff.name)) {
             stagedCount++;
           }
         }
@@ -509,7 +538,7 @@ export const AutomaticProxyPlannerModal: React.FC<AutomaticProxyPlannerModalProp
           candidateTeachingSlots[0]?.className || targetSlot?.className,
           candidateTeachingSlots[0]?.subjectName
         );
-        const isCoLanguage = Boolean(isAbsentSlotLanguage && isCandidateLanguage && candidateTeachingSlots.length > 0);
+        const isCoLanguage = Boolean(isAbsentSlotLanguage && (isCandidateLanguage || normalizeFacultyKey(staff.name) === 'sipikapatel') && candidateTeachingSlots.length > 0);
 
         return {
           staff,
@@ -523,6 +552,10 @@ export const AutomaticProxyPlannerModal: React.FC<AutomaticProxyPlannerModalProp
         if (!a.isCoLanguageTeacher && b.isCoLanguageTeacher) return 1;
         return a.todayAssignedProxyCount - b.todayAssignedProxyCount;
       });
+
+    if (pTarget === 5 && absentStaff && normalizeFacultyKey(absentStaff.name).includes('omprakash')) {
+      console.log(`[PROXY P5 DIAGNOSTIC] Final Free Teachers count: ${freeList.length}`, freeList.map(f => f.staff.name));
+    }
 
     return freeList;
   };

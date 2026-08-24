@@ -2998,17 +2998,17 @@ export {
 export const DEFAULT_SUBJECT_RESPONSIBILITIES: SubjectResponsibilityAssignment[] = [
   {
     id: 'sra-1',
-    employeeCode: 'CS.107862', // Sipika Patel
+    employeeCode: 'CS.107862', // Sipika Patel (covers CS.129494)
     teacherName: 'SIPIKA PATEL',
     designation: 'TGT ODIA / Special Educator',
     subjectName: 'Odia',
-    className: 'Class V-A',
+    className: 'Class III to X',
     section: 'A',
     supportType: 'Primary Teacher / In-Charge',
     assignmentType: 'Whole Session',
     fromDate: '2026-04-01',
     toDate: '2027-03-31',
-    roleNote: 'Odia in-charge – no regular Odia teacher appointed this session.',
+    roleNote: 'Odia In-Charge & Faculty for Class III onwards – no regular Odia teacher appointed this session.',
     status: 'Active',
     assignedBy: 'Shri Hemananda Barik (Principal I/c)',
     assignedAt: '2026-04-01T09:00:00.000Z'

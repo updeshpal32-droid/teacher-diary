@@ -51,6 +51,7 @@ import { DevModeBadge } from './DevModeBadge';
 import {
   Briefcase,
   UserCheck,
+  ShieldCheck,
   Users,
   ArrowRight,
   Plus,
@@ -1187,6 +1188,17 @@ export const PortfolioRoleManager: React.FC<PortfolioRoleManagerProps> = ({
     });
   }, [selectedCalendarMonth, selectedCalendarCategory, searchQuery]);
 
+  const isPrincipalOrAdmin = useMemo(() => {
+    if (!currentUser) return false;
+    if (currentUser.role === 'admin') return true;
+    if (currentUser.activePersona === 'admin') return true;
+    const des = (currentUser.designation || '').toLowerCase();
+    const name = (currentUser.name || '').toLowerCase();
+    if (des.includes('principal') || des.includes('vice-principal') || des.includes('headmaster') || des.includes('headmistress')) return true;
+    if (name.includes('hemananda barik') || name.includes('principal')) return true;
+    return false;
+  }, [currentUser]);
+
   const filteredSubjectResponsibilities = useMemo(() => {
     return subjectResponsibilities.filter(s => {
       if (!subjectSearchQuery.trim()) return true;
@@ -1202,6 +1214,10 @@ export const PortfolioRoleManager: React.FC<PortfolioRoleManagerProps> = ({
   }, [subjectResponsibilities, subjectSearchQuery]);
 
   const handleOpenSubjectModal = (item?: SubjectResponsibilityAssignment) => {
+    if (!isPrincipalOrAdmin) {
+      alert('Access Restricted: Only the Principal / Admin can assign or edit subject & academic responsibilities.');
+      return;
+    }
     if (item) {
       setEditingSubjectAssignment(item);
       setSubjTeacherCode(item.employeeCode);
@@ -1230,6 +1246,10 @@ export const PortfolioRoleManager: React.FC<PortfolioRoleManagerProps> = ({
 
   const handleSaveSubjectResponsibility = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (!isPrincipalOrAdmin) {
+      alert('Access Restricted: Only the Principal / Admin can create or save subject responsibilities.');
+      return;
+    }
     const targetStaff = staffList.find(s => s.employeeCode === subjTeacherCode);
     if (!targetStaff) {
       alert('Please select a valid teacher.');
@@ -1286,6 +1306,10 @@ export const PortfolioRoleManager: React.FC<PortfolioRoleManagerProps> = ({
   };
 
   const handleToggleSubjectStatus = async (id: string) => {
+    if (!isPrincipalOrAdmin) {
+      alert('Access Restricted: Only the Principal / Admin can update subject responsibility status.');
+      return;
+    }
     const updated = subjectResponsibilities.map(a =>
       a.id === id ? { ...a, status: (a.status === 'Active' ? 'Ended' : 'Active') as 'Active' | 'Ended', updatedAt: new Date().toISOString() } : a
     );
@@ -1297,6 +1321,10 @@ export const PortfolioRoleManager: React.FC<PortfolioRoleManagerProps> = ({
   };
 
   const handleDeleteSubjectResponsibility = async (id: string) => {
+    if (!isPrincipalOrAdmin) {
+      alert('Access Restricted: Only the Principal / Admin can delete subject responsibilities.');
+      return;
+    }
     if (!window.confirm('Are you sure you want to remove this academic subject assignment?')) return;
     const updated = subjectResponsibilities.filter(a => a.id !== id);
     setSubjectResponsibilities(updated);
@@ -1338,15 +1366,17 @@ export const PortfolioRoleManager: React.FC<PortfolioRoleManagerProps> = ({
         </div>
 
         <div className="flex items-center gap-2 flex-wrap">
-          {/* Add Subject Responsibility Button */}
-          <button
-            onClick={() => handleOpenSubjectModal()}
-            className="px-3.5 py-2 rounded-xl bg-amber-600 hover:bg-amber-500 text-white font-bold text-xs flex items-center gap-1.5 transition-all shadow-md shadow-amber-600/30 cursor-pointer"
-            title="Assign teacher to Odia, Math support, or special subject responsibility"
-          >
-            <GraduationCap className="w-4 h-4" />
-            <span>Assign Subject</span>
-          </button>
+          {/* Add Subject Responsibility Button (Principal / Admin Only) */}
+          {isPrincipalOrAdmin && (
+            <button
+              onClick={() => handleOpenSubjectModal()}
+              className="px-3.5 py-2 rounded-xl bg-amber-600 hover:bg-amber-500 text-white font-bold text-xs flex items-center gap-1.5 transition-all shadow-md shadow-amber-600/30 cursor-pointer"
+              title="Assign teacher to Odia, Math support, or special subject responsibility"
+            >
+              <GraduationCap className="w-4 h-4" />
+              <span>Assign Subject</span>
+            </button>
+          )}
 
           {/* Bulk Import Button */}
           <button
@@ -1918,14 +1948,21 @@ export const PortfolioRoleManager: React.FC<PortfolioRoleManagerProps> = ({
                 </p>
               </div>
 
-              <button
-                type="button"
-                onClick={() => handleOpenSubjectModal()}
-                className="px-4 py-2 rounded-xl bg-amber-600 hover:bg-amber-500 text-white font-bold text-xs flex items-center gap-1.5 transition-all shadow-md shadow-amber-600/30 cursor-pointer self-start sm:self-auto"
-              >
-                <Plus className="w-4 h-4" />
-                <span>Assign Subject Responsibility</span>
-              </button>
+              {isPrincipalOrAdmin ? (
+                <button
+                  type="button"
+                  onClick={() => handleOpenSubjectModal()}
+                  className="px-4 py-2 rounded-xl bg-amber-600 hover:bg-amber-500 text-white font-bold text-xs flex items-center gap-1.5 transition-all shadow-md shadow-amber-600/30 cursor-pointer self-start sm:self-auto"
+                >
+                  <Plus className="w-4 h-4" />
+                  <span>Assign Subject Responsibility</span>
+                </button>
+              ) : (
+                <span className="px-3 py-1.5 rounded-xl text-xs font-bold bg-slate-950 border border-slate-800 text-slate-300 flex items-center gap-1.5 self-start sm:self-auto shadow-xs">
+                  <ShieldCheck className="w-3.5 h-3.5 text-amber-400" />
+                  <span>Official Vidyalaya Directives (Read-Only)</span>
+                </span>
+              )}
             </div>
 
             {/* Search Bar */}
@@ -2029,32 +2066,36 @@ export const PortfolioRoleManager: React.FC<PortfolioRoleManagerProps> = ({
                       <span>Assigned by {assignment.assignedBy}</span>
                     </div>
 
-                    <div className="flex items-center gap-1.5">
-                      <button
-                        type="button"
-                        onClick={() => handleToggleSubjectStatus(assignment.id)}
-                        className="p-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white transition-colors cursor-pointer"
-                        title={assignment.status === 'Active' ? 'Mark as Ended' : 'Mark as Active'}
-                      >
-                        <Sliders className="w-3.5 h-3.5" />
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => handleOpenSubjectModal(assignment)}
-                        className="p-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white transition-colors cursor-pointer"
-                        title="Edit Assignment"
-                      >
-                        <Edit2 className="w-3.5 h-3.5" />
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => handleDeleteSubjectResponsibility(assignment.id)}
-                        className="p-1.5 rounded-lg bg-slate-800 hover:bg-rose-900/60 text-slate-400 hover:text-rose-300 transition-colors cursor-pointer"
-                        title="Delete Assignment"
-                      >
-                        <Trash2 className="w-3.5 h-3.5" />
-                      </button>
-                    </div>
+                    {isPrincipalOrAdmin ? (
+                      <div className="flex items-center gap-1.5">
+                        <button
+                          type="button"
+                          onClick={() => handleToggleSubjectStatus(assignment.id)}
+                          className="p-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white transition-colors cursor-pointer"
+                          title={assignment.status === 'Active' ? 'Mark as Ended' : 'Mark as Active'}
+                        >
+                          <Sliders className="w-3.5 h-3.5" />
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => handleOpenSubjectModal(assignment)}
+                          className="p-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white transition-colors cursor-pointer"
+                          title="Edit Assignment"
+                        >
+                          <Edit2 className="w-3.5 h-3.5" />
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => handleDeleteSubjectResponsibility(assignment.id)}
+                          className="p-1.5 rounded-lg bg-slate-800 hover:bg-rose-900/60 text-slate-400 hover:text-rose-300 transition-colors cursor-pointer"
+                          title="Delete Assignment"
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </button>
+                      </div>
+                    ) : (
+                      <span className="text-[10px] text-slate-500 italic">Sanctioned by Principal</span>
+                    )}
                   </div>
                 </div>
               ))}

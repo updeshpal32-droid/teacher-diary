@@ -461,23 +461,20 @@ export const AutomaticProxyPlannerModal: React.FC<AutomaticProxyPlannerModalProp
             candidateTeachingSlots[0]?.subjectName
           );
 
-          const allSlotsInSameClass = Boolean(targetClassKey && candidateTeachingSlots.every(candSlot => {
+          const hasCoLanguageSlotInSameClass = Boolean(targetClassKey && candidateTeachingSlots.some(candSlot => {
             const candClassKey = normalizeClassSectionKey(candSlot.className, candSlot.section);
-            return candClassKey === targetClassKey || candClassKey.includes(targetClassKey) || targetClassKey.includes(candClassKey);
+            const isSameClass = candClassKey === targetClassKey || candClassKey.includes(targetClassKey) || targetClassKey.includes(candClassKey);
+            const isSlotLang = isLanguageTeacher(staff, candSlot.className, candSlot.subjectName);
+            return isSameClass && isSlotLang;
           }));
 
-          const allSlotsAreLanguage = candidateTeachingSlots.every(candSlot => 
-            isLanguageTeacher(staff, candSlot.className, candSlot.subjectName)
-          );
-
-          const qualifiesAsCoLanguageTeacher = isAbsentSlotLanguage && (isStaffLanguage || isSipika) && allSlotsInSameClass && allSlotsAreLanguage;
+          const qualifiesAsCoLanguageTeacher = isAbsentSlotLanguage && (isStaffLanguage || isSipika) && hasCoLanguageSlotInSameClass;
 
           if (isSipika) {
             console.log(`[PROXY P5 DIAGNOSTIC] Sipika Patel Parallel Check:`, {
               isAbsentSlotLanguage,
               isStaffLanguage,
-              allSlotsInSameClass,
-              allSlotsAreLanguage,
+              hasCoLanguageSlotInSameClass,
               qualifiesAsCoLanguageTeacher,
               targetClassKey,
               candidateTeachingSlots
@@ -533,12 +530,18 @@ export const AutomaticProxyPlannerModal: React.FC<AutomaticProxyPlannerModalProp
         }
 
         const candidateTeachingSlots = daySlots.filter(slot => isSlotAssignedToStaff(slot, staff));
+        const hasCoLanguageSlotInSameClass = Boolean(targetClassKey && candidateTeachingSlots.some(candSlot => {
+          const candClassKey = normalizeClassSectionKey(candSlot.className, candSlot.section);
+          const isSameClass = candClassKey === targetClassKey || candClassKey.includes(targetClassKey) || targetClassKey.includes(candClassKey);
+          const isSlotLang = isLanguageTeacher(staff, candSlot.className, candSlot.subjectName);
+          return isSameClass && isSlotLang;
+        }));
         const isCandidateLanguage = isLanguageTeacher(
           staff,
           candidateTeachingSlots[0]?.className || targetSlot?.className,
           candidateTeachingSlots[0]?.subjectName
         );
-        const isCoLanguage = Boolean(isAbsentSlotLanguage && (isCandidateLanguage || normalizeFacultyKey(staff.name) === 'sipikapatel') && candidateTeachingSlots.length > 0);
+        const isCoLanguage = Boolean(isAbsentSlotLanguage && (isCandidateLanguage || normalizeFacultyKey(staff.name) === 'sipikapatel') && hasCoLanguageSlotInSameClass);
 
         return {
           staff,

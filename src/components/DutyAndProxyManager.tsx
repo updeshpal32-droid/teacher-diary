@@ -188,7 +188,7 @@ export const DutyAndProxyManager: React.FC<DutyAndProxyManagerProps> = ({
       const effectiveStaff = (allStaff && allStaff.length > 0) ? allStaff : DEFAULT_STAFF_DETAILS;
       setStaffList(effectiveStaff);
       if (savedTT && savedTT.length > 0) setTimetable(savedTT);
-      if (savedProxies && savedProxies.length > 0) setProxyAssignments(savedProxies);
+      if (savedProxies !== null && Array.isArray(savedProxies)) setProxyAssignments(savedProxies);
       if (savedDuties && savedDuties.length > 0) {
         setCampusDuties(savedDuties);
       } else {

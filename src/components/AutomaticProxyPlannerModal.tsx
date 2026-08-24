@@ -115,6 +115,18 @@ export const AutomaticProxyPlannerModal: React.FC<AutomaticProxyPlannerModalProp
   }, [isOpen, selectedDate]);
 
   useEffect(() => {
+    const handleUpdate = () => {
+      loadData();
+    };
+    window.addEventListener('kvs-timetable-updated', handleUpdate);
+    window.addEventListener('kvs-attendance-updated', handleUpdate);
+    return () => {
+      window.removeEventListener('kvs-timetable-updated', handleUpdate);
+      window.removeEventListener('kvs-attendance-updated', handleUpdate);
+    };
+  }, []);
+
+  useEffect(() => {
     if (initialStaff) {
       setActiveStaffForProxy(initialStaff);
     } else if (initialTeacherId || initialTeacherName) {
@@ -177,7 +189,7 @@ export const AutomaticProxyPlannerModal: React.FC<AutomaticProxyPlannerModalProp
       await db.set('setup:timetable', cleanMasterTimetable);
       setTimetable(cleanMasterTimetable);
 
-      setProxyAssignments(storedProxy && storedProxy.length > 0 ? storedProxy : DEFAULT_PROXY_DUTIES);
+      setProxyAssignments(storedProxy !== null && Array.isArray(storedProxy) ? storedProxy : DEFAULT_PROXY_DUTIES);
       setAttendanceRecords(storedAtt && storedAtt.length > 0 ? storedAtt : DEFAULT_TEACHER_ATTENDANCE);
       setLeaveApplications(storedLeaves && storedLeaves.length > 0 ? storedLeaves : DEFAULT_LEAVE_APPLICATIONS);
       setOnDutyRecords(storedOD && storedOD.length > 0 ? storedOD : DEFAULT_ON_DUTY_RECORDS);
@@ -755,21 +767,42 @@ export const AutomaticProxyPlannerModal: React.FC<AutomaticProxyPlannerModalProp
         }
         scopedTasksMap.get(scopedKey)!.push(proxyTask);
       }
+
+      // Read fresh stored proxies from DB to avoid dropping any concurrent or previously saved proxies
+      const freshStoredProxies = (await db.get<ProxyDutyAssignment[]>('setup:proxy_duty_assignments')) || [];
       const newProxyIds = new Set(newProxyRecords.map(p => p.id));
-      const updatedProxies = [
-        ...proxyAssignments.filter(p => !newProxyIds.has(p.id)),
+
+      const updatedProxies: ProxyDutyAssignment[] = [
+        ...freshStoredProxies.filter(p => {
+          if (newProxyIds.has(p.id)) return false;
+          // Filter out existing proxy if it matches the exact same absent teacher, date, period, and class
+          const isReplacedSlot = newProxyRecords.some(newP => {
+            const isDateMatch = newP.date === p.date;
+            const isPeriodMatch = Number(newP.periodNumber) === Number(p.periodNumber);
+            const isClassMatch = normalizeClassSectionKey(newP.className, newP.section) === normalizeClassSectionKey(p.className, p.section);
+            const isTeacherMatch =
+              (newP.absentTeacherCode && p.absentTeacherCode && String(newP.absentTeacherCode).trim().toLowerCase() === String(p.absentTeacherCode).trim().toLowerCase()) ||
+              (newP.absentTeacherName && p.absentTeacherName && normalizeFacultyKey(newP.absentTeacherName) === normalizeFacultyKey(p.absentTeacherName));
+            return isDateMatch && isPeriodMatch && isClassMatch && isTeacherMatch;
+          });
+          return !isReplacedSlot;
+        }),
         ...newProxyRecords
       ];
+
       setProxyAssignments(updatedProxies);
+
       const newTaskIds = new Set(newTasks.map(t => t.id));
       const updatedTasks = [
         ...existingTasks.filter(t => !newTaskIds.has(t.id)),
         ...newTasks
       ];
+
       const writePromises: Promise<any>[] = [
         db.set('setup:proxy_duty_assignments', updatedProxies),
         db.set('setup:tasks', updatedTasks)
       ];
+
       for (const [scopedKey, taskList] of scopedTasksMap.entries()) {
         const existingScoped = (await db.get<TeacherTask[]>(scopedKey)) || [];
         const taskIds = new Set(taskList.map(t => t.id));
@@ -779,7 +812,13 @@ export const AutomaticProxyPlannerModal: React.FC<AutomaticProxyPlannerModalProp
         ];
         writePromises.push(db.set(scopedKey, mergedScoped));
       }
+
       await Promise.all(writePromises);
+
+      // Verify persistence from DB
+      const verified = await db.get<ProxyDutyAssignment[]>('setup:proxy_duty_assignments');
+      console.log(`[PROXY SAVE CONFIRMED] Successfully stored ${updatedProxies.length} total proxy records in setup:proxy_duty_assignments. (Verified count: ${verified?.length})`);
+
       const count = stagedProxies.size;
       setStagedProxies(new Map());
       setSelectedSlotForProxy(null);
@@ -814,7 +853,8 @@ export const AutomaticProxyPlannerModal: React.FC<AutomaticProxyPlannerModalProp
       return;
     }
     try {
-      const updatedProxies = proxyAssignments.filter(p => p.id !== proxyId);
+      const freshStoredProxies = (await db.get<ProxyDutyAssignment[]>('setup:proxy_duty_assignments')) || proxyAssignments;
+      const updatedProxies = freshStoredProxies.filter(p => p.id !== proxyId);
       setProxyAssignments(updatedProxies);
       await db.set('setup:proxy_duty_assignments', updatedProxies);
       window.dispatchEvent(new CustomEvent('kvs-timetable-updated'));
@@ -831,9 +871,15 @@ export const AutomaticProxyPlannerModal: React.FC<AutomaticProxyPlannerModalProp
   const totalSlotsCount = teacherScheduledPeriods.length;
   const totalAssignedOrStagedCount = teacherScheduledPeriods.filter(slot => {
     const pNum = slot.period || slot.periodNumber || 1;
-    const isSaved = proxyAssignments.some(
-      p => p.date === selectedDate && p.periodNumber === pNum && p.className === slot.className && p.absentTeacherCode === activeStaffForProxy?.employeeCode
-    );
+    const isSaved = proxyAssignments.some(p => {
+      const isDateMatch = p.date === selectedDate;
+      const isPeriodMatch = Number(p.periodNumber) === Number(pNum);
+      const isClassMatch = normalizeClassSectionKey(p.className, p.section) === normalizeClassSectionKey(slot.className, slot.section);
+      const isTeacherMatch =
+        (p.absentTeacherCode && activeStaffForProxy?.employeeCode && String(p.absentTeacherCode).trim().toLowerCase() === String(activeStaffForProxy.employeeCode).trim().toLowerCase()) ||
+        (p.absentTeacherName && activeStaffForProxy?.name && normalizeFacultyKey(p.absentTeacherName) === normalizeFacultyKey(activeStaffForProxy.name));
+      return isDateMatch && isPeriodMatch && isClassMatch && isTeacherMatch;
+    });
     const isStaged = stagedProxies.has(getSlotKey(slot));
     return isSaved || isStaged;
   }).length;
@@ -1008,13 +1054,15 @@ export const AutomaticProxyPlannerModal: React.FC<AutomaticProxyPlannerModalProp
                 {teacherScheduledPeriods.map((slot, sIdx) => {
                   const pNum = slot.period || slot.periodNumber || 1;
                   const slotKey = getSlotKey(slot);
-                  const existingProxy = proxyAssignments.find(
-                    p =>
-                      p.date === selectedDate &&
-                      p.periodNumber === pNum &&
-                      p.className === slot.className &&
-                      p.absentTeacherCode === activeStaffForProxy.employeeCode
-                  );
+                  const existingProxy = proxyAssignments.find(p => {
+                    const isDateMatch = p.date === selectedDate;
+                    const isPeriodMatch = Number(p.periodNumber) === Number(pNum);
+                    const isClassMatch = normalizeClassSectionKey(p.className, p.section) === normalizeClassSectionKey(slot.className, slot.section);
+                    const isTeacherMatch =
+                      (p.absentTeacherCode && activeStaffForProxy.employeeCode && String(p.absentTeacherCode).trim().toLowerCase() === String(activeStaffForProxy.employeeCode).trim().toLowerCase()) ||
+                      (p.absentTeacherName && activeStaffForProxy.name && normalizeFacultyKey(p.absentTeacherName) === normalizeFacultyKey(activeStaffForProxy.name));
+                    return isDateMatch && isPeriodMatch && isClassMatch && isTeacherMatch;
+                  });
                   const isStaged = stagedProxies.has(slotKey);
                   const stagedItem = stagedProxies.get(slotKey);
 

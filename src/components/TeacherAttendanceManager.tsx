@@ -348,7 +348,7 @@ export const TeacherAttendanceManager: React.FC<TeacherAttendanceManagerProps> =
       });
       await db.set('setup:timetable', effectiveTimetable);
       setTimetable(effectiveTimetable);
-      setProxyAssignments(storedProxy && storedProxy.length > 0 ? storedProxy : DEFAULT_PROXY_DUTIES);
+      setProxyAssignments(storedProxy !== null && Array.isArray(storedProxy) ? storedProxy : DEFAULT_PROXY_DUTIES);
       setLeaveSettings(storedSettings || DEFAULT_LEAVE_SETTINGS);
     } catch (err) {
       console.error('Error loading attendance, leave & proxy data:', err);

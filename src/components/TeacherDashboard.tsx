@@ -686,7 +686,7 @@ export const TeacherDashboard: React.FC<TeacherDashboardProps> = ({
       if (savedAtt && savedAtt.length > 0) setAttendanceRecords(savedAtt);
       setSubjectAssignments(savedSubAssignments || DEFAULT_SUBJECT_RESPONSIBILITIES);
       if (savedLeaves && savedLeaves.length > 0) setLeaveApplications(savedLeaves);
-      if (savedProxies && savedProxies.length > 0) setProxyAssignments(savedProxies);
+      if (savedProxies !== null && Array.isArray(savedProxies)) setProxyAssignments(savedProxies);
 
       if (s) setSchool(s);
 

@@ -2924,6 +2924,18 @@ export const DEFAULT_PROXY_DUTIES: ProxyDutyAssignment[] = [
   }
 ];
 
+export async function getProxyDutyAssignments(): Promise<ProxyDutyAssignment[]> {
+  const stored = await db.get<ProxyDutyAssignment[]>('setup:proxy_duty_assignments');
+  if (stored !== null && Array.isArray(stored)) {
+    return stored;
+  }
+  return DEFAULT_PROXY_DUTIES;
+}
+
+export async function saveProxyDutyAssignments(proxies: ProxyDutyAssignment[]): Promise<boolean> {
+  return await db.set('setup:proxy_duty_assignments', proxies);
+}
+
 export const DEFAULT_LEAVE_SETTINGS: LeaveSettingsConfig = {
   contractualMinServiceMonths: 1,
   contractualMaxClPerMonth: 1,

@@ -337,6 +337,21 @@ export const AutomaticProxyPlannerModal: React.FC<AutomaticProxyPlannerModalProp
     'XI': '11', 'XII': '12'
   };
 
+  const normalizeDateStr = (d?: string): string => {
+    if (!d) return '';
+    const s = String(d).trim();
+    if (s.includes('T')) return s.split('T')[0];
+    const parts = s.split(/[\/\-]/);
+    if (parts.length === 3) {
+      if (parts[0].length === 4) {
+        return `${parts[0]}-${parts[1].padStart(2, '0')}-${parts[2].padStart(2, '0')}`;
+      } else if (parts[2].length === 4) {
+        return `${parts[2]}-${parts[1].padStart(2, '0')}-${parts[0].padStart(2, '0')}`;
+      }
+    }
+    return s;
+  };
+
   const normalizeClassSectionKey = (className?: string, section?: string): string => {
     if (!className) return '';
     let str = className.trim().toUpperCase();
@@ -364,6 +379,70 @@ export const AutomaticProxyPlannerModal: React.FC<AutomaticProxyPlannerModalProp
     const stdClass = ROMAN_TO_DECIMAL[classPart.toUpperCase()] || classPart.toUpperCase();
     const stdSec = secPart ? secPart.toUpperCase() : 'A';
     return `${stdClass}-${stdSec}`;
+  };
+
+  const isProxyMatchingSlot = (
+    p: ProxyDutyAssignment,
+    targetDate: string,
+    slot: TimetableSlot,
+    staff?: StaffDetailRecord | null,
+    debug = false
+  ): boolean => {
+    const pNum = slot.period || slot.periodNumber || 1;
+
+    // 1. Date Match
+    const pDateNorm = normalizeDateStr(p.date);
+    const targetDateNorm = normalizeDateStr(targetDate);
+    const isDateMatch = pDateNorm === targetDateNorm;
+
+    // 2. Period Match
+    const isPeriodMatch = Number(p.periodNumber) === Number(pNum);
+
+    // 3. Class Match
+    const pClassKey = normalizeClassSectionKey(p.className, p.section);
+    const slotClassKey = normalizeClassSectionKey(slot.className, slot.section);
+    const isClassMatch =
+      pClassKey === slotClassKey ||
+      (pClassKey.split('-')[0] === slotClassKey.split('-')[0] && !!pClassKey.split('-')[0]);
+
+    // 4. Teacher Match
+    const staffCode = String(staff?.employeeCode || '').trim().toLowerCase();
+    const staffNameKey = normalizeFacultyKey(staff?.name);
+    const pCode = String(p.absentTeacherCode || '').trim().toLowerCase();
+    const pNameKey = normalizeFacultyKey(p.absentTeacherName);
+
+    const isCodeMatch = Boolean(
+      pCode && staffCode && (pCode === staffCode || pCode.includes(staffCode) || staffCode.includes(pCode))
+    );
+    const isNameMatch = Boolean(
+      pNameKey && staffNameKey && (pNameKey === staffNameKey || pNameKey.includes(staffNameKey) || staffNameKey.includes(pNameKey))
+    );
+    const isTeacherMatch = !staff || isCodeMatch || isNameMatch;
+
+    const isFullMatch = isDateMatch && isPeriodMatch && isClassMatch && isTeacherMatch;
+
+    if (debug) {
+      console.log(`[PROXY MATCH EVAL] Period ${pNum} (${slot.className}) vs Stored Proxy [${p.id}]:`, {
+        isFullMatch,
+        isDateMatch,
+        isPeriodMatch,
+        isClassMatch,
+        isTeacherMatch,
+        pDate: p.date,
+        targetDate,
+        pPeriod: p.periodNumber,
+        pNum,
+        pClassKey,
+        slotClassKey,
+        pCode,
+        staffCode,
+        pNameKey,
+        staffNameKey,
+        substituteName: p.substituteTeacherName
+      });
+    }
+
+    return isFullMatch;
   };
 
   const currentDayOfWeek = useMemo((): DayOfWeek | 'Sunday' => {
@@ -679,12 +758,8 @@ export const AutomaticProxyPlannerModal: React.FC<AutomaticProxyPlannerModalProp
 
   const handleJumpToNextUnassigned = () => {
     const unassigned = teacherScheduledPeriods.find(slot => {
-      const pNum = slot.period || slot.periodNumber || 1;
-      const key = getSlotKey(slot);
-      const isAlreadySaved = proxyAssignments.some(
-        p => p.date === selectedDate && p.periodNumber === pNum && p.className === slot.className && p.absentTeacherCode === activeStaffForProxy?.employeeCode
-      );
-      const isStaged = stagedProxies.has(key);
+      const isAlreadySaved = proxyAssignments.some(p => isProxyMatchingSlot(p, selectedDate, slot, activeStaffForProxy));
+      const isStaged = stagedProxies.has(getSlotKey(slot));
       return !isAlreadySaved && !isStaged;
     });
     if (unassigned) {
@@ -712,16 +787,16 @@ export const AutomaticProxyPlannerModal: React.FC<AutomaticProxyPlannerModalProp
         const classSecStr = `${item.slot.className}${item.slot.section ? `-${item.slot.section}` : ''}`;
         const newProxyRecord: ProxyDutyAssignment = {
           id: proxyId,
-          date: selectedDate,
+          date: normalizeDateStr(selectedDate) || selectedDate,
           dayOfWeek: currentDayOfWeek as DayOfWeek,
-          periodNumber: pNum,
+          periodNumber: Number(pNum),
           timeSlot: item.slot.timeSlot || `Period ${pNum}`,
-          className: item.slot.className,
+          className: item.slot.className || '',
           section: item.slot.section || 'A',
-          subjectName: item.slot.subjectName,
-          roomNo: item.slot.roomNo,
-          absentTeacherCode: activeStaffForProxy.employeeCode,
-          absentTeacherName: activeStaffForProxy.name,
+          subjectName: item.slot.subjectName || 'General',
+          roomNo: item.slot.roomNo || null,
+          absentTeacherCode: activeStaffForProxy.employeeCode || '',
+          absentTeacherName: activeStaffForProxy.name || '',
           absenceReason:
             checkTeacherAbsenceOnDate(
               activeStaffForProxy.employeeCode,
@@ -730,15 +805,15 @@ export const AutomaticProxyPlannerModal: React.FC<AutomaticProxyPlannerModalProp
               leaveApplications,
               onDutyRecords
             ).leaveType || 'Leave',
-          substituteTeacherCode: item.substituteStaff.employeeCode,
-          substituteTeacherName: item.substituteStaff.name,
-          substituteDesignation: item.substituteStaff.designation,
+          substituteTeacherCode: item.substituteStaff.employeeCode || '',
+          substituteTeacherName: item.substituteStaff.name || '',
+          substituteDesignation: item.substituteStaff.designation || 'Teacher',
           isFreePeriod: true,
           assignedBy: activeUser?.name ? `${activeUser.name} (In-charge)` : 'Principal / Timetable Incharge',
           assignedAt: new Date().toISOString(),
           status: 'Assigned',
           syncedToTaskSystem: true,
-          notes: item.notes?.trim() || undefined
+          notes: item.notes?.trim() || null
         };
         newProxyRecords.push(newProxyRecord);
         const proxyTaskId = `task-proxy-${selectedDate}-p${pNum}-${item.substituteStaff.employeeCode}`;
@@ -781,19 +856,44 @@ export const AutomaticProxyPlannerModal: React.FC<AutomaticProxyPlannerModalProp
         ...freshStoredProxies.filter(p => {
           if (newProxyIds.has(p.id)) return false;
           // Filter out existing proxy if it matches the exact same absent teacher, date, period, and class
-          const isReplacedSlot = newProxyRecords.some(newP => {
-            const isDateMatch = newP.date === p.date;
-            const isPeriodMatch = Number(newP.periodNumber) === Number(p.periodNumber);
-            const isClassMatch = normalizeClassSectionKey(newP.className, newP.section) === normalizeClassSectionKey(p.className, p.section);
-            const isTeacherMatch =
-              (newP.absentTeacherCode && p.absentTeacherCode && String(newP.absentTeacherCode).trim().toLowerCase() === String(p.absentTeacherCode).trim().toLowerCase()) ||
-              (newP.absentTeacherName && p.absentTeacherName && normalizeFacultyKey(newP.absentTeacherName) === normalizeFacultyKey(p.absentTeacherName));
-            return isDateMatch && isPeriodMatch && isClassMatch && isTeacherMatch;
-          });
+          const isReplacedSlot = newProxyRecords.some(newP =>
+            isProxyMatchingSlot(p, newP.date, {
+              period: newP.periodNumber,
+              className: newP.className,
+              section: newP.section,
+              teacherName: newP.absentTeacherName,
+              teacherId: newP.absentTeacherCode
+            } as TimetableSlot, {
+              name: newP.absentTeacherName,
+              employeeCode: newP.absentTeacherCode
+            } as StaffDetailRecord)
+          );
           return !isReplacedSlot;
         }),
         ...newProxyRecords
-      ];
+      ].map(p => ({
+        id: p.id,
+        date: normalizeDateStr(p.date) || p.date,
+        dayOfWeek: p.dayOfWeek || 'Monday',
+        periodNumber: Number(p.periodNumber),
+        timeSlot: p.timeSlot || `Period ${p.periodNumber}`,
+        className: p.className || '',
+        section: p.section || 'A',
+        subjectName: p.subjectName || 'General',
+        roomNo: p.roomNo || null,
+        absentTeacherCode: p.absentTeacherCode || '',
+        absentTeacherName: p.absentTeacherName || '',
+        absenceReason: p.absenceReason || 'Leave',
+        substituteTeacherCode: p.substituteTeacherCode || '',
+        substituteTeacherName: p.substituteTeacherName || '',
+        substituteDesignation: p.substituteDesignation || 'Teacher',
+        isFreePeriod: p.isFreePeriod !== false,
+        assignedBy: p.assignedBy || 'Principal / Timetable Incharge',
+        assignedAt: p.assignedAt || new Date().toISOString(),
+        status: p.status || 'Assigned',
+        syncedToTaskSystem: p.syncedToTaskSystem !== false,
+        notes: p.notes?.trim() || null
+      }));
 
       setProxyAssignments(updatedProxies);
 
@@ -887,16 +987,7 @@ export const AutomaticProxyPlannerModal: React.FC<AutomaticProxyPlannerModalProp
 
   const totalSlotsCount = teacherScheduledPeriods.length;
   const totalAssignedOrStagedCount = teacherScheduledPeriods.filter(slot => {
-    const pNum = slot.period || slot.periodNumber || 1;
-    const isSaved = proxyAssignments.some(p => {
-      const isDateMatch = p.date === selectedDate;
-      const isPeriodMatch = Number(p.periodNumber) === Number(pNum);
-      const isClassMatch = normalizeClassSectionKey(p.className, p.section) === normalizeClassSectionKey(slot.className, slot.section);
-      const isTeacherMatch =
-        (p.absentTeacherCode && activeStaffForProxy?.employeeCode && String(p.absentTeacherCode).trim().toLowerCase() === String(activeStaffForProxy.employeeCode).trim().toLowerCase()) ||
-        (p.absentTeacherName && activeStaffForProxy?.name && normalizeFacultyKey(p.absentTeacherName) === normalizeFacultyKey(activeStaffForProxy.name));
-      return isDateMatch && isPeriodMatch && isClassMatch && isTeacherMatch;
-    });
+    const isSaved = proxyAssignments.some(p => isProxyMatchingSlot(p, selectedDate, slot, activeStaffForProxy));
     const isStaged = stagedProxies.has(getSlotKey(slot));
     return isSaved || isStaged;
   }).length;
@@ -1071,15 +1162,7 @@ export const AutomaticProxyPlannerModal: React.FC<AutomaticProxyPlannerModalProp
                 {teacherScheduledPeriods.map((slot, sIdx) => {
                   const pNum = slot.period || slot.periodNumber || 1;
                   const slotKey = getSlotKey(slot);
-                  const existingProxy = proxyAssignments.find(p => {
-                    const isDateMatch = p.date === selectedDate;
-                    const isPeriodMatch = Number(p.periodNumber) === Number(pNum);
-                    const isClassMatch = normalizeClassSectionKey(p.className, p.section) === normalizeClassSectionKey(slot.className, slot.section);
-                    const isTeacherMatch =
-                      (p.absentTeacherCode && activeStaffForProxy.employeeCode && String(p.absentTeacherCode).trim().toLowerCase() === String(activeStaffForProxy.employeeCode).trim().toLowerCase()) ||
-                      (p.absentTeacherName && activeStaffForProxy.name && normalizeFacultyKey(p.absentTeacherName) === normalizeFacultyKey(activeStaffForProxy.name));
-                    return isDateMatch && isPeriodMatch && isClassMatch && isTeacherMatch;
-                  });
+                  const existingProxy = proxyAssignments.find(p => isProxyMatchingSlot(p, selectedDate, slot, activeStaffForProxy, true));
                   const isStaged = stagedProxies.has(slotKey);
                   const stagedItem = stagedProxies.get(slotKey);
 

@@ -133,14 +133,38 @@ if (typeof window !== 'undefined' && !(window as any).storage) {
 export const db = {
   async get<T>(key: string): Promise<T | null> {
     try {
-      const res = await (window as any).storage.get(key);
-      if (res?.value) {
-        return JSON.parse(res.value);
+      // 1. Direct localStorage check (fastest & most reliable)
+      if (typeof window !== 'undefined' && window.localStorage) {
+        const local = localStorage.getItem(key);
+        if (local !== null && local !== undefined) {
+          try {
+            return JSON.parse(local);
+          } catch (e) {
+            console.warn(`[db.get] Parse error for ${key}:`, e);
+          }
+        }
       }
-      // Fallback to Cloud Firestore if missing locally
+
+      // 2. window.storage fallback
+      if (typeof window !== 'undefined' && (window as any).storage?.get) {
+        try {
+          const res = await (window as any).storage.get(key);
+          if (res?.value) {
+            return JSON.parse(res.value);
+          }
+        } catch (e) {
+          // ignore
+        }
+      }
+
+      // 3. Fallback to Cloud Firestore if missing locally
       const cloudVal = await firestoreGet<T>(key);
       if (cloudVal !== null && cloudVal !== undefined) {
-        await (window as any).storage.set(key, JSON.stringify(cloudVal));
+        if (typeof window !== 'undefined' && window.localStorage) {
+          try {
+            localStorage.setItem(key, JSON.stringify(cloudVal));
+          } catch (e) {}
+        }
         return cloudVal;
       }
       return null;
@@ -151,8 +175,22 @@ export const db = {
   },
   async set<T>(key: string, value: T): Promise<boolean> {
     try {
-      await (window as any).storage.set(key, JSON.stringify(value));
-      // Asynchronously push update to Cloud Firestore
+      const serialized = JSON.stringify(value);
+      // 1. Direct localStorage write
+      if (typeof window !== 'undefined' && window.localStorage) {
+        try {
+          localStorage.setItem(key, serialized);
+        } catch (e) {
+          console.warn(`[db.set] LocalStorage set error for ${key}:`, e);
+        }
+      }
+      // 2. window.storage write
+      if (typeof window !== 'undefined' && (window as any).storage?.set) {
+        try {
+          await (window as any).storage.set(key, serialized);
+        } catch (e) {}
+      }
+      // 3. Asynchronously push update to Cloud Firestore
       firestoreSet(key, value).catch(err => {
         console.warn(`[Firestore] Sync failed for ${key}:`, err);
       });
@@ -164,7 +202,16 @@ export const db = {
   },
   async remove(key: string): Promise<boolean> {
     try {
-      await (window as any).storage.delete(key);
+      if (typeof window !== 'undefined' && window.localStorage) {
+        try {
+          localStorage.removeItem(key);
+        } catch (e) {}
+      }
+      if (typeof window !== 'undefined' && (window as any).storage?.delete) {
+        try {
+          await (window as any).storage.delete(key);
+        } catch (e) {}
+      }
       firestoreSet(key, null).catch(err => {
         console.warn(`[Firestore] Cloud remove failed for ${key}:`, err);
       });

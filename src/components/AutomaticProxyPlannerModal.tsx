@@ -189,7 +189,12 @@ export const AutomaticProxyPlannerModal: React.FC<AutomaticProxyPlannerModalProp
       await db.set('setup:timetable', cleanMasterTimetable);
       setTimetable(cleanMasterTimetable);
 
-      setProxyAssignments(storedProxy !== null && Array.isArray(storedProxy) ? storedProxy : DEFAULT_PROXY_DUTIES);
+      const rawLocalStorage = typeof window !== 'undefined' ? localStorage.getItem('setup:proxy_duty_assignments') : null;
+      console.log('[PROXY LOAD DIAGNOSTIC] setup:proxy_duty_assignments from db.get:', storedProxy);
+      console.log('[PROXY LOAD DIAGNOSTIC] raw localStorage.getItem("setup:proxy_duty_assignments"):', rawLocalStorage?.slice(0, 150));
+      const finalProxiesToSet = storedProxy !== null && Array.isArray(storedProxy) ? storedProxy : DEFAULT_PROXY_DUTIES;
+      console.log('[PROXY LOAD DIAGNOSTIC] Final proxyAssignments state being set (count):', finalProxiesToSet.length, 'isDefaultFallback:', storedProxy === null || !Array.isArray(storedProxy));
+      setProxyAssignments(finalProxiesToSet);
       setAttendanceRecords(storedAtt && storedAtt.length > 0 ? storedAtt : DEFAULT_TEACHER_ATTENDANCE);
       setLeaveApplications(storedLeaves && storedLeaves.length > 0 ? storedLeaves : DEFAULT_LEAVE_APPLICATIONS);
       setOnDutyRecords(storedOD && storedOD.length > 0 ? storedOD : DEFAULT_ON_DUTY_RECORDS);
@@ -798,6 +803,12 @@ export const AutomaticProxyPlannerModal: React.FC<AutomaticProxyPlannerModalProp
         ...newTasks
       ];
 
+      console.log('[PROXY WRITE DIAGNOSTIC] Writing to key "setup:proxy_duty_assignments":', {
+        count: updatedProxies.length,
+        newRecordsAdded: newProxyRecords.length,
+        itemsPreview: updatedProxies.slice(0, 3)
+      });
+
       const writePromises: Promise<any>[] = [
         db.set('setup:proxy_duty_assignments', updatedProxies),
         db.set('setup:tasks', updatedTasks)
@@ -815,9 +826,15 @@ export const AutomaticProxyPlannerModal: React.FC<AutomaticProxyPlannerModalProp
 
       await Promise.all(writePromises);
 
-      // Verify persistence from DB
+      // Verify persistence from DB and localStorage
       const verified = await db.get<ProxyDutyAssignment[]>('setup:proxy_duty_assignments');
-      console.log(`[PROXY SAVE CONFIRMED] Successfully stored ${updatedProxies.length} total proxy records in setup:proxy_duty_assignments. (Verified count: ${verified?.length})`);
+      const rawLocalAfterWrite = typeof window !== 'undefined' ? localStorage.getItem('setup:proxy_duty_assignments') : null;
+      console.log('[PROXY WRITE DIAGNOSTIC] Verification after save:', {
+        key: 'setup:proxy_duty_assignments',
+        verifiedDbCount: verified?.length,
+        rawLocalStorageLength: rawLocalAfterWrite?.length,
+        rawLocalStoragePreview: rawLocalAfterWrite?.slice(0, 150)
+      });
 
       const count = stagedProxies.size;
       setStagedProxies(new Map());

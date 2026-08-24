@@ -1199,9 +1199,6 @@ export const TeacherAttendanceManager: React.FC<TeacherAttendanceManagerProps> =
               {devMode && <DevModeBadge pages={[1, 52]} title="Staff Daily Attendance & Leave System" />}
             </h2>
           </div>
-          <p className="text-xs text-purple-200/80 m-0">
-            Daily faculty roll-call, statutory leave balances, Central Government & KVS Contractual safeguard engine, automatic proxy duty substitution, and monthly accounts statements.
-          </p>
         </div>
 
         {/* Global Controls & Actions */}
@@ -1481,9 +1478,6 @@ export const TeacherAttendanceManager: React.FC<TeacherAttendanceManagerProps> =
                         {metrics.absentStaffToday.length} Staff on Leave/OD
                       </span>
                     </h4>
-                    <p className="text-xs text-amber-200/90 m-0">
-                      Unmarked faculty are automatically registered as Present. Scheduled teaching periods, In-Charge responsibilities, and duty allocations for absent staff are ready for substitution and temporary shifting.
-                    </p>
                   </div>
                 </div>
 

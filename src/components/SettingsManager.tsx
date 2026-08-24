@@ -356,9 +356,6 @@ export const SettingsManager: React.FC<SettingsManagerProps> = ({
             <Settings className="w-6 h-6 text-purple-500" />
             <span>Preferences, Account Login & System Settings</span>
           </h1>
-          <p className={`text-xs mt-1 ${theme === 'light' ? 'text-slate-600' : 'text-slate-400'}`}>
-            Manage your Mail ID login session, switch between Light/Day and Dark Mode themes, edit permissions, and manage data backups.
-          </p>
         </div>
 
         {/* Theme Quick Switch Pill */}
@@ -416,9 +413,6 @@ export const SettingsManager: React.FC<SettingsManagerProps> = ({
                   Principal / Admin Authority
                 </span>
               </div>
-              <p className={`text-xs m-0 mt-0.5 ${theme === 'light' ? 'text-slate-600' : 'text-slate-400'}`}>
-                This date drives the Dashboard, Attendance, Timetable, Proxy, Duties, Calendar views, and all default dates in dialogs.
-              </p>
             </div>
           </div>
 

@@ -1550,9 +1550,6 @@ export const TeacherDashboard: React.FC<TeacherDashboardProps> = ({
                       {absentStaff.length} Staff Absent / On Leave Today
                     </span>
                   </h4>
-                  <p className="text-xs text-amber-200/90 m-0">
-                    Unmarked faculty are automatically registered as Present. Scheduled class periods and committee responsibilities for absent faculty are ready for delegation and substitute arrangement.
-                  </p>
                 </div>
               </div>
 
@@ -2193,16 +2190,11 @@ export const TeacherDashboard: React.FC<TeacherDashboardProps> = ({
 
                                   {/* Proxy / Arrangement Banner */}
                                   {isArrangement && (
-                                    <div className="p-2 rounded-lg bg-amber-950/80 border border-amber-500/40 text-[10px] text-amber-200 space-y-1">
+                                    <div className="p-1.5 px-2 rounded-lg bg-amber-950/80 border border-amber-500/40 text-[10px] text-amber-200">
                                       <div className="flex items-center gap-1.5 font-bold text-amber-300 flex-wrap">
                                         <AlertTriangle className="w-3.5 h-3.5 text-amber-400 shrink-0" />
                                         <span>Arrangement:</span>
                                         {renderFacultyPill(slot.arrangementTeacherName)}
-                                      </div>
-                                      <div className="text-[9px] text-slate-300 italic flex items-center gap-1 flex-wrap">
-                                        <span>Absent:</span>
-                                        {renderFacultyPill(slot.originalTeacherName)}
-                                        {slot.arrangementReason ? <span>({slot.arrangementReason})</span> : null}
                                       </div>
                                     </div>
                                   )}

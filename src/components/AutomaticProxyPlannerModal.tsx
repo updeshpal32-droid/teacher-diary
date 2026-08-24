@@ -7,7 +7,8 @@ import {
   LeaveApplication,
   OnDutyRecord,
   DayOfWeek,
-  TeacherTask
+  TeacherTask,
+  SubjectResponsibilityAssignment
 } from '../types/academic';
 import { UserAccount } from '../types/auth';
 import {
@@ -18,6 +19,8 @@ import {
   DEFAULT_TEACHER_ATTENDANCE,
   DEFAULT_LEAVE_APPLICATIONS,
   DEFAULT_ON_DUTY_RECORDS,
+  DEFAULT_SUBJECT_RESPONSIBILITIES,
+  getSubjectResponsibilities,
   getCurrentUser,
   getUserAccounts,
   getMergedStaffList
@@ -80,6 +83,7 @@ export const AutomaticProxyPlannerModal: React.FC<AutomaticProxyPlannerModalProp
   const [attendanceRecords, setAttendanceRecords] = useState<TeacherAttendanceRecord[]>(DEFAULT_TEACHER_ATTENDANCE);
   const [leaveApplications, setLeaveApplications] = useState<LeaveApplication[]>(DEFAULT_LEAVE_APPLICATIONS);
   const [onDutyRecords, setOnDutyRecords] = useState<OnDutyRecord[]>(DEFAULT_ON_DUTY_RECORDS);
+  const [subjectResponsibilities, setSubjectResponsibilities] = useState<SubjectResponsibilityAssignment[]>(DEFAULT_SUBJECT_RESPONSIBILITIES);
 
   const [activeStaffForProxy, setActiveStaffForProxy] = useState<StaffDetailRecord | null>(initialStaff || null);
   const [selectedSlotForProxy, setSelectedSlotForProxy] = useState<TimetableSlot | null>(null);
@@ -132,13 +136,14 @@ export const AutomaticProxyPlannerModal: React.FC<AutomaticProxyPlannerModalProp
 
   const loadData = async () => {
     try {
-      const [mergedStaff, storedTimetable, storedProxy, storedAtt, storedLeaves, storedOD] = await Promise.all([
+      const [mergedStaff, storedTimetable, storedProxy, storedAtt, storedLeaves, storedOD, subData] = await Promise.all([
         getMergedStaffList(),
         db.get<TimetableSlot[]>('setup:timetable'),
         db.get<ProxyDutyAssignment[]>('setup:proxy_duty_assignments'),
         db.get<TeacherAttendanceRecord[]>('setup:teacher_attendance'),
         db.get<LeaveApplication[]>('setup:leave_applications'),
-        db.get<OnDutyRecord[]>('setup:on_duty_records')
+        db.get<OnDutyRecord[]>('setup:on_duty_records'),
+        getSubjectResponsibilities()
       ]);
 
       // 1. Force merged staff with hard guarantee of Samya Raha & Karishma Kerketta
@@ -152,6 +157,7 @@ export const AutomaticProxyPlannerModal: React.FC<AutomaticProxyPlannerModalProp
         }
       });
       setStaffList(effectiveStaff);
+      setSubjectResponsibilities(subData && subData.length > 0 ? subData : DEFAULT_SUBJECT_RESPONSIBILITIES);
 
       // 2. HARD OVERRIDE: Completely ignore stored timetable mutations for master template
       const cleanMasterTimetable = DEFAULT_TIMETABLE.map(slot => {
@@ -211,16 +217,41 @@ export const AutomaticProxyPlannerModal: React.FC<AutomaticProxyPlannerModalProp
     }
     const tKey = normalizeFacultyKey(slot.teacherName);
     const staffKey = normalizeFacultyKey(staff.name);
-    if (!tKey || !staffKey) return false;
-    const genericPlaceholders = ['allteachers', 'allclasses', 'free', 'planning', 'break', 'recess', 'vacant', 'tbd', 'na'];
-    if (genericPlaceholders.includes(tKey)) return false;
-    if (tKey === staffKey) return true;
-    if (tKey.length >= 8 && staffKey.length >= 8) {
-      if (tKey.includes(staffKey) || staffKey.includes(tKey)) {
-        return true;
+    if (tKey && staffKey) {
+      const genericPlaceholders = ['allteachers', 'allclasses', 'free', 'planning', 'break', 'recess', 'vacant', 'tbd', 'na'];
+      if (!genericPlaceholders.includes(tKey)) {
+        if (tKey === staffKey) return true;
+        if (tKey.length >= 8 && staffKey.length >= 8) {
+          if (tKey.includes(staffKey) || staffKey.includes(tKey)) {
+            return true;
+          }
+        }
       }
     }
-    return false;
+
+    // Check Active Subject Responsibilities (e.g. Sipika Patel -> Odia in V-A, Karishma Kerketta -> Math support in V-A)
+    const slotClass = (slot.className || '').toLowerCase();
+    const slotSubj = (slot.subjectName || '').toLowerCase();
+    const hasSubjectResp = subjectResponsibilities.some(sra => {
+      if (sra.status !== 'Active') return false;
+      const empMatch = sra.employeeCode && staff.employeeCode && sra.employeeCode.toLowerCase() === staff.employeeCode.toLowerCase();
+      const nameMatch = sra.teacherName && normalizeFacultyKey(sra.teacherName) === staffKey;
+      if (!empMatch && !nameMatch) return false;
+
+      // Check date range if specific period
+      if (sra.assignmentType === 'Specific Period') {
+        if (sra.fromDate && selectedDate < sra.fromDate) return false;
+        if (sra.toDate && selectedDate > sra.toDate) return false;
+      }
+
+      const sraClass = sra.className.toLowerCase().replace('class ', '').trim();
+      const sraSubj = sra.subjectName.toLowerCase().trim();
+      const classMatch = slotClass.includes(sraClass) || sraClass.includes(slotClass.replace('class ', '').trim());
+      const subjMatch = slotSubj.includes(sraSubj) || sraSubj.includes(slotSubj);
+      return classMatch && subjMatch;
+    });
+
+    return hasSubjectResp;
   };
 
   const currentDayOfWeek = useMemo((): DayOfWeek | 'Sunday' => {

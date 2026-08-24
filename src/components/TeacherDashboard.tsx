@@ -19,7 +19,8 @@ import {
   LeaveBalance,
   PortfolioTemplate,
   PortfolioAssignment,
-  AcademicResponsibility
+  AcademicResponsibility,
+  SubjectResponsibilityAssignment
 } from '../types/academic';
 import {
   db,
@@ -40,6 +41,8 @@ import {
   DEFAULT_PROXY_DUTIES,
   DEFAULT_PORTFOLIO_TEMPLATES,
   DEFAULT_PORTFOLIO_ASSIGNMENTS,
+  DEFAULT_SUBJECT_RESPONSIBILITIES,
+  getSubjectResponsibilities,
   getCurrentUser,
   getMergedStaffList
 } from '../lib/storage';
@@ -65,6 +68,7 @@ import {
   Award,
   Camera,
   ShieldCheck,
+  GraduationCap,
   Printer,
   Search,
   BellRing,
@@ -567,6 +571,7 @@ export const TeacherDashboard: React.FC<TeacherDashboardProps> = ({
   const [newTaskAssignedBy, setNewTaskAssignedBy] = useState<'Self' | 'Principal' | 'Incharge'>('Self');
   const [newTaskDueTime, setNewTaskDueTime] = useState('15:00');
   const [newTaskClass, setNewTaskClass] = useState('Class X-A');
+  const [subjectAssignments, setSubjectAssignments] = useState<SubjectResponsibilityAssignment[]>(DEFAULT_SUBJECT_RESPONSIBILITIES);
 
   useEffect(() => {
     loadData();
@@ -593,6 +598,7 @@ export const TeacherDashboard: React.FC<TeacherDashboardProps> = ({
     window.addEventListener('kvs-teacher-attendance-updated', handleAuthChange);
     window.addEventListener('kvs-timetable-updated', handleAuthChange);
     window.addEventListener('kvs-portfolios-updated', handleAuthChange);
+    window.addEventListener('kvs-subject-responsibilities-updated', handleAuthChange);
 
     return () => {
       window.removeEventListener('kvs-school-updated', handleSchoolUpdate);
@@ -603,6 +609,7 @@ export const TeacherDashboard: React.FC<TeacherDashboardProps> = ({
       window.removeEventListener('kvs-teacher-attendance-updated', handleAuthChange);
       window.removeEventListener('kvs-timetable-updated', handleAuthChange);
       window.removeEventListener('kvs-portfolios-updated', handleAuthChange);
+      window.removeEventListener('kvs-subject-responsibilities-updated', handleAuthChange);
     };
   }, [propUser]);
 
@@ -648,7 +655,8 @@ export const TeacherDashboard: React.FC<TeacherDashboardProps> = ({
         savedLeaves,
         savedProxies,
         savedTemplates,
-        savedAssignments
+        savedAssignments,
+        savedSubAssignments
       ] = await Promise.all([
         db.get<SchoolDetails>('setup:school'),
         db.get<TeacherProfile>(scopedKey),
@@ -669,12 +677,14 @@ export const TeacherDashboard: React.FC<TeacherDashboardProps> = ({
         db.get<LeaveApplication[]>('setup:leave_applications'),
         db.get<ProxyDutyAssignment[]>('setup:proxy_duty_assignments'),
         db.get<PortfolioTemplate[]>('setup:portfolio_templates'),
-        db.get<PortfolioAssignment[]>('setup:portfolio_assignments')
+        db.get<PortfolioAssignment[]>('setup:portfolio_assignments'),
+        getSubjectResponsibilities()
       ]);
       setProfileRequests(savedProfileReqs || []);
       if (savedStaff && savedStaff.length > 0) setStaffList(savedStaff);
       else setStaffList(DEFAULT_STAFF_DETAILS);
       if (savedAtt && savedAtt.length > 0) setAttendanceRecords(savedAtt);
+      setSubjectAssignments(savedSubAssignments || DEFAULT_SUBJECT_RESPONSIBILITIES);
       if (savedLeaves && savedLeaves.length > 0) setLeaveApplications(savedLeaves);
       if (savedProxies && savedProxies.length > 0) setProxyAssignments(savedProxies);
 
@@ -759,6 +769,30 @@ export const TeacherDashboard: React.FC<TeacherDashboardProps> = ({
             levelOrClass: template?.category || 'School Wide',
             academicYear: '2026-27',
             keyOutcomes: template?.description || 'Official Vidyalaya Institutional Portfolio'
+          });
+        }
+      });
+
+      // Merge Subject & Academic Responsibilities (e.g. Odia to Sipika Patel, Math Support to Karishma Kerketta)
+      const activeSubjList = (savedSubAssignments && savedSubAssignments.length > 0) ? savedSubAssignments : DEFAULT_SUBJECT_RESPONSIBILITIES;
+      const mySubjectResponsibilities = activeSubjList.filter(sra => {
+        if (sra.status !== 'Active') return false;
+        if (u?.employeeCode && sra.employeeCode && sra.employeeCode.toLowerCase() === u.employeeCode.toLowerCase()) return true;
+        if (u?.name && sra.teacherName && normalizeFacultyKey(sra.teacherName) === normalizeFacultyKey(u.name)) return true;
+        return false;
+      });
+
+      mySubjectResponsibilities.forEach(sra => {
+        const dutyName = `${sra.subjectName} (${sra.className})`;
+        const exists = mergedResponsibilities.find(r => r.dutyName.toLowerCase() === dutyName.toLowerCase());
+        if (!exists) {
+          mergedResponsibilities.push({
+            id: `sra-${sra.id}`,
+            dutyName: dutyName,
+            role: (sra.supportType === 'Primary Teacher / In-Charge' ? 'In-Charge' : 'Co-Incharge') as any,
+            levelOrClass: sra.className,
+            academicYear: '2026-27',
+            keyOutcomes: sra.roleNote || `Academic Responsibility for ${sra.subjectName} in ${sra.className}`
           });
         }
       });
@@ -953,6 +987,26 @@ export const TeacherDashboard: React.FC<TeacherDashboardProps> = ({
   const currentTeacherName = teacher.name || currentUser?.name || 'Teacher';
   const assignedClassesList = currentUser?.assignedClasses || ['VI-A', 'VII-A', 'VIII-A', 'IX-A', 'X-A'];
 
+  // Active Subject & Academic Responsibilities for this teacher (e.g. Odia to Sipika Patel, Math support to Karishma Kerketta)
+  const myActiveSubjectResponsibilities = useMemo(() => {
+    const uEmp = currentUser?.employeeCode || teacher.employeeCode;
+    const uName = teacher.name || currentUser?.name;
+    const normName = uName ? normalizeFacultyKey(uName) : '';
+
+    return subjectAssignments.filter(sra => {
+      if (sra.status !== 'Active') return false;
+      const empMatch = uEmp && sra.employeeCode && sra.employeeCode.toLowerCase() === uEmp.toLowerCase();
+      const nameMatch = normName && sra.teacherName && normalizeFacultyKey(sra.teacherName) === normName;
+      if (!empMatch && !nameMatch) return false;
+
+      if (sra.assignmentType === 'Specific Period') {
+        if (sra.fromDate && activeWorkingDate < sra.fromDate) return false;
+        if (sra.toDate && activeWorkingDate > sra.toDate) return false;
+      }
+      return true;
+    });
+  }, [subjectAssignments, currentUser?.employeeCode, teacher.employeeCode, teacher.name, currentUser?.name, activeWorkingDate]);
+
   // Teacher's own scheduled classes for the selected day (Guaranteed single class per period)
   const myTodayClasses = useMemo(() => {
     const daySlots = timetable.filter(t => (t.dayOfWeek || t.day) === selectedDay);
@@ -1012,6 +1066,22 @@ export const TeacherDashboard: React.FC<TeacherDashboardProps> = ({
         return true;
       }
 
+      // Priority E: Active Subject Responsibility (e.g. Odia to Sipika Patel, Math support to Karishma Kerketta)
+      const matchingSubjectAssignment = myActiveSubjectResponsibilities.find(sra => {
+        const slotCleanClass = slotClass.toLowerCase().replace('class ', '').trim();
+        const sraCleanClass = sra.className.toLowerCase().replace('class ', '').trim();
+        const classMatch = slotCleanClass === sraCleanClass || slotCleanClass.includes(sraCleanClass) || sraCleanClass.includes(slotCleanClass);
+        const subjMatch = sra.subjectName && (
+          slotSubject.includes(sra.subjectName.toLowerCase()) ||
+          sra.subjectName.toLowerCase().includes(slotSubject)
+        );
+        return classMatch && subjMatch;
+      });
+
+      if (matchingSubjectAssignment) {
+        return true;
+      }
+
       return false;
     });
 
@@ -1041,7 +1111,7 @@ export const TeacherDashboard: React.FC<TeacherDashboardProps> = ({
       const periodB = b.period || b.periodNumber || 1;
       return sortOrder === 'asc' ? periodA - periodB : periodB - periodA;
     });
-  }, [timetable, selectedDay, currentTeacherName, teacher.primarySubject, teacher.classesAndSubjectsTaught, teacher.employeeCode, currentUser?.employeeCode, assignedClassesList, sortOrder]);
+  }, [timetable, selectedDay, currentTeacherName, teacher.primarySubject, teacher.classesAndSubjectsTaught, teacher.employeeCode, currentUser?.employeeCode, assignedClassesList, sortOrder, myActiveSubjectResponsibilities]);
 
   // Determine active persona context:
   // If activePersona is explicitly set, use it. Otherwise, if role is data_entry_manager, default to 'teacher' workspace unless selected.
@@ -2283,6 +2353,58 @@ export const TeacherDashboard: React.FC<TeacherDashboardProps> = ({
                   ))}
                 </div>
               </div>
+
+              {/* Assigned Academic & Subject Responsibilities Banner */}
+              {myActiveSubjectResponsibilities.length > 0 && (
+                <div className="p-4 rounded-2xl bg-gradient-to-r from-amber-950/50 via-slate-950 to-indigo-950/50 border border-amber-500/40 space-y-2.5 shadow-sm">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <GraduationCap className="w-5 h-5 text-amber-400" />
+                      <h4 className="text-xs font-bold text-white m-0 flex items-center gap-2">
+                        <span>Assigned Subject & Academic Responsibilities</span>
+                        <span className="px-2 py-0.5 rounded-full text-[9px] font-bold bg-amber-500/20 text-amber-300 border border-amber-500/30">
+                          {myActiveSubjectResponsibilities.length} Active
+                        </span>
+                      </h4>
+                    </div>
+                    <span className="text-[10px] text-amber-400 font-mono">
+                      Institutional Delegation
+                    </span>
+                  </div>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 pt-1">
+                    {myActiveSubjectResponsibilities.map(sra => (
+                      <div
+                        key={sra.id}
+                        className="p-2.5 rounded-xl bg-slate-900/90 border border-slate-800 flex items-start justify-between gap-2"
+                      >
+                        <div className="space-y-1">
+                          <div className="flex items-center gap-2">
+                            <span className="px-2 py-0.5 rounded text-[11px] font-bold bg-amber-500/20 text-amber-300 border border-amber-500/30">
+                              {sra.subjectName}
+                            </span>
+                            <span className="px-1.5 py-0.5 rounded text-[10px] font-mono font-bold bg-purple-950 text-purple-300 border border-purple-800">
+                              {sra.className}
+                            </span>
+                          </div>
+                          <p className="text-[11px] text-slate-300 m-0">
+                            <strong className="text-amber-200">{sra.supportType}</strong>
+                            {sra.roleNote ? ` · "${sra.roleNote}"` : ''}
+                          </p>
+                        </div>
+
+                        <button
+                          type="button"
+                          onClick={() => onNavigateTab('lessonplan')}
+                          className="px-2 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 text-[10px] font-bold shrink-0 transition-colors cursor-pointer"
+                        >
+                          Plan Lesson
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
 
               {/* Recess Duty Banner (if assigned to this teacher today) */}
               {myRecessDutyToday && (

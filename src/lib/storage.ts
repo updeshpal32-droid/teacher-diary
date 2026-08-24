@@ -81,7 +81,8 @@ import {
   PortfolioAssignment,
   ResponsibilityDelegation,
   ResponsibilityRequest,
-  PortfolioSuggestion
+  PortfolioSuggestion,
+  SubjectResponsibilityAssignment
 } from '../types/academic';
 import {
   DEFAULT_STUDENTS,
@@ -2993,6 +2994,53 @@ export {
   DEFAULT_RESPONSIBILITY_REQUESTS,
   DEFAULT_PORTFOLIO_SUGGESTIONS
 };
+
+export const DEFAULT_SUBJECT_RESPONSIBILITIES: SubjectResponsibilityAssignment[] = [
+  {
+    id: 'sra-1',
+    employeeCode: 'CS.107862', // Sipika Patel
+    teacherName: 'SIPIKA PATEL',
+    designation: 'TGT ODIA / Special Educator',
+    subjectName: 'Odia',
+    className: 'Class V-A',
+    section: 'A',
+    supportType: 'Primary Teacher / In-Charge',
+    assignmentType: 'Whole Session',
+    fromDate: '2026-04-01',
+    toDate: '2027-03-31',
+    roleNote: 'Odia in-charge – no regular Odia teacher appointed this session.',
+    status: 'Active',
+    assignedBy: 'Shri Hemananda Barik (Principal I/c)',
+    assignedAt: '2026-04-01T09:00:00.000Z'
+  },
+  {
+    id: 'sra-2',
+    employeeCode: 'CS.107861', // Karishma Kerketta
+    teacherName: 'KARISHMA KERKETTA',
+    designation: 'PRT',
+    subjectName: 'Mathematics',
+    className: 'Class V-A',
+    section: 'A',
+    supportType: 'Academic Support / Co-Teaching',
+    assignmentType: 'Whole Session',
+    fromDate: '2026-08-12',
+    toDate: '2027-03-31',
+    roleNote: 'Class V Math academic support as per New Academic Plan (12-08-2026) to improve scholastic competency.',
+    status: 'Active',
+    assignedBy: 'Shri Hemananda Barik (Principal I/c)',
+    assignedAt: '2026-08-12T10:30:00.000Z'
+  }
+];
+
+export async function getSubjectResponsibilities(): Promise<SubjectResponsibilityAssignment[]> {
+  const saved = await db.get<SubjectResponsibilityAssignment[]>('setup:subject_responsibility_assignments');
+  if (saved && saved.length > 0) return saved;
+  return DEFAULT_SUBJECT_RESPONSIBILITIES;
+}
+
+export async function saveSubjectResponsibilities(items: SubjectResponsibilityAssignment[]): Promise<void> {
+  await db.set('setup:subject_responsibility_assignments', items);
+}
 
 export { THEME_CALENDAR_2026_27, THEME_FOR_THE_YEAR } from './themeCalendar2026';
 
@@ -7295,6 +7343,7 @@ export const STORAGE_KEYS = [
   'setup:responsibility_delegations',
   'setup:responsibility_requests',
   'setup:portfolio_suggestions',
+  'setup:subject_responsibility_assignments',
   'auth:users_list',
   'auth:custom_roles'
 ] as const;

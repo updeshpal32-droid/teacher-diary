@@ -18,7 +18,9 @@ import {
   TeacherTask,
   TeacherAttendanceRecord,
   LeaveApplication,
-  OnDutyRecord
+  OnDutyRecord,
+  SubjectResponsibilityAssignment,
+  SubjectSupportType
 } from '../types/academic';
 import { UserAccount } from '../types/auth';
 import { checkTeacherAbsenceOnDate, isDateInRange } from '../lib/attendanceAbsenceEngine';
@@ -30,6 +32,9 @@ import {
   DEFAULT_RESPONSIBILITY_REQUESTS,
   DEFAULT_PORTFOLIO_SUGGESTIONS,
   DEFAULT_STAFF_DETAILS,
+  DEFAULT_SUBJECT_RESPONSIBILITIES,
+  getSubjectResponsibilities,
+  saveSubjectResponsibilities,
   THEME_CALENDAR_2026_27,
   THEME_FOR_THE_YEAR,
   getUserAccounts
@@ -84,7 +89,8 @@ import {
   FileSpreadsheet,
   FileCode,
   CheckCheck,
-  AlertCircle
+  AlertCircle,
+  GraduationCap
 } from 'lucide-react';
 
 interface PortfolioRoleManagerProps {
@@ -93,7 +99,7 @@ interface PortfolioRoleManagerProps {
   onNavigateTab?: (tab: string) => void;
 }
 
-type SubTab = 'committees' | 'delegations' | 'requests' | 'suggestions' | 'theme_calendar';
+type SubTab = 'committees' | 'subject_responsibilities' | 'delegations' | 'requests' | 'suggestions' | 'theme_calendar';
 
 const CATEGORY_COLORS: Record<PortfolioCategory, { bg: string; text: string; border: string }> = {
   'Academic & Administration': { bg: 'bg-purple-950/40', text: 'text-purple-300', border: 'border-purple-500/40' },
@@ -115,6 +121,7 @@ export const PortfolioRoleManager: React.FC<PortfolioRoleManagerProps> = ({
   const [delegations, setDelegations] = useState<ResponsibilityDelegation[]>([]);
   const [requests, setRequests] = useState<ResponsibilityRequest[]>([]);
   const [suggestions, setSuggestions] = useState<PortfolioSuggestion[]>([]);
+  const [subjectResponsibilities, setSubjectResponsibilities] = useState<SubjectResponsibilityAssignment[]>([]);
   const [staffList, setStaffList] = useState<StaffDetailRecord[]>([]);
   const [attendanceRecords, setAttendanceRecords] = useState<TeacherAttendanceRecord[]>([]);
   const [leaveApplications, setLeaveApplications] = useState<LeaveApplication[]>([]);
@@ -122,6 +129,20 @@ export const PortfolioRoleManager: React.FC<PortfolioRoleManagerProps> = ({
   const [currentDate] = useState<string>(() => new Date().toISOString().split('T')[0]);
   const [loading, setLoading] = useState(true);
   const [isDetecting, setIsDetecting] = useState(false);
+
+  // Subject Responsibility Modal State
+  const [isSubjectModalOpen, setIsSubjectModalOpen] = useState(false);
+  const [editingSubjectAssignment, setEditingSubjectAssignment] = useState<SubjectResponsibilityAssignment | null>(null);
+  const [subjTeacherCode, setSubjTeacherCode] = useState('');
+  const [subjSubjectName, setSubjSubjectName] = useState('Odia');
+  const [subjClassName, setSubjClassName] = useState('Class V-A');
+  const [subjSupportType, setSubjSupportType] = useState<SubjectSupportType>('Primary Teacher / In-Charge');
+  const [subjAssignmentType, setSubjAssignmentType] = useState<'Whole Session' | 'Specific Period'>('Whole Session');
+  const [subjFromDate, setSubjFromDate] = useState('2026-04-01');
+  const [subjToDate, setSubjToDate] = useState('2027-03-31');
+  const [subjRoleNote, setSubjRoleNote] = useState('');
+  const [subjStatus, setSubjStatus] = useState<'Active' | 'Ended'>('Active');
+  const [subjectSearchQuery, setSubjectSearchQuery] = useState('');
 
   // Filters & Search
   const [searchQuery, setSearchQuery] = useState('');
@@ -243,7 +264,8 @@ export const PortfolioRoleManager: React.FC<PortfolioRoleManagerProps> = ({
         userAccounts,
         attData,
         leaveData,
-        odData
+        odData,
+        subData
       ] = await Promise.all([
         db.get<PortfolioTemplate[]>('setup:portfolio_templates'),
         db.get<PortfolioAssignment[]>('setup:portfolio_assignments'),
@@ -254,7 +276,8 @@ export const PortfolioRoleManager: React.FC<PortfolioRoleManagerProps> = ({
         getUserAccounts(),
         db.get<TeacherAttendanceRecord[]>('setup:teacher_attendance'),
         db.get<LeaveApplication[]>('setup:leave_applications'),
-        db.get<OnDutyRecord[]>('setup:on_duty_records')
+        db.get<OnDutyRecord[]>('setup:on_duty_records'),
+        getSubjectResponsibilities()
       ]);
 
       const loadedTemplates = tData && tData.length > 0 ? tData : DEFAULT_PORTFOLIO_TEMPLATES;
@@ -262,6 +285,7 @@ export const PortfolioRoleManager: React.FC<PortfolioRoleManagerProps> = ({
       setAssignments(aData && aData.length > 0 ? aData : DEFAULT_PORTFOLIO_ASSIGNMENTS);
       setDelegations(dData && dData.length > 0 ? dData : DEFAULT_RESPONSIBILITY_DELEGATIONS);
       setRequests(rData && rData.length > 0 ? rData : DEFAULT_RESPONSIBILITY_REQUESTS);
+      setSubjectResponsibilities(subData && subData.length > 0 ? subData : DEFAULT_SUBJECT_RESPONSIBILITIES);
 
       if (attData && attData.length > 0) setAttendanceRecords(attData);
       if (leaveData && leaveData.length > 0) setLeaveApplications(leaveData);
@@ -1163,6 +1187,125 @@ export const PortfolioRoleManager: React.FC<PortfolioRoleManagerProps> = ({
     });
   }, [selectedCalendarMonth, selectedCalendarCategory, searchQuery]);
 
+  const filteredSubjectResponsibilities = useMemo(() => {
+    return subjectResponsibilities.filter(s => {
+      if (!subjectSearchQuery.trim()) return true;
+      const q = subjectSearchQuery.toLowerCase();
+      return (
+        s.teacherName.toLowerCase().includes(q) ||
+        s.subjectName.toLowerCase().includes(q) ||
+        s.className.toLowerCase().includes(q) ||
+        (s.roleNote && s.roleNote.toLowerCase().includes(q)) ||
+        (s.employeeCode && s.employeeCode.toLowerCase().includes(q))
+      );
+    });
+  }, [subjectResponsibilities, subjectSearchQuery]);
+
+  const handleOpenSubjectModal = (item?: SubjectResponsibilityAssignment) => {
+    if (item) {
+      setEditingSubjectAssignment(item);
+      setSubjTeacherCode(item.employeeCode);
+      setSubjSubjectName(item.subjectName);
+      setSubjClassName(item.className);
+      setSubjSupportType(item.supportType);
+      setSubjAssignmentType(item.assignmentType);
+      setSubjFromDate(item.fromDate || '2026-04-01');
+      setSubjToDate(item.toDate || '2027-03-31');
+      setSubjRoleNote(item.roleNote || '');
+      setSubjStatus(item.status);
+    } else {
+      setEditingSubjectAssignment(null);
+      setSubjTeacherCode(staffList[0]?.employeeCode || '');
+      setSubjSubjectName('Odia');
+      setSubjClassName('Class V-A');
+      setSubjSupportType('Primary Teacher / In-Charge');
+      setSubjAssignmentType('Whole Session');
+      setSubjFromDate('2026-04-01');
+      setSubjToDate('2027-03-31');
+      setSubjRoleNote('');
+      setSubjStatus('Active');
+    }
+    setIsSubjectModalOpen(true);
+  };
+
+  const handleSaveSubjectResponsibility = async (e: React.FormEvent) => {
+    e.preventDefault();
+    const targetStaff = staffList.find(s => s.employeeCode === subjTeacherCode);
+    if (!targetStaff) {
+      alert('Please select a valid teacher.');
+      return;
+    }
+
+    let updatedList = [...subjectResponsibilities];
+    if (editingSubjectAssignment) {
+      updatedList = updatedList.map(a =>
+        a.id === editingSubjectAssignment.id
+          ? {
+              ...a,
+              employeeCode: targetStaff.employeeCode,
+              teacherName: targetStaff.name,
+              designation: targetStaff.designation,
+              subjectName: subjSubjectName,
+              className: subjClassName,
+              supportType: subjSupportType,
+              assignmentType: subjAssignmentType,
+              fromDate: subjAssignmentType === 'Specific Period' ? subjFromDate : undefined,
+              toDate: subjAssignmentType === 'Specific Period' ? subjToDate : undefined,
+              roleNote: subjRoleNote.trim(),
+              status: subjStatus,
+              updatedAt: new Date().toISOString()
+            }
+          : a
+      );
+    } else {
+      const newAssignment: SubjectResponsibilityAssignment = {
+        id: `sra-${Date.now()}`,
+        employeeCode: targetStaff.employeeCode,
+        teacherName: targetStaff.name,
+        designation: targetStaff.designation,
+        subjectName: subjSubjectName,
+        className: subjClassName,
+        supportType: subjSupportType,
+        assignmentType: subjAssignmentType,
+        fromDate: subjAssignmentType === 'Specific Period' ? subjFromDate : '2026-04-01',
+        toDate: subjAssignmentType === 'Specific Period' ? subjToDate : '2027-03-31',
+        roleNote: subjRoleNote.trim() || `${subjSubjectName} academic responsibility for ${subjClassName}`,
+        status: 'Active',
+        assignedBy: currentUser?.name || 'Principal I/c',
+        assignedAt: new Date().toISOString()
+      };
+      updatedList.push(newAssignment);
+    }
+
+    setSubjectResponsibilities(updatedList);
+    await saveSubjectResponsibilities(updatedList);
+    setIsSubjectModalOpen(false);
+    showNotification(`Academic Subject Responsibility for ${subjSubjectName} (${subjClassName}) saved successfully.`);
+    window.dispatchEvent(new CustomEvent('kvs-subject-responsibilities-updated'));
+    window.dispatchEvent(new CustomEvent('kvs-portfolios-updated'));
+  };
+
+  const handleToggleSubjectStatus = async (id: string) => {
+    const updated = subjectResponsibilities.map(a =>
+      a.id === id ? { ...a, status: (a.status === 'Active' ? 'Ended' : 'Active') as 'Active' | 'Ended', updatedAt: new Date().toISOString() } : a
+    );
+    setSubjectResponsibilities(updated);
+    await saveSubjectResponsibilities(updated);
+    showNotification('Subject responsibility status updated.');
+    window.dispatchEvent(new CustomEvent('kvs-subject-responsibilities-updated'));
+    window.dispatchEvent(new CustomEvent('kvs-portfolios-updated'));
+  };
+
+  const handleDeleteSubjectResponsibility = async (id: string) => {
+    if (!window.confirm('Are you sure you want to remove this academic subject assignment?')) return;
+    const updated = subjectResponsibilities.filter(a => a.id !== id);
+    setSubjectResponsibilities(updated);
+    await saveSubjectResponsibilities(updated);
+    showNotification('Subject responsibility removed.');
+    window.dispatchEvent(new CustomEvent('kvs-subject-responsibilities-updated'));
+    window.dispatchEvent(new CustomEvent('kvs-portfolios-updated'));
+  };
+
   const pendingRequestsCount = requests.filter(r => r.status === 'Pending').length;
   const pendingSuggestionsCount = suggestions.filter(s => s.status === 'Pending').length;
 
@@ -1190,11 +1333,21 @@ export const PortfolioRoleManager: React.FC<PortfolioRoleManagerProps> = ({
             </h2>
           </div>
           <p className="text-xs text-purple-200/80 m-0">
-            Configure institutional committees, bulk import/export rosters, assign In-charges and members, edit/delete portfolios, and track deliverables.
+            Configure institutional committees, bulk import/export rosters, assign In-charges and members, assign flexible academic subject responsibilities, and track deliverables.
           </p>
         </div>
 
         <div className="flex items-center gap-2 flex-wrap">
+          {/* Add Subject Responsibility Button */}
+          <button
+            onClick={() => handleOpenSubjectModal()}
+            className="px-3.5 py-2 rounded-xl bg-amber-600 hover:bg-amber-500 text-white font-bold text-xs flex items-center gap-1.5 transition-all shadow-md shadow-amber-600/30 cursor-pointer"
+            title="Assign teacher to Odia, Math support, or special subject responsibility"
+          >
+            <GraduationCap className="w-4 h-4" />
+            <span>Assign Subject</span>
+          </button>
+
           {/* Bulk Import Button */}
           <button
             onClick={() => setIsImportModalOpen(true)}
@@ -1236,43 +1389,54 @@ export const PortfolioRoleManager: React.FC<PortfolioRoleManagerProps> = ({
         </div>
       </div>
 
-      {/* Feedback Toast */}
+      {/* Notification Toast */}
       {msg && (
         <div
-          className={`p-3.5 rounded-xl border flex items-center gap-2.5 text-xs font-bold animate-fadeIn ${
-            msg.type === 'success'
-              ? 'bg-emerald-950/90 border-emerald-500/50 text-emerald-300'
-              : 'bg-rose-950/90 border-rose-500/50 text-rose-300'
+          className={`p-3.5 rounded-xl border text-xs font-bold flex items-center gap-2 animate-slideDown ${
+            msg.type === 'error'
+              ? 'bg-rose-950/80 border-rose-500/60 text-rose-300'
+              : 'bg-emerald-950/80 border-emerald-500/60 text-emerald-300'
           }`}
         >
-          {msg.type === 'success' ? <CheckCircle2 className="w-4 h-4 text-emerald-400" /> : <AlertTriangle className="w-4 h-4" />}
+          {msg.type === 'error' ? <AlertTriangle className="w-4 h-4" /> : <CheckCircle2 className="w-4 h-4" />}
           <span>{msg.text}</span>
         </div>
       )}
 
-      {/* KPI Stats Strip */}
-      <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
+      {/* Overview Stat Strip */}
+      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
         <div className="p-3.5 rounded-2xl bg-purple-950/30 border border-purple-500/30 space-y-1">
           <div className="text-[10px] font-bold text-purple-300 uppercase tracking-wider flex items-center justify-between">
             <span>Committees</span>
-            <Briefcase className="w-3.5 h-3.5 text-purple-400" />
+            <Layers className="w-3.5 h-3.5 text-purple-400" />
           </div>
           <div className="text-xl font-black text-purple-300 font-mono">{templates.length}</div>
-          <div className="text-[10px] text-purple-300/70">Official Portfolios</div>
-        </div>
-
-        <div className="p-3.5 rounded-2xl bg-slate-900 border border-slate-800 space-y-1">
-          <div className="text-[10px] font-bold text-slate-400 uppercase tracking-wider flex items-center justify-between">
-            <span>In-charges Assigned</span>
-            <UserCheck className="w-3.5 h-3.5 text-slate-400" />
-          </div>
-          <div className="text-xl font-black text-white font-mono">
-            {assignments.filter(a => a.role === 'In-charge' && a.status === 'Active').length}
-          </div>
-          <div className="text-[10px] text-slate-500">1 Lead per Committee</div>
+          <div className="text-[10px] text-purple-300/70">Master Statutory Panels</div>
         </div>
 
         <div className="p-3.5 rounded-2xl bg-amber-950/30 border border-amber-500/30 space-y-1">
+          <div className="text-[10px] font-bold text-amber-300 uppercase tracking-wider flex items-center justify-between">
+            <span>Subject Roles</span>
+            <GraduationCap className="w-3.5 h-3.5 text-amber-400" />
+          </div>
+          <div className="text-xl font-black text-amber-400 font-mono">
+            {subjectResponsibilities.filter(s => s.status === 'Active').length}
+          </div>
+          <div className="text-[10px] text-amber-300/70">Academic Assignments</div>
+        </div>
+
+        <div className="p-3.5 rounded-2xl bg-emerald-950/30 border border-emerald-500/30 space-y-1">
+          <div className="text-[10px] font-bold text-emerald-300 uppercase tracking-wider flex items-center justify-between">
+            <span>In-Charges</span>
+            <UserCheck className="w-3.5 h-3.5 text-emerald-400" />
+          </div>
+          <div className="text-xl font-black text-emerald-400 font-mono">
+            {assignments.filter(a => a.role === 'In-charge' && a.status === 'Active').length}
+          </div>
+          <div className="text-[10px] text-emerald-300/70">Assigned Convenors</div>
+        </div>
+
+        <div className="p-3.5 rounded-2xl bg-slate-900 border border-slate-800 space-y-1">
           <div className="text-[10px] font-bold text-amber-300 uppercase tracking-wider flex items-center justify-between">
             <span>Active Delegations</span>
             <ArrowRight className="w-3.5 h-3.5 text-amber-400" />
@@ -1314,6 +1478,18 @@ export const PortfolioRoleManager: React.FC<PortfolioRoleManagerProps> = ({
         >
           <Briefcase className="w-4 h-4" />
           <span>Committees Directory ({templates.length})</span>
+        </button>
+
+        <button
+          onClick={() => setActiveTab('subject_responsibilities')}
+          className={`px-4 py-2 rounded-xl text-xs font-bold transition-all flex items-center gap-2 cursor-pointer whitespace-nowrap ${
+            activeTab === 'subject_responsibilities'
+              ? 'bg-amber-600 text-white shadow-lg shadow-amber-600/30'
+              : 'bg-slate-900 hover:bg-slate-800 text-slate-300 border border-slate-800'
+          }`}
+        >
+          <GraduationCap className="w-4 h-4 text-amber-300" />
+          <span>Subject & Academic Responsibilities ({subjectResponsibilities.filter(s => s.status === 'Active').length})</span>
         </button>
 
         <button
@@ -1721,7 +1897,174 @@ export const PortfolioRoleManager: React.FC<PortfolioRoleManagerProps> = ({
       )}
 
       {/* ========================================================================= */}
-      {/* 2. THEME-WISE CALENDAR 2026-27 (PHASE 6) */}
+      {/* 2. SUBJECT & ACADEMIC RESPONSIBILITY ASSIGNMENT */}
+      {/* ========================================================================= */}
+      {activeTab === 'subject_responsibilities' && (
+        <div className="space-y-4">
+          {/* Header Card */}
+          <div className="p-5 rounded-2xl bg-gradient-to-r from-amber-950/60 via-slate-900 to-indigo-950/60 border border-amber-500/40 shadow-xl space-y-3">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+              <div className="space-y-1">
+                <div className="flex items-center gap-2">
+                  <span className="p-1.5 rounded-lg bg-amber-500/20 text-amber-300 border border-amber-500/30">
+                    <GraduationCap className="w-5 h-5" />
+                  </span>
+                  <h3 className="text-base font-bold text-white m-0">
+                    Subject & Academic Responsibility Assignments
+                  </h3>
+                </div>
+                <p className="text-xs text-amber-200/80 m-0">
+                  Principal statutory assignment of subjects (e.g. Odia to Special Educator Sipika Patel, Class V Math support to Karishma Kerketta under New Academic Plan) for whole session or specific periods.
+                </p>
+              </div>
+
+              <button
+                type="button"
+                onClick={() => handleOpenSubjectModal()}
+                className="px-4 py-2 rounded-xl bg-amber-600 hover:bg-amber-500 text-white font-bold text-xs flex items-center gap-1.5 transition-all shadow-md shadow-amber-600/30 cursor-pointer self-start sm:self-auto"
+              >
+                <Plus className="w-4 h-4" />
+                <span>Assign Subject Responsibility</span>
+              </button>
+            </div>
+
+            {/* Search Bar */}
+            <div className="flex items-center gap-3 bg-slate-950/80 p-2 rounded-xl border border-slate-800">
+              <Search className="w-4 h-4 text-slate-500 shrink-0 ml-1" />
+              <input
+                type="text"
+                placeholder="Search by teacher name, subject (Odia, Math...), class (V-A), or note..."
+                value={subjectSearchQuery}
+                onChange={e => setSubjectSearchQuery(e.target.value)}
+                className="w-full bg-transparent text-xs text-white placeholder-slate-500 focus:outline-none"
+              />
+              {subjectSearchQuery && (
+                <button
+                  type="button"
+                  onClick={() => setSubjectSearchQuery('')}
+                  className="text-slate-400 hover:text-white p-1 text-xs"
+                >
+                  <X className="w-3.5 h-3.5" />
+                </button>
+              )}
+            </div>
+          </div>
+
+          {/* Cards Grid */}
+          {filteredSubjectResponsibilities.length === 0 ? (
+            <div className="p-8 text-center bg-slate-900/50 rounded-2xl border border-slate-800 text-slate-400 text-xs">
+              No subject responsibility assignments found matching your search.
+            </div>
+          ) : (
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+              {filteredSubjectResponsibilities.map(assignment => (
+                <div
+                  key={assignment.id}
+                  className="p-4 rounded-2xl bg-slate-900/90 border border-slate-800 hover:border-amber-500/40 transition-all shadow-lg space-y-3 relative group"
+                >
+                  {/* Top Bar: Subject Badge & Status */}
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="px-2.5 py-1 rounded-lg bg-amber-500/20 text-amber-300 border border-amber-500/30 text-xs font-bold flex items-center gap-1.5">
+                      <BookOpen className="w-3.5 h-3.5" />
+                      <span>{assignment.subjectName}</span>
+                    </span>
+
+                    <div className="flex items-center gap-1.5">
+                      <span
+                        className={`px-2 py-0.5 rounded-full text-[10px] font-bold border ${
+                          assignment.status === 'Active'
+                            ? 'bg-emerald-500/10 text-emerald-300 border-emerald-500/30'
+                            : 'bg-slate-800 text-slate-400 border-slate-700'
+                        }`}
+                      >
+                        {assignment.status}
+                      </span>
+                    </div>
+                  </div>
+
+                  {/* Teacher Info */}
+                  <div className="space-y-1">
+                    <div className="text-sm font-bold text-white flex items-center gap-1.5">
+                      <span>{assignment.teacherName}</span>
+                    </div>
+                    <div className="text-[11px] text-slate-400 flex items-center gap-2">
+                      <span>{assignment.designation || 'Faculty'}</span>
+                      <span>&bull;</span>
+                      <span className="font-mono text-slate-500">ID: {assignment.employeeCode}</span>
+                    </div>
+                  </div>
+
+                  {/* Target Class & Support Type */}
+                  <div className="p-2.5 rounded-xl bg-slate-950 border border-slate-800/80 space-y-1.5 text-xs">
+                    <div className="flex items-center justify-between text-[11px]">
+                      <span className="text-slate-400">Assigned Class:</span>
+                      <span className="font-bold text-purple-300 bg-purple-950/60 px-2 py-0.5 rounded border border-purple-800/40">
+                        {assignment.className}
+                      </span>
+                    </div>
+                    <div className="flex items-center justify-between text-[11px]">
+                      <span className="text-slate-400">Role / Nature:</span>
+                      <span className="font-medium text-amber-200">{assignment.supportType}</span>
+                    </div>
+                    <div className="flex items-center justify-between text-[11px]">
+                      <span className="text-slate-400">Duration:</span>
+                      <span className="text-slate-300 font-mono text-[10px]">
+                        {assignment.assignmentType === 'Whole Session'
+                          ? 'Whole Session (2026-27)'
+                          : `${assignment.fromDate || ''} to ${assignment.toDate || ''}`}
+                      </span>
+                    </div>
+                  </div>
+
+                  {/* Note / Directive */}
+                  {assignment.roleNote && (
+                    <div className="p-2.5 rounded-xl bg-slate-950/60 border border-slate-800/60 text-[11px] text-slate-300 italic">
+                      "{assignment.roleNote}"
+                    </div>
+                  )}
+
+                  {/* Footer & Actions */}
+                  <div className="pt-2 border-t border-slate-800 flex items-center justify-between text-[10px] text-slate-500">
+                    <div>
+                      <span>Assigned by {assignment.assignedBy}</span>
+                    </div>
+
+                    <div className="flex items-center gap-1.5">
+                      <button
+                        type="button"
+                        onClick={() => handleToggleSubjectStatus(assignment.id)}
+                        className="p-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white transition-colors cursor-pointer"
+                        title={assignment.status === 'Active' ? 'Mark as Ended' : 'Mark as Active'}
+                      >
+                        <Sliders className="w-3.5 h-3.5" />
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => handleOpenSubjectModal(assignment)}
+                        className="p-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white transition-colors cursor-pointer"
+                        title="Edit Assignment"
+                      >
+                        <Edit2 className="w-3.5 h-3.5" />
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => handleDeleteSubjectResponsibility(assignment.id)}
+                        className="p-1.5 rounded-lg bg-slate-800 hover:bg-rose-900/60 text-slate-400 hover:text-rose-300 transition-colors cursor-pointer"
+                        title="Delete Assignment"
+                      >
+                        <Trash2 className="w-3.5 h-3.5" />
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* ========================================================================= */}
+      {/* 3. THEME-WISE CALENDAR 2026-27 (PHASE 6) */}
       {/* ========================================================================= */}
       {activeTab === 'theme_calendar' && (
         <div className="space-y-4">
@@ -2943,6 +3286,248 @@ export const PortfolioRoleManager: React.FC<PortfolioRoleManagerProps> = ({
                   className="px-5 py-2 rounded-xl bg-purple-600 hover:bg-purple-500 text-white font-bold text-xs cursor-pointer shadow-lg shadow-purple-600/30"
                 >
                   Create Committee
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* ========================================================================= */}
+      {/* MODAL: ASSIGN SUBJECT & ACADEMIC RESPONSIBILITY */}
+      {/* ========================================================================= */}
+      {isSubjectModalOpen && (
+        <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center p-4 overflow-y-auto">
+          <div className="bg-slate-900 border border-slate-800 rounded-3xl w-full max-w-xl p-6 space-y-5 shadow-2xl relative my-8 animate-scaleUp max-h-[92vh] overflow-y-auto">
+            <div className="flex items-center justify-between pb-3 border-b border-slate-800">
+              <div className="space-y-0.5">
+                <span className="text-[10px] font-mono text-amber-400 font-bold uppercase tracking-wider">
+                  Academic Governance &bull; Subject In-Charge & Co-Teaching
+                </span>
+                <h3 className="text-base font-bold text-white m-0 flex items-center gap-2">
+                  <GraduationCap className="w-5 h-5 text-amber-400" />
+                  <span>{editingSubjectAssignment ? 'Edit Subject Responsibility' : 'Assign Subject & Academic Responsibility'}</span>
+                </h3>
+              </div>
+              <button
+                type="button"
+                onClick={() => setIsSubjectModalOpen(false)}
+                className="text-slate-400 hover:text-white p-1 rounded cursor-pointer"
+                title="Discard and close"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <form onSubmit={handleSaveSubjectResponsibility} className="space-y-4">
+              {/* Teacher Selector */}
+              <div>
+                <label className="text-xs font-bold text-slate-300 block mb-1">
+                  Assign To Teacher (Full Staff Roster) *
+                </label>
+                <select
+                  required
+                  value={subjTeacherCode}
+                  onChange={e => setSubjTeacherCode(e.target.value)}
+                  className="w-full px-3 py-2 text-xs bg-slate-950 border border-slate-800 rounded-xl text-white font-bold focus:outline-none focus:border-amber-500"
+                >
+                  {staffList.map(s => (
+                    <option key={s.employeeCode} value={s.employeeCode}>
+                      {s.name} &bull; {s.designation || 'Faculty'} (Code: {s.employeeCode})
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              {/* Subject & Class Selection */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <label className="text-xs font-bold text-slate-300 block mb-1">Subject *</label>
+                  <select
+                    value={subjSubjectName}
+                    onChange={e => setSubjSubjectName(e.target.value)}
+                    className="w-full px-3 py-2 text-xs bg-slate-950 border border-slate-800 rounded-xl text-white font-bold focus:outline-none focus:border-amber-500"
+                  >
+                    <option value="Odia">Odia</option>
+                    <option value="Mathematics">Mathematics</option>
+                    <option value="English">English</option>
+                    <option value="Hindi">Hindi</option>
+                    <option value="EVS / TWAU">EVS / The World Around Us (TWAU)</option>
+                    <option value="Sanskrit">Sanskrit</option>
+                    <option value="Science">Science</option>
+                    <option value="Social Science">Social Science</option>
+                    <option value="Art Education">Art Education</option>
+                    <option value="Physical & Health Education">Physical & Health Education (P&HE)</option>
+                    <option value="Work Education">Work Education (W.E.)</option>
+                    <option value="Library">Library</option>
+                    <option value="Music">Music</option>
+                    <option value="Computer / ICT">Computer / ICT</option>
+                  </select>
+                </div>
+
+                <div>
+                  <label className="text-xs font-bold text-slate-300 block mb-1">Target Class & Section *</label>
+                  <select
+                    value={subjClassName}
+                    onChange={e => setSubjClassName(e.target.value)}
+                    className="w-full px-3 py-2 text-xs bg-slate-950 border border-slate-800 rounded-xl text-white font-bold focus:outline-none focus:border-amber-500"
+                  >
+                    <option value="Class V-A">Class V-A</option>
+                    <option value="Class V">Class V (All Sections)</option>
+                    <option value="Class IV-A">Class IV-A</option>
+                    <option value="Class III-A">Class III-A</option>
+                    <option value="Class II-A">Class II-A</option>
+                    <option value="Class I-A">Class I-A</option>
+                    <option value="Class VI-A">Class VI-A</option>
+                    <option value="Class VII-A">Class VII-A</option>
+                    <option value="Class VIII-A">Class VIII-A</option>
+                    <option value="Class IX-A">Class IX-A</option>
+                    <option value="Class X-A">Class X-A</option>
+                    <option value="Class XI-A">Class XI-A</option>
+                    <option value="Class XII-A">Class XII-A</option>
+                    <option value="Primary Wing (I-V)">Primary Wing (Classes I–V)</option>
+                    <option value="Secondary Wing (VI-X)">Secondary Wing (Classes VI–X)</option>
+                  </select>
+                </div>
+              </div>
+
+              {/* Support Type & Status */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <label className="text-xs font-bold text-slate-300 block mb-1">Role & Support Nature *</label>
+                  <select
+                    value={subjSupportType}
+                    onChange={e => setSubjSupportType(e.target.value as SubjectSupportType)}
+                    className="w-full px-3 py-2 text-xs bg-slate-950 border border-slate-800 rounded-xl text-white font-bold focus:outline-none focus:border-amber-500"
+                  >
+                    <option value="Primary Teacher / In-Charge">Primary Teacher / In-Charge</option>
+                    <option value="Academic Support / Co-Teaching">Academic Support / Co-Teaching</option>
+                    <option value="Remedial In-Charge">Remedial In-Charge</option>
+                    <option value="Special Assignment">Special Assignment</option>
+                  </select>
+                </div>
+
+                <div>
+                  <label className="text-xs font-bold text-slate-300 block mb-1">Status *</label>
+                  <select
+                    value={subjStatus}
+                    onChange={e => setSubjStatus(e.target.value as 'Active' | 'Ended')}
+                    className="w-full px-3 py-2 text-xs bg-slate-950 border border-slate-800 rounded-xl text-white font-bold focus:outline-none focus:border-amber-500"
+                  >
+                    <option value="Active">Active</option>
+                    <option value="Ended">Ended / Relieved</option>
+                  </select>
+                </div>
+              </div>
+
+              {/* Assignment Type: Whole Session vs Specific Period */}
+              <div>
+                <label className="text-xs font-bold text-slate-300 block mb-1">Assignment Duration *</label>
+                <div className="grid grid-cols-2 gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setSubjAssignmentType('Whole Session')}
+                    className={`py-2 rounded-xl text-xs font-bold transition-all border cursor-pointer ${
+                      subjAssignmentType === 'Whole Session'
+                        ? 'bg-amber-600/30 border-amber-500 text-amber-300'
+                        : 'bg-slate-950 border-slate-800 text-slate-400 hover:text-white'
+                    }`}
+                  >
+                    Whole Academic Session
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setSubjAssignmentType('Specific Period')}
+                    className={`py-2 rounded-xl text-xs font-bold transition-all border cursor-pointer ${
+                      subjAssignmentType === 'Specific Period'
+                        ? 'bg-amber-600/30 border-amber-500 text-amber-300'
+                        : 'bg-slate-950 border-slate-800 text-slate-400 hover:text-white'
+                    }`}
+                  >
+                    Specific Date Range / Period
+                  </button>
+                </div>
+              </div>
+
+              {/* Date pickers if Specific Period */}
+              {subjAssignmentType === 'Specific Period' && (
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 p-3 bg-slate-950 rounded-xl border border-slate-800">
+                  <div>
+                    <label className="text-[11px] font-bold text-slate-400 block mb-1">From Date</label>
+                    <input
+                      type="date"
+                      value={subjFromDate}
+                      onChange={e => setSubjFromDate(e.target.value)}
+                      className="w-full px-3 py-1.5 text-xs bg-slate-900 border border-slate-800 rounded-lg text-white font-mono"
+                    />
+                  </div>
+                  <div>
+                    <label className="text-[11px] font-bold text-slate-400 block mb-1">To Date</label>
+                    <input
+                      type="date"
+                      value={subjToDate}
+                      onChange={e => setSubjToDate(e.target.value)}
+                      className="w-full px-3 py-1.5 text-xs bg-slate-900 border border-slate-800 rounded-lg text-white font-mono"
+                    />
+                  </div>
+                </div>
+              )}
+
+              {/* Role Note & Quick Preset Directives */}
+              <div className="space-y-1.5">
+                <label className="text-xs font-bold text-slate-300 block">
+                  Role Note / Principal Order Reference
+                </label>
+                <textarea
+                  rows={2}
+                  value={subjRoleNote}
+                  onChange={e => setSubjRoleNote(e.target.value)}
+                  placeholder="e.g. Odia in-charge – no regular Odia teacher appointed this session..."
+                  className="w-full px-3 py-2 text-xs bg-slate-950 border border-slate-800 rounded-xl text-white focus:outline-none focus:border-amber-500 resize-none"
+                />
+                
+                {/* Quick Presets */}
+                <div className="flex items-center gap-1.5 flex-wrap pt-0.5">
+                  <span className="text-[10px] text-slate-500">Quick Presets:</span>
+                  <button
+                    type="button"
+                    onClick={() => setSubjRoleNote('Odia in-charge – no regular Odia teacher appointed this session')}
+                    className="px-2 py-0.5 rounded bg-slate-800 hover:bg-slate-700 text-slate-300 text-[10px] cursor-pointer"
+                  >
+                    Odia In-Charge (No Regular Teacher)
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setSubjRoleNote('Class V Math academic support as per New Academic Plan 12-08-2026')}
+                    className="px-2 py-0.5 rounded bg-slate-800 hover:bg-slate-700 text-slate-300 text-[10px] cursor-pointer"
+                  >
+                    Class V Math Academic Plan Support
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setSubjRoleNote('Remedial & Scholastic Improvement In-Charge')}
+                    className="px-2 py-0.5 rounded bg-slate-800 hover:bg-slate-700 text-slate-300 text-[10px] cursor-pointer"
+                  >
+                    Remedial & Scholastic Support
+                  </button>
+                </div>
+              </div>
+
+              {/* Modal Footer */}
+              <div className="flex items-center justify-end gap-3 pt-3 border-t border-slate-800">
+                <button
+                  type="button"
+                  onClick={() => setIsSubjectModalOpen(false)}
+                  className="px-4 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 font-bold text-xs cursor-pointer"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  className="px-5 py-2 rounded-xl bg-amber-600 hover:bg-amber-500 text-white font-bold text-xs cursor-pointer shadow-lg shadow-amber-600/30 flex items-center gap-1.5"
+                >
+                  <Check className="w-4 h-4" />
+                  <span>Final Save</span>
                 </button>
               </div>
             </form>

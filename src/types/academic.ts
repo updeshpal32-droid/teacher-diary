@@ -2309,6 +2309,32 @@ export interface CampusDutyAssignment {
   notes?: string;
 }
 
+export type SubjectSupportType =
+  | 'Primary Teacher / In-Charge'
+  | 'Academic Support / Co-Teaching'
+  | 'Remedial In-Charge'
+  | 'Special Assignment';
+
+export interface SubjectResponsibilityAssignment {
+  id: string; // e.g. "sra-1724500000"
+  employeeCode: string;
+  teacherName: string;
+  designation?: string;
+  subjectName: string; // e.g. "Odia", "Mathematics", "English", "Hindi", "TWAU", "Science", etc.
+  className: string; // e.g. "Class V-A", "V-A", "Class V", etc.
+  section?: string;
+  supportType: SubjectSupportType;
+  assignmentType: 'Whole Session' | 'Specific Period';
+  fromDate?: string; // YYYY-MM-DD
+  toDate?: string; // YYYY-MM-DD
+  roleNote?: string; // e.g. "Odia in-charge – no regular Odia teacher", "Class V Math support as per Academic Plan 12-08-2026"
+  status: 'Active' | 'Ended';
+  assignedBy: string;
+  assignedAt: string;
+  periodsAffected?: number[];
+  updatedAt?: string;
+}
+
 
 
 

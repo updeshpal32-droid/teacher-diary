@@ -37,7 +37,8 @@ import {
   saveSubjectResponsibilities,
   THEME_CALENDAR_2026_27,
   THEME_FOR_THE_YEAR,
-  getUserAccounts
+  getUserAccounts,
+  getCurrentUser
 } from '../lib/storage';
 import { detectPortfolioSuggestions } from '../lib/suggestionEngine';
 import {
@@ -230,10 +231,35 @@ export const PortfolioRoleManager: React.FC<PortfolioRoleManagerProps> = ({
     );
   }, [staffList, memberSearchQuery]);
 
+  const [activeUser, setActiveUser] = useState<UserAccount | null>(currentUser || null);
+
   const showNotification = (text: string, type: 'success' | 'error' = 'success') => {
     setMsg({ text, type });
     setTimeout(() => setMsg(null), 3500);
   };
+
+  useEffect(() => {
+    if (currentUser) {
+      setActiveUser(currentUser);
+    } else {
+      getCurrentUser().then(u => {
+        if (u) setActiveUser(u);
+      });
+    }
+
+    const handleAuthUpdated = () => {
+      getCurrentUser().then(u => {
+        if (u) setActiveUser(u);
+      });
+    };
+
+    window.addEventListener('kvs-auth-changed', handleAuthUpdated);
+    window.addEventListener('kvs-user-updated', handleAuthUpdated);
+    return () => {
+      window.removeEventListener('kvs-auth-changed', handleAuthUpdated);
+      window.removeEventListener('kvs-user-updated', handleAuthUpdated);
+    };
+  }, [currentUser]);
 
   useEffect(() => {
     loadAllData();
@@ -1189,15 +1215,38 @@ export const PortfolioRoleManager: React.FC<PortfolioRoleManagerProps> = ({
   }, [selectedCalendarMonth, selectedCalendarCategory, searchQuery]);
 
   const isPrincipalOrAdmin = useMemo(() => {
-    if (!currentUser) return false;
-    if (currentUser.role === 'admin') return true;
-    if (currentUser.activePersona === 'admin') return true;
-    const des = (currentUser.designation || '').toLowerCase();
-    const name = (currentUser.name || '').toLowerCase();
-    if (des.includes('principal') || des.includes('vice-principal') || des.includes('headmaster') || des.includes('headmistress')) return true;
+    const user = activeUser || currentUser;
+    if (!user) return false;
+
+    // 1. Explicit admin/principal role or active admin persona
+    if (user.role === 'admin' || (user.role as any) === 'principal') return true;
+    if (user.activePersona === 'admin' || (user.activePersona as any) === 'principal') return true;
+
+    // 2. Principal / Vice-Principal / Headmaster designation
+    const des = (user.designation || '').toLowerCase();
+    if (
+      des.includes('principal') ||
+      des.includes('vice-principal') ||
+      des.includes('headmaster') ||
+      des.includes('headmistress')
+    ) return true;
+
+    // 3. Employee Code matches Principal's code (62034)
+    const code = String(user.employeeCode || '').trim().toLowerCase();
+    if (code === '62034' || code === 'cs.62034') return true;
+
+    // 4. Name matches Principal
+    const name = (user.name || '').toLowerCase();
     if (name.includes('hemananda barik') || name.includes('principal')) return true;
+
     return false;
-  }, [currentUser]);
+  }, [activeUser, currentUser]);
+
+  useEffect(() => {
+    if (activeTab === 'subject_responsibilities') {
+      console.log('[PortfolioRoleManager] Current User:', activeUser || currentUser, 'isPrincipalOrAdmin:', isPrincipalOrAdmin);
+    }
+  }, [activeTab, activeUser, currentUser, isPrincipalOrAdmin]);
 
   const filteredSubjectResponsibilities = useMemo(() => {
     return subjectResponsibilities.filter(s => {

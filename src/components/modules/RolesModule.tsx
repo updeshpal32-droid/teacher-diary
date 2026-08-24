@@ -75,7 +75,7 @@ export const RolesModule: React.FC<RolesModuleProps> = ({
         )}
       </div>
 
-      {activeTab === 'committees' && <PortfolioRoleManager devMode={devMode} />}
+      {activeTab === 'committees' && <PortfolioRoleManager devMode={devMode} currentUser={currentUser} />}
       {activeTab === 'my_roles' && <MyPortfoliosView devMode={devMode} currentUser={currentUser} />}
       {activeTab === 'subject_meetings' && <SubjectCommitteeManager devMode={devMode} />}
     </div>

@@ -24,7 +24,8 @@ import {
   DEFAULT_PROXY_DUTIES,
   DEFAULT_LEAVE_SETTINGS,
   getCurrentUser,
-  getUserAccounts
+  getUserAccounts,
+  getMergedStaffList
 } from '../lib/storage';
 import {
   resolveTeacherAttendance,
@@ -223,9 +224,8 @@ export const TeacherAttendanceManager: React.FC<TeacherAttendanceManagerProps> =
   const loadInitialData = async () => {
     try {
       setLoading(true);
-      const [storedStaff, userAccounts, storedAttendance, storedLeaves, storedOD, storedTimetable, storedProxy, storedSettings] = await Promise.all([
-        db.get<StaffDetailRecord[]>('setup:staff_details'),
-        getUserAccounts(),
+      const [mergedStaff, storedAttendance, storedLeaves, storedOD, storedTimetable, storedProxy, storedSettings] = await Promise.all([
+        getMergedStaffList(),
         db.get<TeacherAttendanceRecord[]>('setup:teacher_attendance'),
         db.get<LeaveApplication[]>('setup:leave_applications'),
         db.get<OnDutyRecord[]>('setup:on_duty_records'),
@@ -234,72 +234,8 @@ export const TeacherAttendanceManager: React.FC<TeacherAttendanceManagerProps> =
         db.get<LeaveSettingsConfig>('setup:leave_settings')
       ]);
 
-      const staffMap = new Map<string, StaffDetailRecord>();
-
-      // 1. Seed with DEFAULT_STAFF_DETAILS (keyed by normalized teacher name)
-      DEFAULT_STAFF_DETAILS.forEach(s => {
-        const key = normalizeFacultyKey(s.name);
-        if (key) staffMap.set(key, s);
-      });
-
-      // 2. Merge storedStaff from IndexedDB (preserve custom edits)
-      if (storedStaff && storedStaff.length > 0) {
-        storedStaff.forEach(s => {
-          const key = normalizeFacultyKey(s.name);
-          if (key) {
-            const existing = staffMap.get(key) || s;
-            staffMap.set(key, { ...existing, ...s });
-          }
-        });
-      }
-
-      // 3. Merge user accounts (to ensure official login employee codes and emails match)
-      if (userAccounts && userAccounts.length > 0) {
-        userAccounts.forEach(u => {
-          const key = normalizeFacultyKey(u.name);
-          if (key) {
-            const existing = staffMap.get(key);
-            if (existing) {
-              staffMap.set(key, {
-                ...existing,
-                employeeCode: u.employeeCode || existing.employeeCode,
-                designation: existing.designation || u.designation || 'Teacher',
-                email: existing.email || u.email
-              });
-            } else {
-              staffMap.set(key, {
-                id: `stf-${u.employeeCode || u.id}`,
-                serialNo: staffMap.size + 1,
-                name: u.name,
-                employeeCode: u.employeeCode || u.id,
-                designation: u.designation || 'Teacher',
-                employmentType: 'Regular',
-                socialCategory: 'GEN',
-                dob: '01/01/1990',
-                joiningDateKVSWithDesignation: '01/04/2020',
-                joiningDatePresentKVWithDesignation: '01/04/2020',
-                bankAccountNo: '',
-                ifscCode: '',
-                bankName: '',
-                highestAcademicAndProfessionalQual: 'Post Graduate / B.Ed.',
-                permanentPostalAddress: 'KV Campus',
-                email: u.email || '',
-                phoneCalls: u.phone || '',
-                phoneWhatsapp: u.phone || '',
-                aadharNo: '',
-                pranOrPanNo: '',
-                isMinority: 'No',
-                seniorityNumber: 'KVS-FAC-00',
-                approvalStatus: 'Verified & Approved'
-              });
-            }
-          }
-        });
-      }
-
-      const mergedStaff = Array.from(staffMap.values()).map((s, idx) => ({ ...s, serialNo: idx + 1 }));
-
-      setStaffList(mergedStaff);
+      const effectiveStaff = (mergedStaff && mergedStaff.length > 0) ? mergedStaff : DEFAULT_STAFF_DETAILS;
+      setStaffList(effectiveStaff);
       setAttendanceRecords(storedAttendance && storedAttendance.length > 0 ? storedAttendance : DEFAULT_TEACHER_ATTENDANCE);
       setLeaveApplications(storedLeaves && storedLeaves.length > 0 ? storedLeaves : DEFAULT_LEAVE_APPLICATIONS);
       setOnDutyRecords(storedOD && storedOD.length > 0 ? storedOD : DEFAULT_ON_DUTY_RECORDS);

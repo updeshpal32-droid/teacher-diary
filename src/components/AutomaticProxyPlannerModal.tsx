@@ -19,7 +19,8 @@ import {
   DEFAULT_LEAVE_APPLICATIONS,
   DEFAULT_ON_DUTY_RECORDS,
   getCurrentUser,
-  getUserAccounts
+  getUserAccounts,
+  getMergedStaffList
 } from '../lib/storage';
 import { getTeacherScopedStorageKey } from '../lib/teacherContext';
 import { checkTeacherAbsenceOnDate, normalizeFacultyKey } from '../lib/attendanceAbsenceEngine';
@@ -131,9 +132,8 @@ export const AutomaticProxyPlannerModal: React.FC<AutomaticProxyPlannerModalProp
 
   const loadData = async () => {
     try {
-      const [storedStaff, userAccounts, storedTimetable, storedProxy, storedAtt, storedLeaves, storedOD] = await Promise.all([
-        db.get<StaffDetailRecord[]>('setup:staff_details'),
-        getUserAccounts(),
+      const [mergedStaff, storedTimetable, storedProxy, storedAtt, storedLeaves, storedOD] = await Promise.all([
+        getMergedStaffList(),
         db.get<TimetableSlot[]>('setup:timetable'),
         db.get<ProxyDutyAssignment[]>('setup:proxy_duty_assignments'),
         db.get<TeacherAttendanceRecord[]>('setup:teacher_attendance'),
@@ -141,68 +141,8 @@ export const AutomaticProxyPlannerModal: React.FC<AutomaticProxyPlannerModalProp
         db.get<OnDutyRecord[]>('setup:on_duty_records')
       ]);
 
-      const staffMap = new Map<string, StaffDetailRecord>();
-
-      DEFAULT_STAFF_DETAILS.forEach(s => {
-        const key = normalizeFacultyKey(s.name);
-        if (key) staffMap.set(key, s);
-      });
-
-      if (storedStaff && storedStaff.length > 0) {
-        storedStaff.forEach(s => {
-          const key = normalizeFacultyKey(s.name);
-          if (key) {
-            const existing = staffMap.get(key) || s;
-            staffMap.set(key, { ...existing, ...s });
-          }
-        });
-      }
-
-      if (userAccounts && userAccounts.length > 0) {
-        userAccounts.forEach(u => {
-          const key = normalizeFacultyKey(u.name);
-          if (key) {
-            const existing = staffMap.get(key);
-            if (existing) {
-              staffMap.set(key, {
-                ...existing,
-                employeeCode: u.employeeCode || existing.employeeCode,
-                designation: existing.designation || u.designation || 'Teacher',
-                email: existing.email || u.email
-              });
-            } else {
-              staffMap.set(key, {
-                id: `stf-${u.employeeCode || u.id}`,
-                serialNo: staffMap.size + 1,
-                name: u.name,
-                employeeCode: u.employeeCode || u.id,
-                designation: u.designation || 'Teacher',
-                employmentType: 'Regular',
-                socialCategory: 'GEN',
-                dob: '01/01/1990',
-                joiningDateKVSWithDesignation: '01/04/2020',
-                joiningDatePresentKVWithDesignation: '01/04/2020',
-                bankAccountNo: '',
-                ifscCode: '',
-                bankName: '',
-                highestAcademicAndProfessionalQual: 'Post Graduate / B.Ed.',
-                permanentPostalAddress: 'KV Campus',
-                email: u.email || '',
-                phoneCalls: u.phone || '',
-                phoneWhatsapp: u.phone || '',
-                aadharNo: '',
-                pranOrPanNo: '',
-                isMinority: 'No',
-                seniorityNumber: 'KVS-FAC-00',
-                approvalStatus: 'Verified & Approved'
-              });
-            }
-          }
-        });
-      }
-
-      const mergedStaff = Array.from(staffMap.values()).map((s, idx) => ({ ...s, serialNo: idx + 1 }));
-      setStaffList(mergedStaff);
+      const effectiveStaff = (mergedStaff && mergedStaff.length > 0) ? mergedStaff : DEFAULT_STAFF_DETAILS;
+      setStaffList(effectiveStaff);
 
       const effectiveTimetable = (storedTimetable && storedTimetable.length >= 200)
         ? storedTimetable
@@ -216,8 +156,8 @@ export const AutomaticProxyPlannerModal: React.FC<AutomaticProxyPlannerModalProp
       setLeaveApplications(storedLeaves && storedLeaves.length > 0 ? storedLeaves : DEFAULT_LEAVE_APPLICATIONS);
       setOnDutyRecords(storedOD && storedOD.length > 0 ? storedOD : DEFAULT_ON_DUTY_RECORDS);
 
-      if (!activeStaffForProxy && mergedStaff.length > 0) {
-        const absentOne = mergedStaff.find(s => {
+      if (!activeStaffForProxy && effectiveStaff.length > 0) {
+        const absentOne = effectiveStaff.find(s => {
           const res = checkTeacherAbsenceOnDate(
             s.employeeCode,
             selectedDate,
@@ -228,7 +168,7 @@ export const AutomaticProxyPlannerModal: React.FC<AutomaticProxyPlannerModalProp
           );
           return res.isAbsent;
         });
-        setActiveStaffForProxy(absentOne || mergedStaff[0]);
+        setActiveStaffForProxy(absentOne || effectiveStaff[0]);
       }
     } catch (err) {
       console.error('Error loading proxy planner data:', err);

@@ -11,7 +11,7 @@ import {
   DayOfWeek
 } from '../types/academic';
 import { UserAccount } from '../types/auth';
-import { db, DEFAULT_STAFF_DETAILS, getUserAccounts } from '../lib/storage';
+import { db, DEFAULT_STAFF_DETAILS, getUserAccounts, getMergedStaffList } from '../lib/storage';
 import { resolveTeacherAttendance, checkTeacherAbsenceOnDate, normalizeFacultyKey } from '../lib/attendanceAbsenceEngine';
 import { useActiveWorkingDate } from '../lib/activeDateContext';
 import { getTeacherScopedStorageKey } from '../lib/teacherContext';
@@ -174,10 +174,9 @@ export const DutyAndProxyManager: React.FC<DutyAndProxyManagerProps> = ({
   const loadAllData = async () => {
     try {
       setLoading(true);
-      const [savedStaff, userAccounts, savedTT, savedProxies, savedDuties, savedAtt, savedLeaves, savedTimings] =
+      const [allStaff, savedTT, savedProxies, savedDuties, savedAtt, savedLeaves, savedTimings] =
         await Promise.all([
-          db.get<StaffDetailRecord[]>('setup:staff_details'),
-          getUserAccounts(),
+          getMergedStaffList(),
           db.get<TimetableSlot[]>('setup:timetable'),
           db.get<ProxyDutyAssignment[]>('setup:proxy_duty_assignments'),
           db.get<CampusDutyAssignment[]>('setup:campus_duty_assignments'),
@@ -186,67 +185,8 @@ export const DutyAndProxyManager: React.FC<DutyAndProxyManagerProps> = ({
           db.get<Record<number, { time: string; label: string }>>('setup:period_timings')
         ]);
 
-      // Merge Staff by normalized name key
-      const staffMap = new Map<string, StaffDetailRecord>();
-      DEFAULT_STAFF_DETAILS.forEach(s => {
-        const key = normalizeFacultyKey(s.name);
-        if (key) staffMap.set(key, s);
-      });
-      if (savedStaff && savedStaff.length > 0) {
-        savedStaff.forEach(s => {
-          const key = normalizeFacultyKey(s.name);
-          if (key) {
-            const existing = staffMap.get(key) || s;
-            staffMap.set(key, { ...existing, ...s });
-          }
-        });
-      }
-      if (userAccounts && userAccounts.length > 0) {
-        userAccounts.forEach(u => {
-          const key = normalizeFacultyKey(u.name);
-          if (key) {
-            const existing = staffMap.get(key);
-            if (existing) {
-              staffMap.set(key, {
-                ...existing,
-                employeeCode: u.employeeCode || existing.employeeCode,
-                name: u.name || existing.name,
-                designation: u.designation || existing.designation,
-                email: existing.email || u.email
-              });
-            } else {
-              staffMap.set(key, {
-                id: u.id,
-                serialNo: staffMap.size + 1,
-                name: u.name,
-                employeeCode: u.employeeCode || u.id,
-                designation: u.designation || 'Teacher',
-                employmentType: 'Regular',
-                socialCategory: 'GENERAL',
-                dob: '',
-                joiningDateKVSWithDesignation: '',
-                joiningDatePresentKVWithDesignation: '',
-                bankAccountNo: '',
-                ifscCode: '',
-                bankName: '',
-                highestAcademicAndProfessionalQual: '',
-                permanentPostalAddress: '',
-                email: u.email,
-                phoneCalls: '',
-                phoneWhatsapp: '',
-                aadharNo: '',
-                pranOrPanNo: '',
-                isMinority: 'No',
-                seniorityNumber: '',
-                approvalStatus: 'Verified & Approved'
-              });
-            }
-          }
-        });
-      }
-
-      const allStaff = Array.from(staffMap.values()).map((s, idx) => ({ ...s, serialNo: idx + 1 }));
-      setStaffList(allStaff);
+      const effectiveStaff = (allStaff && allStaff.length > 0) ? allStaff : DEFAULT_STAFF_DETAILS;
+      setStaffList(effectiveStaff);
       if (savedTT && savedTT.length > 0) setTimetable(savedTT);
       if (savedProxies && savedProxies.length > 0) setProxyAssignments(savedProxies);
       if (savedDuties && savedDuties.length > 0) {
@@ -391,20 +331,41 @@ export const DutyAndProxyManager: React.FC<DutyAndProxyManagerProps> = ({
   // Find free teachers for a given period number and day
   const getFreeTeachersForPeriod = (periodNum: number, day: DayOfWeek): StaffDetailRecord[] => {
     return staffList.filter(s => {
-      const isAbsent = absentTeachersToday.some(a => a.employeeCode === s.employeeCode);
+      const isAbsent = absentTeachersToday.some(a =>
+        (a.employeeCode && s.employeeCode && String(a.employeeCode).trim().toLowerCase() === String(s.employeeCode).trim().toLowerCase()) ||
+        (a.name && s.name && normalizeFacultyKey(a.name) === normalizeFacultyKey(s.name))
+      );
       if (isAbsent) return false;
 
-      const hasRegularClass = timetable.some(
-        t =>
-          (t.day === day || t.dayOfWeek === day) &&
-          (t.period === periodNum || t.periodNumber === periodNum) &&
-          (t.teacherId === s.employeeCode ||
-            (s.name && t.teacherName && t.teacherName.toLowerCase() === s.name.toLowerCase()))
-      );
+      const hasRegularClass = timetable.some(t => {
+        const tDay = (t.day || t.dayOfWeek || '').trim().toLowerCase();
+        const targetDay = day.toLowerCase();
+        const pNum = Number(t.period || t.periodNumber || 1);
+        if (tDay !== targetDay || pNum !== periodNum) return false;
+        if (t.isBreak) return false;
+        const subj = (t.subjectName || '').toLowerCase();
+        if (subj.includes('break') || subj.includes('recess') || subj.includes('free') || subj.includes('planning')) return false;
+
+        if (t.teacherId && s.employeeCode && String(t.teacherId).trim().toLowerCase() === String(s.employeeCode).trim().toLowerCase()) {
+          return true;
+        }
+        const tKey = normalizeFacultyKey(t.teacherName);
+        const sKey = normalizeFacultyKey(s.name);
+        if (tKey && sKey && (tKey === sKey || (tKey.length >= 6 && sKey.length >= 6 && (tKey.includes(sKey) || sKey.includes(tKey))))) {
+          return true;
+        }
+        return false;
+      });
       if (hasRegularClass) return false;
 
       const alreadyProxy = proxyAssignments.some(
-        p => p.date === selectedDate && p.periodNumber === periodNum && p.substituteTeacherCode === s.employeeCode
+        p =>
+          p.date === selectedDate &&
+          Number(p.periodNumber) === periodNum &&
+          (
+            (p.substituteTeacherCode && s.employeeCode && String(p.substituteTeacherCode).trim().toLowerCase() === String(s.employeeCode).trim().toLowerCase()) ||
+            (p.substituteTeacherName && s.name && normalizeFacultyKey(p.substituteTeacherName) === normalizeFacultyKey(s.name))
+          )
       );
       if (alreadyProxy) return false;
 

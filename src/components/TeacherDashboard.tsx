@@ -40,7 +40,8 @@ import {
   DEFAULT_PROXY_DUTIES,
   DEFAULT_PORTFOLIO_TEMPLATES,
   DEFAULT_PORTFOLIO_ASSIGNMENTS,
-  getCurrentUser
+  getCurrentUser,
+  getMergedStaffList
 } from '../lib/storage';
 import { useActiveWorkingDate } from '../lib/activeDateContext';
 import { compareClassGrades } from '../utils/csvParser';
@@ -662,7 +663,7 @@ export const TeacherDashboard: React.FC<TeacherDashboardProps> = ({
         db.get<Record<number, { time: string; label: string }>>('setup:period_timings'),
         db.get<TeacherTask[]>(scopedTaskKey),
         db.get<TeacherTask[]>('setup:tasks'),
-        db.get<StaffDetailRecord[]>('setup:staff_details'),
+        getMergedStaffList(),
         db.get<ProfileChangeRequest[]>('profile:change_requests'),
         db.get<TeacherAttendanceRecord[]>('setup:teacher_attendance'),
         db.get<LeaveApplication[]>('setup:leave_applications'),
@@ -672,6 +673,7 @@ export const TeacherDashboard: React.FC<TeacherDashboardProps> = ({
       ]);
       setProfileRequests(savedProfileReqs || []);
       if (savedStaff && savedStaff.length > 0) setStaffList(savedStaff);
+      else setStaffList(DEFAULT_STAFF_DETAILS);
       if (savedAtt && savedAtt.length > 0) setAttendanceRecords(savedAtt);
       if (savedLeaves && savedLeaves.length > 0) setLeaveApplications(savedLeaves);
       if (savedProxies && savedProxies.length > 0) setProxyAssignments(savedProxies);

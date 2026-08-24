@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { StaffDetailRecord, SchoolDetails, TeacherProfile } from '../types/academic';
-import { db, DEFAULT_STAFF_DETAILS, DEFAULT_SCHOOL, DEFAULT_TEACHER, getCurrentUser } from '../lib/storage';
+import { db, DEFAULT_STAFF_DETAILS, DEFAULT_SCHOOL, DEFAULT_TEACHER, getCurrentUser, getMergedStaffList } from '../lib/storage';
 import { UserAccount } from '../types/auth';
 import { setActiveInspectedTeacher } from '../lib/teacherContext';
 import { isAdminOrDataManager } from '../lib/permissions';
@@ -127,8 +127,8 @@ export const StaffDetailsManager: React.FC<StaffDetailsManagerProps> = ({
   const loadStaffData = async () => {
     try {
       setLoading(true);
-      const [saved, savedSchool, user] = await Promise.all([
-        db.get<StaffDetailRecord[]>('setup:staff_details'),
+      const [mergedStaff, savedSchool, user] = await Promise.all([
+        getMergedStaffList(),
         db.get<SchoolDetails>('setup:school'),
         propUser ? Promise.resolve(propUser) : getCurrentUser()
       ]);
@@ -136,17 +136,12 @@ export const StaffDetailsManager: React.FC<StaffDetailsManagerProps> = ({
 
       if (savedSchool) setSchool(savedSchool);
 
-      if (saved && saved.length > 0) {
-        // Ensure all records have an employmentType
-        const normalized = saved.map(s => ({
-          ...s,
-          employmentType: s.employmentType || detectEmploymentType(s.designation)
-        }));
-        setStaffList(normalized);
-      } else {
-        setStaffList(DEFAULT_STAFF_DETAILS);
-        await db.set('setup:staff_details', DEFAULT_STAFF_DETAILS);
-      }
+      const effectiveStaff = (mergedStaff && mergedStaff.length > 0) ? mergedStaff : DEFAULT_STAFF_DETAILS;
+      const normalized = effectiveStaff.map(s => ({
+        ...s,
+        employmentType: s.employmentType || detectEmploymentType(s.designation)
+      }));
+      setStaffList(normalized);
     } catch (err) {
       console.error('Error loading staff details:', err);
     } finally {

@@ -254,6 +254,74 @@ export const AutomaticProxyPlannerModal: React.FC<AutomaticProxyPlannerModalProp
     return hasSubjectResp;
   };
 
+  const LANGUAGE_KEYWORDS = ['hindi', 'english', 'sanskrit', 'odia', 'language'];
+
+  const isLanguageTeacher = (
+    staff?: StaffDetailRecord | null,
+    className?: string,
+    subjectName?: string
+  ): boolean => {
+    if (!staff) return false;
+
+    // 1. Designation match (e.g. TGT Hindi, TGT English, TGT Sanskrit, TGT Odia)
+    const des = (staff.designation || '').toLowerCase();
+    if (LANGUAGE_KEYWORDS.some(lang => des.includes(lang))) {
+      return true;
+    }
+
+    // 2. Primary subject / taught subjects match
+    const subjectsTaught = ((staff as any).classesAndSubjectsTaught || (staff as any).primarySubject || '').toLowerCase();
+    if (LANGUAGE_KEYWORDS.some(lang => subjectsTaught.includes(lang))) {
+      return true;
+    }
+
+    // 3. Specific slot subject match
+    if (subjectName) {
+      const sName = subjectName.toLowerCase();
+      if (LANGUAGE_KEYWORDS.some(lang => sName.includes(lang))) {
+        return true;
+      }
+    }
+
+    // 4. By Active Subject & Academic Responsibility (e.g. Sipika Patel -> Odia in Class V-A / School Wide)
+    if (subjectResponsibilities && subjectResponsibilities.length > 0) {
+      const staffKey = normalizeFacultyKey(staff.name);
+      const hasLangResp = subjectResponsibilities.some(sra => {
+        if (sra.status !== 'Active') return false;
+        const empMatch = sra.employeeCode && staff.employeeCode && sra.employeeCode.toLowerCase() === staff.employeeCode.toLowerCase();
+        const nameMatch = sra.teacherName && normalizeFacultyKey(sra.teacherName) === staffKey;
+        if (!empMatch && !nameMatch) return false;
+
+        // Subject must be a language subject
+        const respSubj = (sra.subjectName || '').toLowerCase();
+        const isLang = LANGUAGE_KEYWORDS.some(lang => respSubj.includes(lang));
+        if (!isLang) return false;
+
+        // If a specific class is requested, check match
+        if (className) {
+          const cleanTargetClass = className.toLowerCase().replace('class ', '').trim();
+          const cleanRespClass = (sra.className || '').toLowerCase().replace('class ', '').trim();
+          if (cleanRespClass && cleanRespClass !== 'all' && cleanRespClass !== 'school wide') {
+            return cleanTargetClass.includes(cleanRespClass) || cleanRespClass.includes(cleanTargetClass);
+          }
+        }
+
+        return true;
+      });
+
+      if (hasLangResp) return true;
+    }
+
+    return false;
+  };
+
+  const normalizeClassSectionKey = (className?: string, section?: string): string => {
+    const c = (className || '').toLowerCase().replace(/^(class|grade)\s*/i, '').trim();
+    const s = (section || '').toLowerCase().trim();
+    if (c.includes('-')) return c;
+    return s ? `${c}-${s}` : c;
+  };
+
   const currentDayOfWeek = useMemo((): DayOfWeek | 'Sunday' => {
     return (getDayOfWeekFromDate(selectedDate) || 'Monday') as (DayOfWeek | 'Sunday');
   }, [selectedDate]);
@@ -316,9 +384,14 @@ export const AutomaticProxyPlannerModal: React.FC<AutomaticProxyPlannerModalProp
         return isSlotAssignedToStaff(slot, activeStaffForProxy);
       })
       .sort((a, b) => Number(a.period || a.periodNumber || 1) - Number(b.period || b.periodNumber || 1));
-  }, [activeStaffForProxy, timetable, currentDayOfWeek, selectedDate, attendanceRecords, leaveApplications, onDutyRecords]);
+  }, [activeStaffForProxy, timetable, currentDayOfWeek, selectedDate, attendanceRecords, leaveApplications, onDutyRecords, subjectResponsibilities]);
 
-  const getAvailableFreeTeachers = (periodNum: number, absentTeacherCode: string, currentSlotKey?: string): { staff: StaffDetailRecord; todayAssignedProxyCount: number }[] => {
+  const getAvailableFreeTeachers = (
+    periodNum: number,
+    absentTeacherCode: string,
+    currentSlotKey?: string,
+    targetSlot?: TimetableSlot | null
+  ): { staff: StaffDetailRecord; todayAssignedProxyCount: number; isCoLanguageTeacher?: boolean }[] => {
     const pTarget = Number(periodNum);
     const daySlots = timetable.filter(s => {
       const slotDay = (s.dayOfWeek || s.day || '').trim().toLowerCase();
@@ -327,14 +400,30 @@ export const AutomaticProxyPlannerModal: React.FC<AutomaticProxyPlannerModalProp
       return slotDay === targetDay && slotPeriod === pTarget;
     });
 
+    const absentStaff = staffList.find(s => 
+      (s.employeeCode && absentTeacherCode && String(s.employeeCode).trim().toLowerCase() === String(absentTeacherCode).trim().toLowerCase()) ||
+      (activeStaffForProxy && normalizeFacultyKey(s.name) === normalizeFacultyKey(activeStaffForProxy.name))
+    ) || activeStaffForProxy;
+
+    const isAbsentSlotLanguage = isLanguageTeacher(
+      absentStaff,
+      targetSlot?.className,
+      targetSlot?.subjectName
+    );
+
+    const targetClassKey = targetSlot ? normalizeClassSectionKey(targetSlot.className, targetSlot.section) : '';
+
     const freeList = staffList
       .filter(staff => {
+        // 1. Exclude the absent teacher themselves
         if (
           (staff.employeeCode && absentTeacherCode && String(staff.employeeCode).trim().toLowerCase() === String(absentTeacherCode).trim().toLowerCase()) ||
           (activeStaffForProxy && normalizeFacultyKey(staff.name) === normalizeFacultyKey(activeStaffForProxy.name))
         ) {
           return false;
         }
+
+        // 2. Strict Absence / Leave / OD check
         const absence = checkTeacherAbsenceOnDate(
           staff.employeeCode,
           selectedDate,
@@ -347,7 +436,9 @@ export const AutomaticProxyPlannerModal: React.FC<AutomaticProxyPlannerModalProp
         if (absence.isAbsent) {
           return false;
         }
-        const hasTeachingClass = daySlots.some(slot => {
+
+        // 3. Teaching Class check with Parallel Language Exception
+        const candidateTeachingSlots = daySlots.filter(slot => {
           if (slot.isBreak) return false;
           const subj = (slot.subjectName || '').toLowerCase();
           if (subj.includes('break') || subj.includes('recess') || subj.includes('free') || subj.includes('planning')) {
@@ -355,9 +446,29 @@ export const AutomaticProxyPlannerModal: React.FC<AutomaticProxyPlannerModalProp
           }
           return isSlotAssignedToStaff(slot, staff);
         });
-        if (hasTeachingClass) {
-          return false;
+
+        if (candidateTeachingSlots.length > 0) {
+          // Check if Parallel Language Exception applies:
+          // Condition 1: Both absent teacher/slot and candidate are Language teachers
+          // Condition 2: Period is the same (guaranteed by daySlots)
+          // Condition 3: Class & Section are the same (e.g. Class X-A)
+          const isCandidateLanguage = isLanguageTeacher(
+            staff,
+            candidateTeachingSlots[0]?.className || targetSlot?.className,
+            candidateTeachingSlots[0]?.subjectName
+          );
+
+          const qualifiesAsCoLanguageTeacher = isAbsentSlotLanguage && isCandidateLanguage && targetClassKey && candidateTeachingSlots.every(candSlot => {
+            const candClassKey = normalizeClassSectionKey(candSlot.className, candSlot.section);
+            return candClassKey === targetClassKey || candClassKey.includes(targetClassKey) || targetClassKey.includes(candClassKey);
+          });
+
+          if (!qualifiesAsCoLanguageTeacher) {
+            return false;
+          }
         }
+
+        // 4. Proxy check: Check if already assigned proxy in this period
         const alreadyProxy = proxyAssignments.some(
           p =>
             p.date === selectedDate &&
@@ -370,6 +481,8 @@ export const AutomaticProxyPlannerModal: React.FC<AutomaticProxyPlannerModalProp
         if (alreadyProxy) {
           return false;
         }
+
+        // 5. Staged proxies check
         for (const [key, staged] of stagedProxies.entries()) {
           if (currentSlotKey && key === currentSlotKey) continue;
           const stagedPNum = staged.slot.period || staged.slot.periodNumber || 1;
@@ -377,6 +490,7 @@ export const AutomaticProxyPlannerModal: React.FC<AutomaticProxyPlannerModalProp
             return false;
           }
         }
+
         return true;
       })
       .map(staff => {
@@ -389,19 +503,27 @@ export const AutomaticProxyPlannerModal: React.FC<AutomaticProxyPlannerModalProp
             stagedCount++;
           }
         }
+
+        const candidateTeachingSlots = daySlots.filter(slot => isSlotAssignedToStaff(slot, staff));
+        const isCandidateLanguage = isLanguageTeacher(
+          staff,
+          candidateTeachingSlots[0]?.className || targetSlot?.className,
+          candidateTeachingSlots[0]?.subjectName
+        );
+        const isCoLanguage = Boolean(isAbsentSlotLanguage && isCandidateLanguage && candidateTeachingSlots.length > 0);
+
         return {
           staff,
-          todayAssignedProxyCount: existingCount + stagedCount
+          todayAssignedProxyCount: existingCount + stagedCount,
+          isCoLanguageTeacher: isCoLanguage
         };
       })
-      .sort((a, b) => a.todayAssignedProxyCount - b.todayAssignedProxyCount);
-
-    if (pTarget === 2) {
-      const freeNames = freeList.map(f => f.staff.name);
-      const hasSamya = freeList.some(f => normalizeFacultyKey(f.staff.name) === 'samyaraha' || f.staff.employeeCode === '106020');
-      console.log(`[PERIOD 2 FREE TEACHERS] (${freeList.length} total):`, freeNames);
-      console.log(`[PERIOD 2 FREE TEACHERS] Is "SAMYA RAHA" in list? ->`, hasSamya ? '✅ YES' : '❌ NO');
-    }
+      .sort((a, b) => {
+        // Co-language teachers in the same room are prioritized!
+        if (a.isCoLanguageTeacher && !b.isCoLanguageTeacher) return -1;
+        if (!a.isCoLanguageTeacher && b.isCoLanguageTeacher) return 1;
+        return a.todayAssignedProxyCount - b.todayAssignedProxyCount;
+      });
 
     return freeList;
   };
@@ -952,7 +1074,7 @@ export const AutomaticProxyPlannerModal: React.FC<AutomaticProxyPlannerModalProp
               {(() => {
                 const pNum = selectedSlotForProxy.period || selectedSlotForProxy.periodNumber || 1;
                 const slotKey = getSlotKey(selectedSlotForProxy);
-                const freeStaffInfo = getAvailableFreeTeachers(pNum, activeStaffForProxy.employeeCode, slotKey);
+                const freeStaffInfo = getAvailableFreeTeachers(pNum, activeStaffForProxy.employeeCode, slotKey, selectedSlotForProxy);
 
                 if (freeStaffInfo.length === 0) {
                   return (
@@ -984,10 +1106,10 @@ export const AutomaticProxyPlannerModal: React.FC<AutomaticProxyPlannerModalProp
                     onChange={e => handleSelectSubstitute(e.target.value)}
                     className="w-full px-3.5 py-2 text-xs bg-slate-900 border border-slate-700 rounded-xl text-emerald-300 font-bold focus:outline-none focus:border-emerald-500 cursor-pointer shadow-inner"
                   >
-                    <option value="">-- Select From {freeStaffInfo.length} Free Teacher(s) --</option>
-                    {freeStaffInfo.map(({ staff, todayAssignedProxyCount }) => (
+                    <option value="">-- Select From {freeStaffInfo.length} Eligible Free Teacher(s) --</option>
+                    {freeStaffInfo.map(({ staff, todayAssignedProxyCount, isCoLanguageTeacher }) => (
                       <option key={staff.employeeCode} value={staff.employeeCode}>
-                        ✅ {staff.name} ({staff.designation || 'Teacher'}) &bull; Free in Period {pNum} &bull; {todayAssignedProxyCount === 0 ? '0 proxy assigned today' : `${todayAssignedProxyCount} proxy assigned today`}
+                        {isCoLanguageTeacher ? '🌟' : '✅'} {staff.name} ({staff.designation || 'Teacher'}) {isCoLanguageTeacher ? '• [Co-Language in Same Class]' : `• Free in Period ${pNum}`} • {todayAssignedProxyCount === 0 ? '0 proxies assigned today' : `${todayAssignedProxyCount} proxy assigned today`}
                       </option>
                     ))}
                   </select>

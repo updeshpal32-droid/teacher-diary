@@ -141,9 +141,8 @@ export const AutomaticProxyPlannerModal: React.FC<AutomaticProxyPlannerModalProp
         db.get<OnDutyRecord[]>('setup:on_duty_records')
       ]);
 
+      // 1. Force merged staff with hard guarantee of Samya Raha & Karishma Kerketta
       let effectiveStaff = (mergedStaff && mergedStaff.length > 0) ? [...mergedStaff] : [...DEFAULT_STAFF_DETAILS];
-
-      // Safety net: Guarantee all default staff (specifically Samya Raha & Karishma Kerketta) are present in effectiveStaff
       const existingKeys = new Set(effectiveStaff.map(s => normalizeFacultyKey(s.name)));
       DEFAULT_STAFF_DETAILS.forEach(defStaff => {
         const key = normalizeFacultyKey(defStaff.name);
@@ -154,28 +153,24 @@ export const AutomaticProxyPlannerModal: React.FC<AutomaticProxyPlannerModalProp
       });
       setStaffList(effectiveStaff);
 
-      const rawTimetable = (storedTimetable && storedTimetable.length >= 200)
-        ? storedTimetable
-        : DEFAULT_TIMETABLE;
-
-      // Aggressively sanitize EVERY slot in the master weekly timetable
-      const effectiveTimetable = rawTimetable.map(slot => {
-        const clean: any = { ...slot };
-        delete clean.isArrangement;
-        delete clean.arrangementTeacherName;
-        delete clean.arrangementTeacherId;
-        delete clean.arrangementReason;
-        delete clean.originalTeacherName;
-        delete clean.originalTeacherId;
-        delete clean.isProxy;
-        delete clean.substituteTeacherName;
-        delete clean.substituteTeacherCode;
+      // 2. HARD OVERRIDE: Completely ignore stored timetable mutations for master template
+      const cleanMasterTimetable = DEFAULT_TIMETABLE.map(slot => {
+        const clean = { ...slot };
+        delete (clean as any).isArrangement;
+        delete (clean as any).arrangementTeacherName;
+        delete (clean as any).arrangementTeacherId;
+        delete (clean as any).arrangementReason;
+        delete (clean as any).originalTeacherName;
+        delete (clean as any).originalTeacherId;
+        delete (clean as any).isProxy;
+        delete (clean as any).substituteTeacherName;
+        delete (clean as any).substituteTeacherCode;
         return clean as TimetableSlot;
       });
 
-      // Always persist the clean master timetable back to setup:timetable
-      await db.set('setup:timetable', effectiveTimetable);
-      setTimetable(effectiveTimetable);
+      await db.set('setup:timetable', cleanMasterTimetable);
+      setTimetable(cleanMasterTimetable);
+
       setProxyAssignments(storedProxy && storedProxy.length > 0 ? storedProxy : DEFAULT_PROXY_DUTIES);
       setAttendanceRecords(storedAtt && storedAtt.length > 0 ? storedAtt : DEFAULT_TEACHER_ATTENDANCE);
       setLeaveApplications(storedLeaves && storedLeaves.length > 0 ? storedLeaves : DEFAULT_LEAVE_APPLICATIONS);
@@ -273,7 +268,7 @@ export const AutomaticProxyPlannerModal: React.FC<AutomaticProxyPlannerModalProp
       return slotDay === targetDay && slotPeriod === pTarget;
     });
 
-    return staffList
+    const freeList = staffList
       .filter(staff => {
         if (
           (staff.employeeCode && absentTeacherCode && String(staff.employeeCode).trim().toLowerCase() === String(absentTeacherCode).trim().toLowerCase()) ||
@@ -340,6 +335,15 @@ export const AutomaticProxyPlannerModal: React.FC<AutomaticProxyPlannerModalProp
         };
       })
       .sort((a, b) => a.todayAssignedProxyCount - b.todayAssignedProxyCount);
+
+    if (pTarget === 2) {
+      const freeNames = freeList.map(f => f.staff.name);
+      const hasSamya = freeList.some(f => normalizeFacultyKey(f.staff.name) === 'samyaraha' || f.staff.employeeCode === '106020');
+      console.log(`[PERIOD 2 FREE TEACHERS] (${freeList.length} total):`, freeNames);
+      console.log(`[PERIOD 2 FREE TEACHERS] Is "SAMYA RAHA" in list? ->`, hasSamya ? '✅ YES' : '❌ NO');
+    }
+
+    return freeList;
   };
 
   const handleSelectSlot = (slot: TimetableSlot) => {

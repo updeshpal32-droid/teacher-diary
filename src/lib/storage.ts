@@ -1837,7 +1837,8 @@ export async function initializeDatabaseIfEmpty() {
 
   const existingActiveDate = await db.get<string>('setup:active_working_date');
   if (!existingActiveDate) {
-    await db.set('setup:active_working_date', '2026-08-18');
+    const today = new Date().toISOString().split('T')[0];
+    await db.set('setup:active_working_date', today);
   }
 
   const existingExams = await db.get<ExamSchedule[]>('setup:exams');

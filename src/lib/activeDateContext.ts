@@ -1,7 +1,18 @@
 import { useState, useEffect, useCallback, useMemo } from 'react';
 import { db } from './storage';
 
-export const DEFAULT_ACTIVE_WORKING_DATE = '2026-08-18';
+/**
+ * Returns today's date in local calendar time as YYYY-MM-DD (never UTC offset).
+ */
+export function getLocalTodayDateString(): string {
+  const dt = new Date();
+  const yyyy = dt.getFullYear();
+  const mm = String(dt.getMonth() + 1).padStart(2, '0');
+  const dd = String(dt.getDate()).padStart(2, '0');
+  return `${yyyy}-${mm}-${dd}`;
+}
+
+export const DEFAULT_ACTIVE_WORKING_DATE = getLocalTodayDateString();
 export const STORAGE_KEY_ACTIVE_DATE = 'setup:active_working_date';
 export const EVENT_ACTIVE_DATE_CHANGED = 'kvs-active-date-changed';
 
@@ -11,7 +22,7 @@ let cachedActiveDate: string = (() => {
     const fromStorage = localStorage.getItem(STORAGE_KEY_ACTIVE_DATE);
     if (fromStorage && fromStorage.includes('-')) return fromStorage;
   } catch (_) {}
-  return DEFAULT_ACTIVE_WORKING_DATE;
+  return getLocalTodayDateString();
 })();
 
 /**
@@ -153,16 +164,6 @@ export function addDaysToDate(dateStr: string, delta: number): string {
   return `${yyyy}-${mm}-${dd}`;
 }
 
-/**
- * Returns today's date in local calendar time as YYYY-MM-DD (never UTC).
- */
-export function getLocalTodayDateString(): string {
-  const dt = new Date();
-  const yyyy = dt.getFullYear();
-  const mm = String(dt.getMonth() + 1).padStart(2, '0');
-  const dd = String(dt.getDate()).padStart(2, '0');
-  return `${yyyy}-${mm}-${dd}`;
-}
 
 /**
  * Parses user typed date in various formats (DD/MM/YYYY, DD-MM-YYYY, YYYY-MM-DD) into YYYY-MM-DD.

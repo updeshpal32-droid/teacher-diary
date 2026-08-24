@@ -2182,14 +2182,13 @@ export const TeacherDashboard: React.FC<TeacherDashboardProps> = ({
                                     {slot.subjectName}
                                   </div>
 
-                                  {/* Assigned Teacher */}
-                                  <div className="text-[11px] text-slate-300 flex items-center gap-1.5">
-                                    <User className="w-3.5 h-3.5 text-indigo-400 shrink-0" />
-                                    {renderFacultyPill(slot.teacherName)}
-                                  </div>
-
-                                  {/* Proxy / Arrangement Banner */}
-                                  {isArrangement && (
+                                  {/* Assigned Teacher or Arrangement */}
+                                  {!isArrangement ? (
+                                    <div className="text-[11px] text-slate-300 flex items-center gap-1.5">
+                                      <User className="w-3.5 h-3.5 text-indigo-400 shrink-0" />
+                                      {renderFacultyPill(slot.teacherName)}
+                                    </div>
+                                  ) : (
                                     <div className="p-1.5 px-2 rounded-lg bg-amber-950/80 border border-amber-500/40 text-[10px] text-amber-200">
                                       <div className="flex items-center gap-1.5 font-bold text-amber-300 flex-wrap">
                                         <AlertTriangle className="w-3.5 h-3.5 text-amber-400 shrink-0" />

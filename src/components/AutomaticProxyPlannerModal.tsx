@@ -154,12 +154,27 @@ export const AutomaticProxyPlannerModal: React.FC<AutomaticProxyPlannerModalProp
       });
       setStaffList(effectiveStaff);
 
-      const effectiveTimetable = (storedTimetable && storedTimetable.length >= 200)
+      const rawTimetable = (storedTimetable && storedTimetable.length >= 200)
         ? storedTimetable
         : DEFAULT_TIMETABLE;
-      if (!storedTimetable || storedTimetable.length < 200) {
-        db.set('setup:timetable', DEFAULT_TIMETABLE);
-      }
+
+      // Aggressively sanitize EVERY slot in the master weekly timetable
+      const effectiveTimetable = rawTimetable.map(slot => {
+        const clean: any = { ...slot };
+        delete clean.isArrangement;
+        delete clean.arrangementTeacherName;
+        delete clean.arrangementTeacherId;
+        delete clean.arrangementReason;
+        delete clean.originalTeacherName;
+        delete clean.originalTeacherId;
+        delete clean.isProxy;
+        delete clean.substituteTeacherName;
+        delete clean.substituteTeacherCode;
+        return clean as TimetableSlot;
+      });
+
+      // Always persist the clean master timetable back to setup:timetable
+      await db.set('setup:timetable', effectiveTimetable);
       setTimetable(effectiveTimetable);
       setProxyAssignments(storedProxy && storedProxy.length > 0 ? storedProxy : DEFAULT_PROXY_DUTIES);
       setAttendanceRecords(storedAtt && storedAtt.length > 0 ? storedAtt : DEFAULT_TEACHER_ATTENDANCE);
@@ -198,13 +213,6 @@ export const AutomaticProxyPlannerModal: React.FC<AutomaticProxyPlannerModalProp
   const isSlotAssignedToStaff = (slot: TimetableSlot, staff: StaffDetailRecord): boolean => {
     if (slot.teacherId && staff.employeeCode && String(slot.teacherId).trim().toLowerCase() === String(staff.employeeCode).trim().toLowerCase()) {
       return true;
-    }
-    if (slot.isArrangement && slot.arrangementTeacherName) {
-      const arrKey = normalizeFacultyKey(slot.arrangementTeacherName);
-      const staffKey = normalizeFacultyKey(staff.name);
-      if (arrKey && staffKey && (arrKey === staffKey || (arrKey.length >= 8 && staffKey.length >= 8 && (arrKey.includes(staffKey) || staffKey.includes(arrKey))))) {
-        return true;
-      }
     }
     const tKey = normalizeFacultyKey(slot.teacherName);
     const staffKey = normalizeFacultyKey(staff.name);
@@ -463,24 +471,6 @@ export const AutomaticProxyPlannerModal: React.FC<AutomaticProxyPlannerModalProp
           notes: item.notes?.trim() || undefined
         };
         newProxyRecords.push(newProxyRecord);
-        updatedTimetable = updatedTimetable.map(slot => {
-          const slotTeacher = (slot.teacherName || '').toLowerCase();
-          const absentTeacherLower = activeStaffForProxy.name.toLowerCase();
-          const isMatch =
-            (slot.dayOfWeek || slot.day) === currentDayOfWeek &&
-            (slot.period || slot.periodNumber || 1) === pNum &&
-            (slotTeacher.includes(absentTeacherLower) || absentTeacherLower.includes(slotTeacher));
-          if (isMatch) {
-            return {
-              ...slot,
-              isArrangement: true,
-              originalTeacherName: activeStaffForProxy.name,
-              arrangementTeacherName: item.substituteStaff.name,
-              arrangementReason: `Proxy for ${activeStaffForProxy.name} on ${selectedDate}`
-            };
-          }
-          return slot;
-        });
         const proxyTaskId = `task-proxy-${selectedDate}-p${pNum}-${item.substituteStaff.employeeCode}`;
         const proxyTask: TeacherTask = {
           id: proxyTaskId,
@@ -518,7 +508,6 @@ export const AutomaticProxyPlannerModal: React.FC<AutomaticProxyPlannerModalProp
         ...newProxyRecords
       ];
       setProxyAssignments(updatedProxies);
-      setTimetable(updatedTimetable);
       const newTaskIds = new Set(newTasks.map(t => t.id));
       const updatedTasks = [
         ...existingTasks.filter(t => !newTaskIds.has(t.id)),
@@ -526,7 +515,6 @@ export const AutomaticProxyPlannerModal: React.FC<AutomaticProxyPlannerModalProp
       ];
       const writePromises: Promise<any>[] = [
         db.set('setup:proxy_duty_assignments', updatedProxies),
-        db.set('setup:timetable', updatedTimetable),
         db.set('setup:tasks', updatedTasks)
       ];
       for (const [scopedKey, taskList] of scopedTasksMap.entries()) {
@@ -575,26 +563,7 @@ export const AutomaticProxyPlannerModal: React.FC<AutomaticProxyPlannerModalProp
     try {
       const updatedProxies = proxyAssignments.filter(p => p.id !== proxyId);
       setProxyAssignments(updatedProxies);
-      const updatedTimetable = timetable.map(slot => {
-        if (
-          (slot.dayOfWeek || slot.day) === currentDayOfWeek &&
-          (slot.period || slot.periodNumber || 1) === targetProxy.periodNumber &&
-          (slot.className === targetProxy.className)
-        ) {
-          return {
-            ...slot,
-            isArrangement: false,
-            arrangementTeacherName: undefined,
-            arrangementReason: undefined
-          };
-        }
-        return slot;
-      });
-      setTimetable(updatedTimetable);
-      await Promise.all([
-        db.set('setup:proxy_duty_assignments', updatedProxies),
-        db.set('setup:timetable', updatedTimetable)
-      ]);
+      await db.set('setup:proxy_duty_assignments', updatedProxies);
       window.dispatchEvent(new CustomEvent('kvs-timetable-updated'));
       window.dispatchEvent(new CustomEvent('kvs-attendance-updated'));
       showNotification(`Proxy substitution for Period ${targetProxy.periodNumber} cancelled`);

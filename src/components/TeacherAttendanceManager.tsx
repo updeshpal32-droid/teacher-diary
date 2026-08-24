@@ -239,7 +239,23 @@ export const TeacherAttendanceManager: React.FC<TeacherAttendanceManagerProps> =
       setAttendanceRecords(storedAttendance && storedAttendance.length > 0 ? storedAttendance : DEFAULT_TEACHER_ATTENDANCE);
       setLeaveApplications(storedLeaves && storedLeaves.length > 0 ? storedLeaves : DEFAULT_LEAVE_APPLICATIONS);
       setOnDutyRecords(storedOD && storedOD.length > 0 ? storedOD : DEFAULT_ON_DUTY_RECORDS);
-      setTimetable(storedTimetable && storedTimetable.length > 0 ? storedTimetable : DEFAULT_TIMETABLE);
+
+      const rawTimetable = (storedTimetable && storedTimetable.length > 0) ? storedTimetable : DEFAULT_TIMETABLE;
+      const effectiveTimetable = rawTimetable.map(slot => {
+        const clean: any = { ...slot };
+        delete clean.isArrangement;
+        delete clean.arrangementTeacherName;
+        delete clean.arrangementTeacherId;
+        delete clean.arrangementReason;
+        delete clean.originalTeacherName;
+        delete clean.originalTeacherId;
+        delete clean.isProxy;
+        delete clean.substituteTeacherName;
+        delete clean.substituteTeacherCode;
+        return clean as TimetableSlot;
+      });
+      await db.set('setup:timetable', effectiveTimetable);
+      setTimetable(effectiveTimetable);
       setProxyAssignments(storedProxy && storedProxy.length > 0 ? storedProxy : DEFAULT_PROXY_DUTIES);
       setLeaveSettings(storedSettings || DEFAULT_LEAVE_SETTINGS);
     } catch (err) {
@@ -676,11 +692,18 @@ export const TeacherAttendanceManager: React.FC<TeacherAttendanceManagerProps> =
       const teacherNameLower = staff.name.trim().toLowerCase();
       const hasClass = daySlots.some(s => {
         const tName = (s.teacherName || '').toLowerCase();
-        const arrName = (s.arrangementTeacherName || '').toLowerCase();
-        return (tName && tName.includes(teacherNameLower)) || (s.isArrangement && arrName && arrName.includes(teacherNameLower));
+        return tName && (tName.includes(teacherNameLower) || teacherNameLower.includes(tName));
       });
+      if (hasClass) return false;
 
-      return !hasClass;
+      const isProxyOnDate = proxyAssignments.some(
+        p => p.date === selectedDate && p.periodNumber === periodNum && (
+          (p.substituteTeacherCode && p.substituteTeacherCode === staff.employeeCode) ||
+          (p.substituteTeacherName && p.substituteTeacherName.toLowerCase().includes(teacherNameLower))
+        )
+      );
+
+      return !isProxyOnDate;
     });
   };
 
@@ -806,11 +829,9 @@ export const TeacherAttendanceManager: React.FC<TeacherAttendanceManagerProps> =
     ];
 
     setProxyAssignments(updatedProxyList);
-    setTimetable(updatedTimetable);
 
     await Promise.all([
       db.set('setup:proxy_duty_assignments', updatedProxyList),
-      db.set('setup:timetable', updatedTimetable),
       db.set('setup:tasks', updatedTasks),
       db.set(scopedSubTaskKey, updatedSubTasks)
     ]);
@@ -830,32 +851,12 @@ export const TeacherAttendanceManager: React.FC<TeacherAttendanceManagerProps> =
 
     const updatedProxyList = proxyAssignments.filter(p => p.id !== proxyId);
 
-    // Revert TimetableSlot isArrangement flag
-    const updatedTimetable = timetable.map(slot => {
-      const pNum = slot.period || slot.periodNumber || 1;
-      const isTarget =
-        (slot.dayOfWeek || slot.day) === proxyToCancel.dayOfWeek &&
-        pNum === proxyToCancel.periodNumber &&
-        slot.className === proxyToCancel.className;
-
-      if (isTarget) {
-        return {
-          ...slot,
-          isArrangement: false,
-          arrangementTeacherName: undefined,
-          arrangementReason: undefined
-        };
-      }
-      return slot;
-    });
-
     // Remove task from TaskManager
     const existingTasks = (await db.get<TeacherTask[]>('setup:tasks')) || [];
     const updatedTasks = existingTasks.filter(t => !t.id.includes(proxyToCancel.periodNumber.toString()) || !t.title.includes(proxyToCancel.className));
 
     const promises: Promise<any>[] = [
       db.set('setup:proxy_duty_assignments', updatedProxyList),
-      db.set('setup:timetable', updatedTimetable),
       db.set('setup:tasks', updatedTasks)
     ];
 
@@ -867,7 +868,6 @@ export const TeacherAttendanceManager: React.FC<TeacherAttendanceManagerProps> =
     }
 
     setProxyAssignments(updatedProxyList);
-    setTimetable(updatedTimetable);
 
     await Promise.all(promises);
 
@@ -1471,14 +1471,12 @@ export const TeacherAttendanceManager: React.FC<TeacherAttendanceManagerProps> =
                   <div className="p-2 rounded-xl bg-amber-500/20 border border-amber-500/40 text-amber-300 shrink-0">
                     <AlertTriangle className="w-5 h-5" />
                   </div>
-                  <div className="space-y-0.5">
-                    <h4 className="text-xs font-bold text-white uppercase tracking-wider flex items-center gap-2 m-0">
-                      <span>Faculty Absence & Delegation Notice</span>
-                      <span className="px-2 py-0.2 rounded-full bg-amber-500 text-slate-950 text-[10px] font-black font-mono">
-                        {metrics.absentStaffToday.length} Staff on Leave/OD
-                      </span>
-                    </h4>
-                  </div>
+                  <h4 className="text-xs font-bold text-white uppercase tracking-wider flex items-center gap-2 m-0">
+                    <span>Faculty Absence & Delegation Notice</span>
+                    <span className="px-2 py-0.2 rounded-full bg-amber-500 text-slate-950 text-[10px] font-black font-mono">
+                      {metrics.absentStaffToday.length} Staff on Leave/OD
+                    </span>
+                  </h4>
                 </div>
 
                 <div className="flex items-center gap-2 shrink-0">

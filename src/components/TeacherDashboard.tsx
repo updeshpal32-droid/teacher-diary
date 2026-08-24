@@ -48,7 +48,7 @@ import { compareClassGrades } from '../utils/csvParser';
 import { getTeacherScopedStorageKey } from '../lib/teacherContext';
 import { getStaffEmploymentType } from '../lib/staffFileImporter';
 import { getLeaveBalance } from '../lib/leaveEngine';
-import { resolveTeacherAttendance, checkTeacherAbsenceOnDate } from '../lib/attendanceAbsenceEngine';
+import { resolveTeacherAttendance, checkTeacherAbsenceOnDate, normalizeFacultyKey } from '../lib/attendanceAbsenceEngine';
 import { UserAccount } from '../types/auth';
 import { DevModeBadge } from './DevModeBadge';
 import { ProfileChangeRequestsModal } from './ProfileChangeRequestsModal';
@@ -830,9 +830,16 @@ export const TeacherDashboard: React.FC<TeacherDashboardProps> = ({
       } else {
         setTasks([]);
       }
-      if (savedStaff && savedStaff.length > 0) {
-        setStaffList(savedStaff);
-      }
+      let effectiveStaff = (savedStaff && savedStaff.length > 0) ? [...savedStaff] : [...DEFAULT_STAFF_DETAILS];
+      const existingStaffKeys = new Set(effectiveStaff.map(s => normalizeFacultyKey(s.name)));
+      DEFAULT_STAFF_DETAILS.forEach(defStaff => {
+        const key = normalizeFacultyKey(defStaff.name);
+        if (key && !existingStaffKeys.has(key)) {
+          effectiveStaff.push({ ...defStaff, serialNo: effectiveStaff.length + 1 });
+          existingStaffKeys.add(key);
+        }
+      });
+      setStaffList(effectiveStaff);
     } catch (err) {
       console.error('Error loading dashboard analytics:', err);
     } finally {

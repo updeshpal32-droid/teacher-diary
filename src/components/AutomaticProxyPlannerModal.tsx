@@ -141,7 +141,17 @@ export const AutomaticProxyPlannerModal: React.FC<AutomaticProxyPlannerModalProp
         db.get<OnDutyRecord[]>('setup:on_duty_records')
       ]);
 
-      const effectiveStaff = (mergedStaff && mergedStaff.length > 0) ? mergedStaff : DEFAULT_STAFF_DETAILS;
+      let effectiveStaff = (mergedStaff && mergedStaff.length > 0) ? [...mergedStaff] : [...DEFAULT_STAFF_DETAILS];
+
+      // Safety net: Guarantee all default staff (specifically Samya Raha & Karishma Kerketta) are present in effectiveStaff
+      const existingKeys = new Set(effectiveStaff.map(s => normalizeFacultyKey(s.name)));
+      DEFAULT_STAFF_DETAILS.forEach(defStaff => {
+        const key = normalizeFacultyKey(defStaff.name);
+        if (key && !existingKeys.has(key)) {
+          effectiveStaff.push({ ...defStaff, serialNo: effectiveStaff.length + 1 });
+          existingKeys.add(key);
+        }
+      });
       setStaffList(effectiveStaff);
 
       const effectiveTimetable = (storedTimetable && storedTimetable.length >= 200)
@@ -186,13 +196,13 @@ export const AutomaticProxyPlannerModal: React.FC<AutomaticProxyPlannerModalProp
   };
 
   const isSlotAssignedToStaff = (slot: TimetableSlot, staff: StaffDetailRecord): boolean => {
-    if (slot.teacherId && staff.employeeCode && String(slot.teacherId).trim() === String(staff.employeeCode).trim()) {
+    if (slot.teacherId && staff.employeeCode && String(slot.teacherId).trim().toLowerCase() === String(staff.employeeCode).trim().toLowerCase()) {
       return true;
     }
     if (slot.isArrangement && slot.arrangementTeacherName) {
       const arrKey = normalizeFacultyKey(slot.arrangementTeacherName);
       const staffKey = normalizeFacultyKey(staff.name);
-      if (arrKey && staffKey && (arrKey === staffKey || (arrKey.length >= 5 && staffKey.length >= 5 && arrKey.includes(staffKey)))) {
+      if (arrKey && staffKey && (arrKey === staffKey || (arrKey.length >= 8 && staffKey.length >= 8 && (arrKey.includes(staffKey) || staffKey.includes(arrKey))))) {
         return true;
       }
     }
@@ -202,7 +212,7 @@ export const AutomaticProxyPlannerModal: React.FC<AutomaticProxyPlannerModalProp
     const genericPlaceholders = ['allteachers', 'allclasses', 'free', 'planning', 'break', 'recess', 'vacant', 'tbd', 'na'];
     if (genericPlaceholders.includes(tKey)) return false;
     if (tKey === staffKey) return true;
-    if (tKey.length >= 5 && staffKey.length >= 5) {
+    if (tKey.length >= 8 && staffKey.length >= 8) {
       if (tKey.includes(staffKey) || staffKey.includes(tKey)) {
         return true;
       }

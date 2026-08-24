@@ -7547,7 +7547,7 @@ export async function getMergedStaffList(): Promise<StaffDetailRecord[]> {
   // 1. Seed with ALL 21 DEFAULT_STAFF_DETAILS
   DEFAULT_STAFF_DETAILS.forEach(s => {
     const key = getStaffKey(s.name, s.employeeCode);
-    if (key) staffMap.set(key, s);
+    if (key) staffMap.set(key, { ...s });
   });
 
   // 2. Merge storedStaff (preserve any user edits)
@@ -7580,10 +7580,30 @@ export async function getMergedStaffList(): Promise<StaffDetailRecord[]> {
     });
   }
 
+  // 4. Hard-check: Guarantee Samya Raha & Karishma Kerketta are always included
+  const samyaKey = 'samyaraha';
+  const karishmaKey = 'karishmakerketta';
+  if (!staffMap.has(samyaKey)) {
+    const samyaDefault = DEFAULT_STAFF_DETAILS.find(s => normalizeStaffKey(s.name) === samyaKey);
+    if (samyaDefault) staffMap.set(samyaKey, { ...samyaDefault });
+  }
+  if (!staffMap.has(karishmaKey)) {
+    const karishmaDefault = DEFAULT_STAFF_DETAILS.find(s => normalizeStaffKey(s.name) === karishmaKey);
+    if (karishmaDefault) staffMap.set(karishmaKey, { ...karishmaDefault });
+  }
+
+  // 5. Ensure all other default staff exist in the map
+  DEFAULT_STAFF_DETAILS.forEach(s => {
+    const key = getStaffKey(s.name, s.employeeCode);
+    if (key && !staffMap.has(key)) {
+      staffMap.set(key, { ...s });
+    }
+  });
+
   const finalStaff = Array.from(staffMap.values()).map((s, idx) => ({ ...s, serialNo: idx + 1 }));
 
-  // Always keep storage updated with full 21 staff list
-  if (!storedStaff || storedStaff.length < finalStaff.length) {
+  // Always keep storage updated with complete 21+ staff list
+  if (!storedStaff || storedStaff.length < finalStaff.length || !storedStaff.some(s => normalizeStaffKey(s.name) === samyaKey) || !storedStaff.some(s => normalizeStaffKey(s.name) === karishmaKey)) {
     await db.set('setup:staff_details', finalStaff);
   }
 

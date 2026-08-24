@@ -1826,6 +1826,8 @@ export interface TeacherAttendanceRecord {
   outTime?: string; // e.g. "02:15 PM"
   isLate?: boolean;
   lateMinutes?: number;
+  halfDay?: boolean;
+  halfDaySession?: 'First Half' | 'Second Half';
   remarks?: string;
   leaveApplicationId?: string;
   onDutyRecordId?: string;
@@ -1845,6 +1847,8 @@ export interface LeaveApplication {
   fromDate: string; // YYYY-MM-DD
   toDate: string;   // YYYY-MM-DD
   totalDays: number;
+  halfDay?: boolean;
+  halfDaySession?: 'First Half' | 'Second Half';
   reason: string;
   stationLeavingPermission: boolean;
   stationAddress?: string;

@@ -156,6 +156,8 @@ export const TeacherAttendanceManager: React.FC<TeacherAttendanceManagerProps> =
   const [leaveType, setLeaveType] = useState<LeaveType>('CL');
   const [leaveFromDate, setLeaveFromDate] = useState<string>(selectedDate);
   const [leaveToDate, setLeaveToDate] = useState<string>(selectedDate);
+  const [halfDay, setHalfDay] = useState<boolean>(false);
+  const [halfDaySession, setHalfDaySession] = useState<'First Half' | 'Second Half'>('Second Half');
   const [leaveReason, setLeaveReason] = useState<string>('');
   const [stationLeaving, setStationLeaving] = useState<boolean>(false);
   const [stationAddress, setStationAddress] = useState<string>('');
@@ -216,10 +218,10 @@ export const TeacherAttendanceManager: React.FC<TeacherAttendanceManagerProps> =
   // Recalculate validation whenever leave form changes
   useEffect(() => {
     if (isLeaveModalOpen && activeStaffForLeave) {
-      const res = canApplyLeave(activeStaffForLeave, leaveType, leaveFromDate, leaveToDate, leaveApplications);
+      const res = canApplyLeave(activeStaffForLeave, leaveType, leaveFromDate, halfDay ? leaveFromDate : leaveToDate, leaveApplications, halfDay);
       setValidationResult(res);
     }
-  }, [isLeaveModalOpen, activeStaffForLeave, leaveType, leaveFromDate, leaveToDate, leaveApplications]);
+  }, [isLeaveModalOpen, activeStaffForLeave, leaveType, leaveFromDate, leaveToDate, leaveApplications, halfDay]);
 
   const loadInitialData = async () => {
     try {
@@ -448,6 +450,8 @@ export const TeacherAttendanceManager: React.FC<TeacherAttendanceManagerProps> =
     setActiveStaffForLeave(staff);
     setLeaveFromDate(selectedDate);
     setLeaveToDate(selectedDate);
+    setHalfDay(false);
+    setHalfDaySession('Second Half');
     setLeaveType('CL');
     setLeaveReason('');
     setStationLeaving(false);
@@ -462,14 +466,15 @@ export const TeacherAttendanceManager: React.FC<TeacherAttendanceManagerProps> =
     e.preventDefault();
     if (!activeStaffForLeave) return;
 
-    const days = calculateLeaveDays(leaveFromDate, leaveToDate);
+    const toDate = halfDay ? leaveFromDate : leaveToDate;
+    const days = halfDay ? 0.5 : calculateLeaveDays(leaveFromDate, toDate);
     if (days <= 0) {
       alert('Invalid date range. To Date must be on or after From Date.');
       return;
     }
 
     // Validation check
-    const validation = canApplyLeave(activeStaffForLeave, leaveType, leaveFromDate, leaveToDate, leaveApplications);
+    const validation = canApplyLeave(activeStaffForLeave, leaveType, leaveFromDate, toDate, leaveApplications, halfDay);
     if (!validation.canApply && !principalOverrideAllowed) {
       alert(`Cannot apply leave: ${validation.reason}`);
       return;
@@ -483,8 +488,10 @@ export const TeacherAttendanceManager: React.FC<TeacherAttendanceManagerProps> =
       employmentType: activeStaffForLeave.employmentType || 'Regular',
       leaveType,
       fromDate: leaveFromDate,
-      toDate: leaveToDate,
+      toDate,
       totalDays: days,
+      halfDay,
+      halfDaySession: halfDay ? halfDaySession : undefined,
       reason: leaveReason.trim() || 'Personal Work',
       stationLeavingPermission: stationLeaving,
       stationAddress: stationLeaving ? stationAddress : undefined,
@@ -517,7 +524,9 @@ export const TeacherAttendanceManager: React.FC<TeacherAttendanceManagerProps> =
       status: 'Leave',
       leaveType,
       leaveApplicationId: newLeave.id,
-      remarks: leaveReason || `Sanctioned ${leaveType}`,
+      halfDay,
+      halfDaySession: halfDay ? halfDaySession : undefined,
+      remarks: leaveReason || `Sanctioned ${leaveType}${halfDay ? ` (${halfDaySession})` : ''}`,
       markedBy: activeUser?.name || 'Admin',
       markedAt: new Date().toISOString(),
       verifiedByPrincipal: true
@@ -664,10 +673,28 @@ export const TeacherAttendanceManager: React.FC<TeacherAttendanceManagerProps> =
 
   // Extract scheduled periods for a specific teacher on the selected date
   const getStaffDayPeriods = (staff: StaffDetailRecord): TimetableSlot[] => {
+    const absence = checkTeacherAbsenceOnDate(
+      staff.employeeCode,
+      selectedDate,
+      attendanceRecords,
+      leaveApplications,
+      onDutyRecords,
+      staff.name
+    );
+
     const teacherNameLower = staff.name.trim().toLowerCase();
     const daySlots = timetable.filter(s => (s.dayOfWeek || s.day) === currentDayOfWeek);
 
     const matchingSlots = daySlots.filter(slot => {
+      const pNum = Number(slot.period || slot.periodNumber || 1);
+      if (absence.isAbsent && absence.halfDay && absence.halfDaySession) {
+        if (absence.halfDaySession === 'First Half' && pNum > 4) {
+          return false;
+        }
+        if (absence.halfDaySession === 'Second Half' && pNum <= 4) {
+          return false;
+        }
+      }
       const slotTeacher = (slot.teacherName || '').toLowerCase();
       return slotTeacher && (slotTeacher.includes(teacherNameLower) || teacherNameLower.includes(slotTeacher));
     });
@@ -684,9 +711,17 @@ export const TeacherAttendanceManager: React.FC<TeacherAttendanceManagerProps> =
       // Exclude absent teacher
       if (staff.employeeCode === currentAbsentStaffCode) return false;
 
-      // Exclude teachers who are themselves on Leave or Absent today
-      const att = dayAttendanceMap.get(staff.employeeCode);
-      if (att && (att.status === 'Leave' || att.status === 'Absent')) return false;
+      // Check absence for this specific period
+      const absence = checkTeacherAbsenceOnDate(
+        staff.employeeCode,
+        selectedDate,
+        attendanceRecords,
+        leaveApplications,
+        onDutyRecords,
+        staff.name,
+        periodNum
+      );
+      if (absence.isAbsent) return false;
 
       // Check if they already have a regular class or existing proxy in this period
       const teacherNameLower = staff.name.trim().toLowerCase();
@@ -987,8 +1022,9 @@ export const TeacherAttendanceManager: React.FC<TeacherAttendanceManagerProps> =
   }, [activeStaffForLeave, leaveApplications, selectedDate]);
 
   const requestedLeaveDays = useMemo(() => {
+    if (halfDay) return 0.5;
     return calculateLeaveDays(leaveFromDate, leaveToDate);
-  }, [leaveFromDate, leaveToDate]);
+  }, [leaveFromDate, leaveToDate, halfDay]);
 
   // Monthly Leave Statement Calculations
   const monthlyStatementData = useMemo(() => {
@@ -2285,34 +2321,93 @@ export const TeacherAttendanceManager: React.FC<TeacherAttendanceManagerProps> =
                 </span>
               </div>
 
+              {/* Half-Day Toggle */}
+              <div className="p-3 rounded-xl bg-purple-950/40 border border-purple-500/30 space-y-2.5">
+                <label className="flex items-center gap-2 text-xs text-purple-200 font-bold cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={halfDay}
+                    onChange={e => {
+                      const checked = e.target.checked;
+                      setHalfDay(checked);
+                      if (checked) {
+                        setLeaveToDate(leaveFromDate);
+                      }
+                    }}
+                    className="rounded accent-purple-600 cursor-pointer w-4 h-4"
+                  />
+                  <span>Half-Day Leave (0.5 Day)</span>
+                </label>
+
+                {halfDay && (
+                  <div className="pt-2 border-t border-purple-800/40 flex items-center gap-4 flex-wrap">
+                    <span className="text-xs font-bold text-slate-300">Session:</span>
+                    <label className="flex items-center gap-1.5 text-xs text-purple-200 cursor-pointer font-bold">
+                      <input
+                        type="radio"
+                        name="halfDaySession"
+                        value="First Half"
+                        checked={halfDaySession === 'First Half'}
+                        onChange={() => setHalfDaySession('First Half')}
+                        className="accent-purple-500 cursor-pointer"
+                      />
+                      <span>First Half (Periods 1–4)</span>
+                    </label>
+                    <label className="flex items-center gap-1.5 text-xs text-purple-200 cursor-pointer font-bold">
+                      <input
+                        type="radio"
+                        name="halfDaySession"
+                        value="Second Half"
+                        checked={halfDaySession === 'Second Half'}
+                        onChange={() => setHalfDaySession('Second Half')}
+                        className="accent-purple-500 cursor-pointer"
+                      />
+                      <span>Second Half (Periods 5–9)</span>
+                    </label>
+                  </div>
+                )}
+              </div>
+
               {/* Date Pickers */}
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div>
-                  <label className="text-xs font-bold text-slate-300 block mb-1">From Date *</label>
+                  <label className="text-xs font-bold text-slate-300 block mb-1">
+                    {halfDay ? 'Date *' : 'From Date *'}
+                  </label>
                   <input
                     type="date"
                     required
                     value={leaveFromDate}
-                    onChange={e => setLeaveFromDate(e.target.value)}
+                    onChange={e => {
+                      const val = e.target.value;
+                      setLeaveFromDate(val);
+                      if (halfDay) {
+                        setLeaveToDate(val);
+                      }
+                    }}
                     className="w-full px-3 py-2 text-xs bg-slate-950 border border-slate-800 rounded-xl text-white font-mono focus:outline-none focus:border-purple-500"
                   />
                 </div>
 
-                <div>
-                  <label className="text-xs font-bold text-slate-300 block mb-1">To Date *</label>
-                  <input
-                    type="date"
-                    required
-                    value={leaveToDate}
-                    onChange={e => setLeaveToDate(e.target.value)}
-                    className="w-full px-3 py-2 text-xs bg-slate-950 border border-slate-800 rounded-xl text-white font-mono focus:outline-none focus:border-purple-500"
-                  />
-                </div>
+                {!halfDay && (
+                  <div>
+                    <label className="text-xs font-bold text-slate-300 block mb-1">To Date *</label>
+                    <input
+                      type="date"
+                      required
+                      value={leaveToDate}
+                      onChange={e => setLeaveToDate(e.target.value)}
+                      className="w-full px-3 py-2 text-xs bg-slate-950 border border-slate-800 rounded-xl text-white font-mono focus:outline-none focus:border-purple-500"
+                    />
+                  </div>
+                )}
               </div>
 
               <div className="p-3 rounded-xl bg-slate-950 border border-slate-800 flex items-center justify-between text-xs font-mono">
                 <span className="text-slate-400 font-sans">Total Requested Duration:</span>
-                <strong className="text-purple-300">{requestedLeaveDays} day(s)</strong>
+                <strong className="text-purple-300">
+                  {requestedLeaveDays} day(s) {halfDay && `(${halfDaySession})`}
+                </strong>
               </div>
 
               {/* Validation Feedback & Warnings */}

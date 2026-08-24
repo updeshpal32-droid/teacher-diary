@@ -20,6 +20,8 @@ export interface ResolvedTeacherAttendance {
   remarks?: string;
   leaveFrom?: string;
   leaveTo?: string;
+  halfDay?: boolean;
+  halfDaySession?: 'First Half' | 'Second Half';
 }
 
 export interface AbsenceInfo {
@@ -29,6 +31,8 @@ export interface AbsenceInfo {
   fromDate?: string;
   toDate?: string;
   reason?: string;
+  halfDay?: boolean;
+  halfDaySession?: 'First Half' | 'Second Half';
 }
 
 export interface ActingInchargeResult {
@@ -272,7 +276,9 @@ export const resolveTeacherAttendance = (
         leaveType: explicitRecord.leaveType,
         remarks: explicitRecord.remarks || (explicitRecord.status === 'Present' ? 'Marked Present by Authority' : undefined),
         leaveFrom: selectedDate,
-        leaveTo: selectedDate
+        leaveTo: selectedDate,
+        halfDay: explicitRecord.halfDay,
+        halfDaySession: explicitRecord.halfDaySession
       };
     }
 
@@ -292,7 +298,9 @@ export const resolveTeacherAttendance = (
         leaveType: activeLeave.leaveType,
         remarks: activeLeave.reason,
         leaveFrom: activeLeave.fromDate,
-        leaveTo: activeLeave.toDate
+        leaveTo: activeLeave.toDate,
+        halfDay: activeLeave.halfDay,
+        halfDaySession: activeLeave.halfDaySession
       };
     }
 
@@ -326,7 +334,11 @@ export const resolveTeacherAttendance = (
 };
 
 /**
- * Checks if a teacher is absent (Leave, OD, Absent) on a given date.
+ * Checks if a teacher is absent (Leave, OD, Absent) on a given date and optional periodNumber.
+ * Logic:
+ * - Full-day leave -> absent for all periods
+ * - Half-day First Half -> absent only for periods 1-4 (present for periods 5-9)
+ * - Half-day Second Half -> absent only for periods 5-9 (present for periods 1-4)
  */
 export const checkTeacherAbsenceOnDate = (
   employeeCode: string,
@@ -334,7 +346,8 @@ export const checkTeacherAbsenceOnDate = (
   attendanceRecords: TeacherAttendanceRecord[] = [],
   leaveApplications: LeaveApplication[] = [],
   onDutyRecords: OnDutyRecord[] = [],
-  teacherName?: string
+  teacherName?: string,
+  periodNum?: number
 ): AbsenceInfo => {
   const codeMatch = (code?: string) =>
     Boolean(code && employeeCode && String(code).trim().toLowerCase() === String(employeeCode).trim().toLowerCase());
@@ -346,6 +359,8 @@ export const checkTeacherAbsenceOnDate = (
     return Boolean(k1 && k2 && k1 === k2);
   };
 
+  const pNum = typeof periodNum === 'number' ? Number(periodNum) : undefined;
+
   // 1. Check Explicit Attendance Record
   const att = attendanceRecords.find(
     a => (codeMatch(a.employeeCode) || nameMatch(a.teacherName)) && a.date === targetDate
@@ -355,13 +370,48 @@ export const checkTeacherAbsenceOnDate = (
     if (att.status === 'Present') {
       return { isAbsent: false, status: 'Present' };
     }
+    if (att.halfDay && att.halfDaySession && pNum !== undefined) {
+      if (att.halfDaySession === 'First Half') {
+        if (pNum <= 4) {
+          return {
+            isAbsent: true,
+            status: att.status,
+            leaveType: att.leaveType,
+            fromDate: targetDate,
+            toDate: targetDate,
+            reason: att.remarks || 'Half-Day Leave (First Half)',
+            halfDay: true,
+            halfDaySession: 'First Half'
+          };
+        } else {
+          return { isAbsent: false, status: 'Present', halfDay: true, halfDaySession: 'First Half' };
+        }
+      } else if (att.halfDaySession === 'Second Half') {
+        if (pNum >= 5) {
+          return {
+            isAbsent: true,
+            status: att.status,
+            leaveType: att.leaveType,
+            fromDate: targetDate,
+            toDate: targetDate,
+            reason: att.remarks || 'Half-Day Leave (Second Half)',
+            halfDay: true,
+            halfDaySession: 'Second Half'
+          };
+        } else {
+          return { isAbsent: false, status: 'Present', halfDay: true, halfDaySession: 'Second Half' };
+        }
+      }
+    }
     return {
       isAbsent: true,
       status: att.status,
       leaveType: att.leaveType,
       fromDate: targetDate,
       toDate: targetDate,
-      reason: att.remarks || `Marked ${att.status}`
+      reason: att.remarks || `Marked ${att.status}`,
+      halfDay: att.halfDay,
+      halfDaySession: att.halfDaySession
     };
   }
 
@@ -374,13 +424,48 @@ export const checkTeacherAbsenceOnDate = (
   );
 
   if (leave) {
+    if (leave.halfDay && leave.halfDaySession && pNum !== undefined) {
+      if (leave.halfDaySession === 'First Half') {
+        if (pNum <= 4) {
+          return {
+            isAbsent: true,
+            status: 'Leave',
+            leaveType: leave.leaveType,
+            fromDate: leave.fromDate,
+            toDate: leave.toDate,
+            reason: leave.reason || 'Half-Day Leave (First Half)',
+            halfDay: true,
+            halfDaySession: 'First Half'
+          };
+        } else {
+          return { isAbsent: false, status: 'Present', halfDay: true, halfDaySession: 'First Half' };
+        }
+      } else if (leave.halfDaySession === 'Second Half') {
+        if (pNum >= 5) {
+          return {
+            isAbsent: true,
+            status: 'Leave',
+            leaveType: leave.leaveType,
+            fromDate: leave.fromDate,
+            toDate: leave.toDate,
+            reason: leave.reason || 'Half-Day Leave (Second Half)',
+            halfDay: true,
+            halfDaySession: 'Second Half'
+          };
+        } else {
+          return { isAbsent: false, status: 'Present', halfDay: true, halfDaySession: 'Second Half' };
+        }
+      }
+    }
     return {
       isAbsent: true,
       status: 'Leave',
       leaveType: leave.leaveType,
       fromDate: leave.fromDate,
       toDate: leave.toDate,
-      reason: leave.reason
+      reason: leave.reason,
+      halfDay: leave.halfDay,
+      halfDaySession: leave.halfDaySession
     };
   }
 
@@ -392,6 +477,12 @@ export const checkTeacherAbsenceOnDate = (
   );
 
   if (od) {
+    if (od.affectedPeriods && od.affectedPeriods.length > 0 && pNum !== undefined) {
+      const isPeriodAffected = od.affectedPeriods.some(ap => ap.period === pNum);
+      if (!isPeriodAffected) {
+        return { isAbsent: false, status: 'Present' };
+      }
+    }
     return {
       isAbsent: true,
       status: 'OD',

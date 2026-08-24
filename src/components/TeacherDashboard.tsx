@@ -1599,7 +1599,7 @@ export const TeacherDashboard: React.FC<TeacherDashboardProps> = ({
                         : 'bg-rose-500/20 text-rose-300 border border-rose-500/40'
                     }`}
                   >
-                    {r.leaveType || r.status}
+                    {r.leaveType || r.status}{r.halfDay && r.halfDaySession ? ` (${r.halfDaySession === 'First Half' ? '1st Half' : '2nd Half'})` : ''}
                   </span>
                   <span className="px-1.5 py-0.2 rounded bg-amber-500/20 text-[9px] text-amber-300 font-mono font-bold uppercase">
                     Plan Proxy

@@ -238,10 +238,16 @@ export const AutomaticProxyPlannerModal: React.FC<AutomaticProxyPlannerModalProp
           onDutyRecords,
           s.name
         );
+        let statusLabel: string = absence.leaveType || absence.status || 'Absent';
+        if (absence.halfDay && absence.halfDaySession) {
+          statusLabel = `${statusLabel} (${absence.halfDaySession === 'First Half' ? '1st Half' : '2nd Half'})`;
+        }
         return {
           ...s,
           isAbsent: absence.isAbsent,
-          absenceStatus: absence.leaveType || absence.status
+          absenceStatus: statusLabel,
+          halfDay: absence.halfDay,
+          halfDaySession: absence.halfDaySession
         };
       })
       .filter(s => s.isAbsent);
@@ -249,15 +255,37 @@ export const AutomaticProxyPlannerModal: React.FC<AutomaticProxyPlannerModalProp
 
   const teacherScheduledPeriods = useMemo((): TimetableSlot[] => {
     if (!activeStaffForProxy) return [];
+
+    // Check if the active staff is on half-day leave
+    const absence = checkTeacherAbsenceOnDate(
+      activeStaffForProxy.employeeCode,
+      selectedDate,
+      attendanceRecords,
+      leaveApplications,
+      onDutyRecords,
+      activeStaffForProxy.name
+    );
+
     return timetable
       .filter(slot => {
         const slotDay = (slot.dayOfWeek || slot.day || '').trim().toLowerCase();
         const targetDay = currentDayOfWeek.toLowerCase();
         if (slotDay !== targetDay) return false;
+
+        const pNum = Number(slot.period || slot.periodNumber || 1);
+        if (absence.isAbsent && absence.halfDay && absence.halfDaySession) {
+          if (absence.halfDaySession === 'First Half' && pNum > 4) {
+            return false; // Present in 2nd half (periods 5-9)
+          }
+          if (absence.halfDaySession === 'Second Half' && pNum <= 4) {
+            return false; // Present in 1st half (periods 1-4)
+          }
+        }
+
         return isSlotAssignedToStaff(slot, activeStaffForProxy);
       })
       .sort((a, b) => Number(a.period || a.periodNumber || 1) - Number(b.period || b.periodNumber || 1));
-  }, [activeStaffForProxy, timetable, currentDayOfWeek]);
+  }, [activeStaffForProxy, timetable, currentDayOfWeek, selectedDate, attendanceRecords, leaveApplications, onDutyRecords]);
 
   const getAvailableFreeTeachers = (periodNum: number, absentTeacherCode: string, currentSlotKey?: string): { staff: StaffDetailRecord; todayAssignedProxyCount: number }[] => {
     const pTarget = Number(periodNum);
@@ -282,7 +310,8 @@ export const AutomaticProxyPlannerModal: React.FC<AutomaticProxyPlannerModalProp
           attendanceRecords,
           leaveApplications,
           onDutyRecords,
-          staff.name
+          staff.name,
+          pTarget
         );
         if (absence.isAbsent) {
           return false;

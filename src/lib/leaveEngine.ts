@@ -199,10 +199,11 @@ export function canApplyLeave(
   leaveType: LeaveType,
   fromDate: string,
   toDate: string,
-  existingSanctionedLeaves: LeaveApplication[] = []
+  existingSanctionedLeaves: LeaveApplication[] = [],
+  halfDay?: boolean
 ): LeaveValidationResult {
   const isContractual = staff.employmentType === 'Contractual';
-  const requestedDays = calculateLeaveDays(fromDate, toDate);
+  const requestedDays = halfDay ? 0.5 : calculateLeaveDays(fromDate, toDate);
 
   if (requestedDays <= 0) {
     return { canApply: false, reason: 'To-Date must be on or after From-Date.' };

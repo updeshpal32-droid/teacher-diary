@@ -331,11 +331,16 @@ export const DutyAndProxyManager: React.FC<DutyAndProxyManagerProps> = ({
   // Find free teachers for a given period number and day
   const getFreeTeachersForPeriod = (periodNum: number, day: DayOfWeek): StaffDetailRecord[] => {
     return staffList.filter(s => {
-      const isAbsent = absentTeachersToday.some(a =>
-        (a.employeeCode && s.employeeCode && String(a.employeeCode).trim().toLowerCase() === String(s.employeeCode).trim().toLowerCase()) ||
-        (a.name && s.name && normalizeFacultyKey(a.name) === normalizeFacultyKey(s.name))
+      const abs = checkTeacherAbsenceOnDate(
+        s.employeeCode,
+        selectedDate,
+        attendanceRecords,
+        leaveApplications,
+        [],
+        s.name,
+        periodNum
       );
-      if (isAbsent) return false;
+      if (abs.isAbsent) return false;
 
       const hasRegularClass = timetable.some(t => {
         const tDay = (t.day || t.dayOfWeek || '').trim().toLowerCase();

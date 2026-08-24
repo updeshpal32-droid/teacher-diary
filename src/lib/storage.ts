@@ -2619,6 +2619,38 @@ export const DEFAULT_LEAVE_APPLICATIONS: LeaveApplication[] = [
     sanctionedAt: new Date().toISOString(),
     principalRemarks: 'Sanctioned. Ensure proxy arrangements are in place.',
     proxyArrangementsConfirmed: true
+  },
+  {
+    id: 'la-omprakash-2026-08-22',
+    employeeCode: '106018',
+    teacherName: 'OMPRAKASH SHARMA',
+    designation: 'TGT (Sanskrit)',
+    employmentType: 'Regular',
+    leaveType: 'SpCL',
+    fromDate: '2026-08-22',
+    toDate: '2026-08-30',
+    totalDays: 5,
+    isCombinedLeave: true,
+    dailyLeaveBreakdown: [
+      { date: '2026-08-22', dayName: 'Saturday', leaveType: 'SpCL', isNonWorkingDay: false, reason: 'Special Casual Leave' },
+      { date: '2026-08-23', dayName: 'Sunday', leaveType: 'Sunday', isNonWorkingDay: true, reason: 'Sunday (Weekly Off)' },
+      { date: '2026-08-24', dayName: 'Monday', leaveType: 'SpCL', isNonWorkingDay: false, reason: 'Special Casual Leave' },
+      { date: '2026-08-25', dayName: 'Tuesday', leaveType: 'SpCL', isNonWorkingDay: false, reason: 'Special Casual Leave' },
+      { date: '2026-08-26', dayName: 'Wednesday', leaveType: 'Holiday', isNonWorkingDay: true, reason: 'Janmashtami (Gazetted Holiday)' },
+      { date: '2026-08-27', dayName: 'Thursday', leaveType: 'CL', isNonWorkingDay: false, reason: 'Casual Leave' },
+      { date: '2026-08-28', dayName: 'Friday', leaveType: 'Holiday', isNonWorkingDay: true, reason: 'School / Local Holiday' },
+      { date: '2026-08-29', dayName: 'Saturday', leaveType: 'CL', isNonWorkingDay: false, reason: 'Casual Leave' },
+      { date: '2026-08-30', dayName: 'Sunday', leaveType: 'Sunday', isNonWorkingDay: true, reason: 'Sunday (Weekly Off)' }
+    ],
+    reason: 'Out of station (SpCL + CL + Holidays)',
+    stationLeavingPermission: true,
+    stationAddress: 'Jaipur, Rajasthan',
+    status: 'Sanctioned',
+    appliedAt: '2026-08-20T10:00:00.000Z',
+    sanctionedBy: 'Shri Hemananda Barik (Principal I/c)',
+    sanctionedAt: '2026-08-20T12:00:00.000Z',
+    principalRemarks: 'Sanctioned combined continuous leave under KVS leave rules.',
+    proxyArrangementsConfirmed: true
   }
 ];
 

@@ -11,7 +11,9 @@ import {
   TimetableSlot,
   TeacherTask,
   ProxyDutyAssignment,
-  LeaveSettingsConfig
+  LeaveSettingsConfig,
+  DailyLeaveBreakdownItem,
+  CalendarEvent
 } from '../types/academic';
 import { UserAccount } from '../types/auth';
 import {
@@ -23,6 +25,7 @@ import {
   DEFAULT_TIMETABLE,
   DEFAULT_PROXY_DUTIES,
   DEFAULT_LEAVE_SETTINGS,
+  DEFAULT_CALENDAR,
   getCurrentUser,
   getUserAccounts,
   getMergedStaffList
@@ -108,6 +111,35 @@ const LEAVE_TYPE_LABELS: Record<LeaveType, { name: string; full: string; desc: s
   OD: { name: 'Official On-Duty (OD)', full: 'Official Deputation', desc: 'CBSE observer, NSM sports, In-service training, RO meeting' }
 };
 
+export const isKnownHolidayOrSunday = (dateStr: string, calendarList: CalendarEvent[] = []): { isNonWorking: boolean; type: 'Sunday' | 'Holiday' | null; title?: string } => {
+  const d = new Date(dateStr);
+  if (d.getDay() === 0) {
+    return { isNonWorking: true, type: 'Sunday', title: 'Sunday (Weekly Off)' };
+  }
+  const calEvt = calendarList.find(e => e.date === dateStr && (
+    e.category === 'Gazetted Holiday' ||
+    e.category === 'Vacation' ||
+    (e.title && (
+      e.title.toLowerCase().includes('holiday') ||
+      e.title.toLowerCase().includes('jayanti') ||
+      e.title.toLowerCase().includes('puja') ||
+      e.title.toLowerCase().includes('diwali') ||
+      e.title.toLowerCase().includes('eid') ||
+      e.title.toLowerCase().includes('christmas')
+    ))
+  ));
+  if (calEvt) {
+    return { isNonWorking: true, type: 'Holiday', title: calEvt.title };
+  }
+  if (dateStr === '2026-08-26') {
+    return { isNonWorking: true, type: 'Holiday', title: 'Janmashtami (Gazetted Holiday)' };
+  }
+  if (dateStr === '2026-08-28') {
+    return { isNonWorking: true, type: 'Holiday', title: 'School / Local Holiday' };
+  }
+  return { isNonWorking: false, type: null };
+};
+
 export const TeacherAttendanceManager: React.FC<TeacherAttendanceManagerProps> = ({
   devMode,
   currentUser,
@@ -131,6 +163,7 @@ export const TeacherAttendanceManager: React.FC<TeacherAttendanceManagerProps> =
   const [timetable, setTimetable] = useState<TimetableSlot[]>([]);
   const [proxyAssignments, setProxyAssignments] = useState<ProxyDutyAssignment[]>([]);
   const [leaveSettings, setLeaveSettings] = useState<LeaveSettingsConfig>(DEFAULT_LEAVE_SETTINGS);
+  const [calendarEvents, setCalendarEvents] = useState<CalendarEvent[]>(DEFAULT_CALENDAR);
   const [loading, setLoading] = useState(true);
 
   // Search and Filter states
@@ -158,6 +191,8 @@ export const TeacherAttendanceManager: React.FC<TeacherAttendanceManagerProps> =
   const [leaveToDate, setLeaveToDate] = useState<string>(selectedDate);
   const [halfDay, setHalfDay] = useState<boolean>(false);
   const [halfDaySession, setHalfDaySession] = useState<'First Half' | 'Second Half'>('Second Half');
+  const [isCombinedLeave, setIsCombinedLeave] = useState<boolean>(false);
+  const [dailyBreakdown, setDailyBreakdown] = useState<DailyLeaveBreakdownItem[]>([]);
   const [leaveReason, setLeaveReason] = useState<string>('');
   const [stationLeaving, setStationLeaving] = useState<boolean>(false);
   const [stationAddress, setStationAddress] = useState<string>('');
@@ -216,24 +251,78 @@ export const TeacherAttendanceManager: React.FC<TeacherAttendanceManagerProps> =
   }, []);
 
   // Recalculate validation whenever leave form changes
+  // Sync daily breakdown whenever dates, default leave type, or calendar events change
+  useEffect(() => {
+    if (!leaveFromDate || !leaveToDate || leaveFromDate > leaveToDate) {
+      setDailyBreakdown([]);
+      return;
+    }
+    const dayNames = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+    const items: DailyLeaveBreakdownItem[] = [];
+    let curr = new Date(leaveFromDate);
+    const end = new Date(leaveToDate);
+
+    while (curr <= end) {
+      const dStr = curr.toISOString().split('T')[0];
+      const dayIdx = curr.getDay();
+      const dayName = dayNames[dayIdx];
+      const hol = isKnownHolidayOrSunday(dStr, calendarEvents);
+
+      const existingItem = dailyBreakdown.find(b => b.date === dStr);
+      if (existingItem) {
+        items.push(existingItem);
+      } else {
+        if (hol.isNonWorking) {
+          items.push({
+            date: dStr,
+            dayName,
+            leaveType: hol.type as 'Sunday' | 'Holiday',
+            isNonWorkingDay: true,
+            reason: hol.title
+          });
+        } else {
+          items.push({
+            date: dStr,
+            dayName,
+            leaveType,
+            isNonWorkingDay: false,
+            reason: ''
+          });
+        }
+      }
+      curr.setDate(curr.getDate() + 1);
+    }
+    setDailyBreakdown(items);
+  }, [leaveFromDate, leaveToDate, leaveType, calendarEvents]);
+
+  // Validation Result
   useEffect(() => {
     if (isLeaveModalOpen && activeStaffForLeave) {
-      const res = canApplyLeave(activeStaffForLeave, leaveType, leaveFromDate, halfDay ? leaveFromDate : leaveToDate, leaveApplications, halfDay);
+      const res = canApplyLeave(
+        activeStaffForLeave,
+        leaveType,
+        leaveFromDate,
+        halfDay ? leaveFromDate : leaveToDate,
+        leaveApplications,
+        halfDay,
+        isCombinedLeave ? dailyBreakdown : undefined
+      );
       setValidationResult(res);
     }
-  }, [isLeaveModalOpen, activeStaffForLeave, leaveType, leaveFromDate, leaveToDate, leaveApplications, halfDay]);
+  }, [isLeaveModalOpen, activeStaffForLeave, leaveType, leaveFromDate, leaveToDate, leaveApplications, halfDay, isCombinedLeave, dailyBreakdown]);
 
   const loadInitialData = async () => {
     try {
       setLoading(true);
-      const [mergedStaff, storedAttendance, storedLeaves, storedOD, storedTimetable, storedProxy, storedSettings] = await Promise.all([
+      const [mergedStaff, storedAttendance, storedLeaves, storedOD, storedTimetable, storedProxy, storedSettings, storedCalendar] = await Promise.all([
         getMergedStaffList(),
         db.get<TeacherAttendanceRecord[]>('setup:teacher_attendance'),
         db.get<LeaveApplication[]>('setup:leave_applications'),
         db.get<OnDutyRecord[]>('setup:on_duty_records'),
         db.get<TimetableSlot[]>('setup:timetable'),
         db.get<ProxyDutyAssignment[]>('setup:proxy_duty_assignments'),
-        db.get<LeaveSettingsConfig>('setup:leave_settings')
+        db.get<LeaveSettingsConfig>('setup:leave_settings'),
+        db.get<CalendarEvent[]>('setup:calendar')
       ]);
 
       const effectiveStaff = (mergedStaff && mergedStaff.length > 0) ? mergedStaff : DEFAULT_STAFF_DETAILS;
@@ -241,6 +330,7 @@ export const TeacherAttendanceManager: React.FC<TeacherAttendanceManagerProps> =
       setAttendanceRecords(storedAttendance && storedAttendance.length > 0 ? storedAttendance : DEFAULT_TEACHER_ATTENDANCE);
       setLeaveApplications(storedLeaves && storedLeaves.length > 0 ? storedLeaves : DEFAULT_LEAVE_APPLICATIONS);
       setOnDutyRecords(storedOD && storedOD.length > 0 ? storedOD : DEFAULT_ON_DUTY_RECORDS);
+      if (storedCalendar && storedCalendar.length > 0) setCalendarEvents(storedCalendar);
 
       const rawTimetable = (storedTimetable && storedTimetable.length > 0) ? storedTimetable : DEFAULT_TIMETABLE;
       const effectiveTimetable = rawTimetable.map(slot => {
@@ -452,6 +542,8 @@ export const TeacherAttendanceManager: React.FC<TeacherAttendanceManagerProps> =
     setLeaveToDate(selectedDate);
     setHalfDay(false);
     setHalfDaySession('Second Half');
+    setIsCombinedLeave(false);
+    setDailyBreakdown([]);
     setLeaveType('CL');
     setLeaveReason('');
     setStationLeaving(false);
@@ -467,17 +559,44 @@ export const TeacherAttendanceManager: React.FC<TeacherAttendanceManagerProps> =
     if (!activeStaffForLeave) return;
 
     const toDate = halfDay ? leaveFromDate : leaveToDate;
-    const days = halfDay ? 0.5 : calculateLeaveDays(leaveFromDate, toDate);
-    if (days <= 0) {
+    const chargedDays = isCombinedLeave
+      ? dailyBreakdown.reduce((acc, item) => {
+          if (item.leaveType === 'Sunday' || item.leaveType === 'Holiday' || item.leaveType === 'None' || item.isNonWorkingDay) {
+            return acc;
+          }
+          return acc + (item.halfDay ? 0.5 : 1);
+        }, 0)
+      : halfDay
+      ? 0.5
+      : calculateLeaveDays(leaveFromDate, toDate);
+
+    if (chargedDays <= 0 && !isCombinedLeave) {
       alert('Invalid date range. To Date must be on or after From Date.');
       return;
     }
 
     // Validation check
-    const validation = canApplyLeave(activeStaffForLeave, leaveType, leaveFromDate, toDate, leaveApplications, halfDay);
+    const validation = canApplyLeave(
+      activeStaffForLeave,
+      leaveType,
+      leaveFromDate,
+      toDate,
+      leaveApplications,
+      halfDay,
+      isCombinedLeave ? dailyBreakdown : undefined
+    );
     if (!validation.canApply && !principalOverrideAllowed) {
       alert(`Cannot apply leave: ${validation.reason}`);
       return;
+    }
+
+    // Determine representative leaveType for combined application
+    let repLeaveType = leaveType;
+    if (isCombinedLeave && dailyBreakdown.length > 0) {
+      const firstCharged = dailyBreakdown.find(b => b.leaveType !== 'Sunday' && b.leaveType !== 'Holiday' && b.leaveType !== 'None');
+      if (firstCharged && firstCharged.leaveType !== 'Sunday' && firstCharged.leaveType !== 'Holiday' && firstCharged.leaveType !== 'None') {
+        repLeaveType = firstCharged.leaveType as LeaveType;
+      }
     }
 
     const newLeave: LeaveApplication = {
@@ -486,13 +605,15 @@ export const TeacherAttendanceManager: React.FC<TeacherAttendanceManagerProps> =
       teacherName: activeStaffForLeave.name,
       designation: activeStaffForLeave.designation,
       employmentType: activeStaffForLeave.employmentType || 'Regular',
-      leaveType,
+      leaveType: repLeaveType,
       fromDate: leaveFromDate,
       toDate,
-      totalDays: days,
-      halfDay,
-      halfDaySession: halfDay ? halfDaySession : undefined,
-      reason: leaveReason.trim() || 'Personal Work',
+      totalDays: chargedDays,
+      halfDay: !isCombinedLeave ? halfDay : undefined,
+      halfDaySession: !isCombinedLeave && halfDay ? halfDaySession : undefined,
+      isCombinedLeave,
+      dailyLeaveBreakdown: isCombinedLeave ? dailyBreakdown : undefined,
+      reason: leaveReason.trim() || (isCombinedLeave ? 'Combined Continuous Leave' : 'Personal Work'),
       stationLeavingPermission: stationLeaving,
       stationAddress: stationLeaving ? stationAddress : undefined,
       status: 'Sanctioned',
@@ -512,32 +633,52 @@ export const TeacherAttendanceManager: React.FC<TeacherAttendanceManagerProps> =
     setStaffList(updatedStaffList);
     setLeaveApplications(updatedLeaves);
 
-    // Mark daily attendance for the selected date as Leave
-    const attRecId = `att-staff-${activeStaffForLeave.employeeCode}-${selectedDate}`;
-    const newAttRecord: TeacherAttendanceRecord = {
-      id: attRecId,
-      employeeCode: activeStaffForLeave.employeeCode,
-      teacherName: activeStaffForLeave.name,
-      designation: activeStaffForLeave.designation,
-      employmentType: activeStaffForLeave.employmentType || 'Regular',
-      date: selectedDate,
-      status: 'Leave',
-      leaveType,
-      leaveApplicationId: newLeave.id,
-      halfDay,
-      halfDaySession: halfDay ? halfDaySession : undefined,
-      remarks: leaveReason || `Sanctioned ${leaveType}${halfDay ? ` (${halfDaySession})` : ''}`,
-      markedBy: activeUser?.name || 'Admin',
-      markedAt: new Date().toISOString(),
-      verifiedByPrincipal: true
-    };
+    // Mark daily attendance for the selected date matching today's specific status
+    let todayLeaveType = repLeaveType;
+    let isTodayAbsent = true;
+    let todayHalfDay = halfDay;
+    let todayHalfDaySession = halfDaySession;
 
-    const updatedAttList = [
-      ...attendanceRecords.filter(r => r.id !== attRecId && !(r.employeeCode === activeStaffForLeave.employeeCode && r.date === selectedDate)),
-      newAttRecord
-    ];
+    if (isCombinedLeave && dailyBreakdown.length > 0) {
+      const todayEntry = dailyBreakdown.find(b => b.date === selectedDate);
+      if (todayEntry) {
+        if (todayEntry.leaveType === 'Sunday' || todayEntry.leaveType === 'Holiday' || todayEntry.leaveType === 'None' || todayEntry.isNonWorkingDay) {
+          isTodayAbsent = false;
+        } else {
+          todayLeaveType = todayEntry.leaveType as LeaveType;
+          todayHalfDay = Boolean(todayEntry.halfDay);
+          todayHalfDaySession = todayEntry.halfDaySession || 'Second Half';
+        }
+      }
+    }
 
-    setAttendanceRecords(updatedAttList);
+    let updatedAttList = attendanceRecords;
+    if (isTodayAbsent) {
+      const attRecId = `att-staff-${activeStaffForLeave.employeeCode}-${selectedDate}`;
+      const newAttRecord: TeacherAttendanceRecord = {
+        id: attRecId,
+        employeeCode: activeStaffForLeave.employeeCode,
+        teacherName: activeStaffForLeave.name,
+        designation: activeStaffForLeave.designation,
+        employmentType: activeStaffForLeave.employmentType || 'Regular',
+        date: selectedDate,
+        status: 'Leave',
+        leaveType: todayLeaveType,
+        leaveApplicationId: newLeave.id,
+        halfDay: todayHalfDay,
+        halfDaySession: todayHalfDay ? todayHalfDaySession : undefined,
+        remarks: leaveReason || `Sanctioned ${todayLeaveType}${todayHalfDay ? ` (${todayHalfDaySession})` : ''}`,
+        markedBy: activeUser?.name || 'Admin',
+        markedAt: new Date().toISOString(),
+        verifiedByPrincipal: true
+      };
+
+      updatedAttList = [
+        ...attendanceRecords.filter(r => r.id !== attRecId && !(r.employeeCode === activeStaffForLeave.employeeCode && r.date === selectedDate)),
+        newAttRecord
+      ];
+      setAttendanceRecords(updatedAttList);
+    }
 
     await Promise.all([
       db.set('setup:staff_details', updatedStaffList),
@@ -547,7 +688,7 @@ export const TeacherAttendanceManager: React.FC<TeacherAttendanceManagerProps> =
 
     window.dispatchEvent(new CustomEvent('kvs-attendance-updated'));
     setIsLeaveModalOpen(false);
-    showFeedback(`Leave (${leaveType} - ${days} day(s)) sanctioned for ${activeStaffForLeave.name}`);
+    showFeedback(`Leave successfully sanctioned for ${activeStaffForLeave.name} (${chargedDays} charged days)`);
     if (onSaved) onSaved();
   };
 
@@ -1023,8 +1164,16 @@ export const TeacherAttendanceManager: React.FC<TeacherAttendanceManagerProps> =
 
   const requestedLeaveDays = useMemo(() => {
     if (halfDay) return 0.5;
+    if (isCombinedLeave && dailyBreakdown.length > 0) {
+      return dailyBreakdown.reduce((acc, item) => {
+        if (item.leaveType === 'Sunday' || item.leaveType === 'Holiday' || item.leaveType === 'None' || item.isNonWorkingDay) {
+          return acc;
+        }
+        return acc + (item.halfDay ? 0.5 : 1);
+      }, 0);
+    }
     return calculateLeaveDays(leaveFromDate, leaveToDate);
-  }, [leaveFromDate, leaveToDate, halfDay]);
+  }, [leaveFromDate, leaveToDate, halfDay, isCombinedLeave, dailyBreakdown]);
 
   // Monthly Leave Statement Calculations
   const monthlyStatementData = useMemo(() => {
@@ -1058,14 +1207,29 @@ export const TeacherAttendanceManager: React.FC<TeacherAttendanceManagerProps> =
       let absentLop = 0;
 
       for (const l of staffMonthLeaves) {
-        const days = l.totalDays || calculateLeaveDays(l.fromDate, l.toDate);
-        if (l.leaveType === 'CL') cl += days;
-        else if (l.leaveType === 'EL') el += days;
-        else if (l.leaveType === 'HPL') hpl += days;
-        else if (l.leaveType === 'Comm') comm += days;
-        else if (l.leaveType === 'EOL-MG' || l.leaveType === 'EOL-PA') eol += days;
-        else if (l.leaveType === 'OD') od += days;
-        else if (l.leaveType === 'Absent') absentLop += days;
+        if (l.isCombinedLeave && l.dailyLeaveBreakdown && l.dailyLeaveBreakdown.length > 0) {
+          for (const b of l.dailyLeaveBreakdown) {
+            if (!b.date.startsWith(monthStr)) continue;
+            if (b.leaveType === 'Sunday' || b.leaveType === 'Holiday' || b.leaveType === 'None' || b.isNonWorkingDay) continue;
+            const bDays = b.halfDay ? 0.5 : 1;
+            if (b.leaveType === 'CL') cl += bDays;
+            else if (b.leaveType === 'EL') el += bDays;
+            else if (b.leaveType === 'HPL') hpl += bDays;
+            else if (b.leaveType === 'Comm') comm += bDays;
+            else if (b.leaveType === 'EOL-MG' || b.leaveType === 'EOL-PA') eol += bDays;
+            else if (b.leaveType === 'OD') od += bDays;
+            else if (b.leaveType === 'Absent') absentLop += bDays;
+          }
+        } else {
+          const days = l.totalDays || calculateLeaveDays(l.fromDate, l.toDate);
+          if (l.leaveType === 'CL') cl += days;
+          else if (l.leaveType === 'EL') el += days;
+          else if (l.leaveType === 'HPL') hpl += days;
+          else if (l.leaveType === 'Comm') comm += days;
+          else if (l.leaveType === 'EOL-MG' || l.leaveType === 'EOL-PA') eol += days;
+          else if (l.leaveType === 'OD') od += days;
+          else if (l.leaveType === 'Absent') absentLop += days;
+        }
       }
 
       // Also check raw attendance records for unexcused Absent marks
@@ -2403,11 +2567,154 @@ export const TeacherAttendanceManager: React.FC<TeacherAttendanceManagerProps> =
                 )}
               </div>
 
-              <div className="p-3 rounded-xl bg-slate-950 border border-slate-800 flex items-center justify-between text-xs font-mono">
-                <span className="text-slate-400 font-sans">Total Requested Duration:</span>
-                <strong className="text-purple-300">
-                  {requestedLeaveDays} day(s) {halfDay && `(${halfDaySession})`}
-                </strong>
+              {/* Multi-type / Combined Continuous Leave Section */}
+              {!halfDay && leaveFromDate !== leaveToDate && activeStaffForLeave.employmentType !== 'Contractual' && (
+                <div className="p-3.5 rounded-2xl bg-slate-950 border border-slate-800 space-y-3">
+                  <div className="flex items-center justify-between">
+                    <label className="flex items-center gap-2 text-xs font-bold text-amber-300 cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={isCombinedLeave}
+                        onChange={e => setIsCombinedLeave(e.target.checked)}
+                        className="rounded accent-amber-500 cursor-pointer w-4 h-4"
+                      />
+                      <span>Combined / Multi-Type Continuous Leave (e.g. SpCL + CL + Holidays)</span>
+                    </label>
+                    <span className="text-[10px] px-2 py-0.5 rounded bg-amber-500/20 text-amber-300 font-mono font-bold">
+                      KVS Provision
+                    </span>
+                  </div>
+
+                  {isCombinedLeave && (
+                    <div className="space-y-3 pt-2 border-t border-slate-800/80">
+                      <p className="text-[11px] text-slate-400 m-0">
+                        Specify the leave type for each day. Sundays and calendar holidays are auto-detected as non-debit days.
+                      </p>
+
+                      <div className="max-h-56 overflow-y-auto space-y-2 pr-1 custom-scrollbar">
+                        {dailyBreakdown.map((item, idx) => {
+                          const isSundayOrHol = item.isNonWorkingDay || item.leaveType === 'Sunday' || item.leaveType === 'Holiday';
+                          return (
+                            <div
+                              key={item.date}
+                              className={`p-2.5 rounded-xl border flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2 text-xs transition-all ${
+                                isSundayOrHol
+                                  ? 'bg-slate-900/50 border-slate-800/60 opacity-80'
+                                  : 'bg-slate-900 border-purple-500/30'
+                              }`}
+                            >
+                              <div className="min-w-[130px]">
+                                <span className="font-mono font-bold text-white block">{item.date}</span>
+                                <span className="text-[10px] text-slate-400">{item.dayName}</span>
+                              </div>
+
+                              <div className="flex-1 w-full sm:w-auto flex items-center gap-2 flex-wrap">
+                                <select
+                                  value={item.leaveType}
+                                  onChange={e => {
+                                    const val = e.target.value as any;
+                                    const isNon = val === 'Sunday' || val === 'Holiday' || val === 'None';
+                                    const updated = [...dailyBreakdown];
+                                    updated[idx] = {
+                                      ...item,
+                                      leaveType: val,
+                                      isNonWorkingDay: isNon,
+                                      reason: isNon ? (val === 'Sunday' ? 'Sunday (Weekly Off)' : 'Calendar Holiday') : item.reason
+                                    };
+                                    setDailyBreakdown(updated);
+                                  }}
+                                  className="px-2 py-1 text-xs bg-slate-950 border border-slate-700 rounded-lg text-white font-bold focus:outline-none focus:border-amber-400"
+                                >
+                                  <option value="SpCL">Special Casual Leave (SpCL)</option>
+                                  <option value="CL">Casual Leave (CL)</option>
+                                  <option value="EL">Earned Leave (EL)</option>
+                                  <option value="HPL">Half Pay Leave (HPL)</option>
+                                  <option value="Comm">Commuted Leave (Comm)</option>
+                                  <option value="EOL-MG">Extra Ordinary Leave (Medical)</option>
+                                  <option value="EOL-PA">Extra Ordinary Leave (Private)</option>
+                                  <option value="CCL">Child Care Leave (CCL)</option>
+                                  <option value="Holiday">Calendar Holiday (No Debit)</option>
+                                  <option value="Sunday">Sunday (No Debit)</option>
+                                  <option value="None">Present / On-Duty</option>
+                                </select>
+
+                                {!isSundayOrHol && (
+                                  <label className="flex items-center gap-1 text-[11px] text-purple-200 cursor-pointer">
+                                    <input
+                                      type="checkbox"
+                                      checked={Boolean(item.halfDay)}
+                                      onChange={e => {
+                                        const checked = e.target.checked;
+                                        const updated = [...dailyBreakdown];
+                                        updated[idx] = {
+                                          ...item,
+                                          halfDay: checked,
+                                          halfDaySession: checked ? (item.halfDaySession || 'Second Half') : undefined
+                                        };
+                                        setDailyBreakdown(updated);
+                                      }}
+                                      className="rounded accent-purple-500 cursor-pointer"
+                                    />
+                                    <span>Half-Day (0.5)</span>
+                                  </label>
+                                )}
+                              </div>
+
+                              <div className="text-right shrink-0 font-mono text-[11px]">
+                                {isSundayOrHol ? (
+                                  <span className="px-2 py-0.5 rounded bg-slate-800 text-slate-400 font-bold">
+                                    0 Days (Non-debit)
+                                  </span>
+                                ) : (
+                                  <span className="px-2 py-0.5 rounded bg-purple-500/20 text-purple-300 font-bold border border-purple-500/40">
+                                    {item.halfDay ? '0.5 Day' : '1.0 Day'}
+                                  </span>
+                                )}
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
+
+              <div className="p-3 rounded-xl bg-slate-950 border border-slate-800 space-y-2">
+                <div className="flex items-center justify-between text-xs font-mono">
+                  <span className="text-slate-400 font-sans">Total Charged Duration:</span>
+                  <strong className="text-purple-300">
+                    {requestedLeaveDays} day(s) {halfDay && `(${halfDaySession})`}
+                  </strong>
+                </div>
+
+                {isCombinedLeave && dailyBreakdown.length > 0 && (
+                  <div className="pt-2 border-t border-slate-800/80 flex items-center gap-2 flex-wrap text-[10px] font-mono">
+                    <span className="text-slate-400 font-sans">Breakdown:</span>
+                    {Array.from(
+                      dailyBreakdown.reduce((acc, curr) => {
+                        if (curr.leaveType === 'Sunday' || curr.leaveType === 'Holiday' || curr.leaveType === 'None' || curr.isNonWorkingDay) {
+                          acc.set('Non-debit', (acc.get('Non-debit') || 0) + 1);
+                        } else {
+                          const count = curr.halfDay ? 0.5 : 1;
+                          acc.set(curr.leaveType, (acc.get(curr.leaveType) || 0) + count);
+                        }
+                        return acc;
+                      }, new Map<string, number>()).entries()
+                    ).map(([tName, tCount]) => (
+                      <span
+                        key={tName}
+                        className={`px-2 py-0.5 rounded font-bold ${
+                          tName === 'Non-debit'
+                            ? 'bg-slate-800 text-slate-300 border border-slate-700'
+                            : 'bg-purple-950/70 text-purple-300 border border-purple-500/40'
+                        }`}
+                      >
+                        {tName}: {tCount}d
+                      </span>
+                    ))}
+                  </div>
+                )}
               </div>
 
               {/* Validation Feedback & Warnings */}

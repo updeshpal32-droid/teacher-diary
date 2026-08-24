@@ -291,6 +291,31 @@ export const resolveTeacherAttendance = (
     );
 
     if (activeLeave) {
+      if (activeLeave.isCombinedLeave && activeLeave.dailyLeaveBreakdown && activeLeave.dailyLeaveBreakdown.length > 0) {
+        const dayEntry = activeLeave.dailyLeaveBreakdown.find(d => d.date === selectedDate);
+        if (dayEntry) {
+          if (dayEntry.leaveType === 'Sunday' || dayEntry.leaveType === 'Holiday' || dayEntry.leaveType === 'None' || dayEntry.isNonWorkingDay) {
+            return {
+              staff,
+              status: 'Present',
+              isAutoPresent: true,
+              remarks: `${dayEntry.leaveType || 'Holiday'} (Non-debit day in continuous leave)`
+            };
+          }
+          return {
+            staff,
+            status: 'Leave',
+            isAutoPresent: false,
+            leaveType: dayEntry.leaveType as LeaveType,
+            remarks: dayEntry.reason || activeLeave.reason,
+            leaveFrom: activeLeave.fromDate,
+            leaveTo: activeLeave.toDate,
+            halfDay: dayEntry.halfDay,
+            halfDaySession: dayEntry.halfDaySession
+          };
+        }
+      }
+
       return {
         staff,
         status: 'Leave',
@@ -424,6 +449,63 @@ export const checkTeacherAbsenceOnDate = (
   );
 
   if (leave) {
+    if (leave.isCombinedLeave && leave.dailyLeaveBreakdown && leave.dailyLeaveBreakdown.length > 0) {
+      const dayEntry = leave.dailyLeaveBreakdown.find(d => d.date === targetDate);
+      if (dayEntry) {
+        if (dayEntry.leaveType === 'Sunday' || dayEntry.leaveType === 'Holiday' || dayEntry.leaveType === 'None' || dayEntry.isNonWorkingDay) {
+          return {
+            isAbsent: false,
+            status: 'Present',
+            reason: `${dayEntry.leaveType || 'Holiday'} (Non-debit day in continuous leave)`
+          };
+        }
+        const effectiveLeaveType = dayEntry.leaveType as LeaveType;
+        if (dayEntry.halfDay && dayEntry.halfDaySession && pNum !== undefined) {
+          if (dayEntry.halfDaySession === 'First Half') {
+            if (pNum <= 4) {
+              return {
+                isAbsent: true,
+                status: 'Leave',
+                leaveType: effectiveLeaveType,
+                fromDate: targetDate,
+                toDate: targetDate,
+                reason: dayEntry.reason || leave.reason || 'Half-Day Leave (First Half)',
+                halfDay: true,
+                halfDaySession: 'First Half'
+              };
+            } else {
+              return { isAbsent: false, status: 'Present', halfDay: true, halfDaySession: 'First Half' };
+            }
+          } else if (dayEntry.halfDaySession === 'Second Half') {
+            if (pNum >= 5) {
+              return {
+                isAbsent: true,
+                status: 'Leave',
+                leaveType: effectiveLeaveType,
+                fromDate: targetDate,
+                toDate: targetDate,
+                reason: dayEntry.reason || leave.reason || 'Half-Day Leave (Second Half)',
+                halfDay: true,
+                halfDaySession: 'Second Half'
+              };
+            } else {
+              return { isAbsent: false, status: 'Present', halfDay: true, halfDaySession: 'Second Half' };
+            }
+          }
+        }
+        return {
+          isAbsent: true,
+          status: 'Leave',
+          leaveType: effectiveLeaveType,
+          fromDate: targetDate,
+          toDate: targetDate,
+          reason: dayEntry.reason || leave.reason,
+          halfDay: dayEntry.halfDay,
+          halfDaySession: dayEntry.halfDaySession
+        };
+      }
+    }
+
     if (leave.halfDay && leave.halfDaySession && pNum !== undefined) {
       if (leave.halfDaySession === 'First Half') {
         if (pNum <= 4) {

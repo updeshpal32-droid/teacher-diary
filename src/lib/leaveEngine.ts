@@ -93,15 +93,34 @@ export function getLeaveBalance(
   let cclAvailed = 0;
 
   const history = staffLeaves.map(l => {
-    const days = l.totalDays || calculateLeaveDays(l.fromDate, l.toDate);
-    if (l.leaveType === 'CL') clAvailed += days;
-    else if (l.leaveType === 'EL') elAvailed += days;
-    else if (l.leaveType === 'HPL') hplAvailed += days;
-    else if (l.leaveType === 'Comm') {
-      commutedAvailed += days;
-      hplAvailed += days * 2; // Commuted is debited at 2x against HPL
-    } else if (l.leaveType === 'SpCL') specialClAvailed += days;
-    else if (l.leaveType === 'CCL') cclAvailed += days;
+    let days = 0;
+    if (l.isCombinedLeave && l.dailyLeaveBreakdown && l.dailyLeaveBreakdown.length > 0) {
+      for (const item of l.dailyLeaveBreakdown) {
+        if (item.leaveType === 'Sunday' || item.leaveType === 'Holiday' || item.leaveType === 'None' || item.isNonWorkingDay) {
+          continue;
+        }
+        const itemDays = item.halfDay ? 0.5 : 1;
+        days += itemDays;
+        if (item.leaveType === 'CL') clAvailed += itemDays;
+        else if (item.leaveType === 'EL') elAvailed += itemDays;
+        else if (item.leaveType === 'HPL') hplAvailed += itemDays;
+        else if (item.leaveType === 'Comm') {
+          commutedAvailed += itemDays;
+          hplAvailed += itemDays * 2; // Commuted is debited at 2x against HPL
+        } else if (item.leaveType === 'SpCL') specialClAvailed += itemDays;
+        else if (item.leaveType === 'CCL') cclAvailed += itemDays;
+      }
+    } else {
+      days = l.totalDays || calculateLeaveDays(l.fromDate, l.toDate);
+      if (l.leaveType === 'CL') clAvailed += days;
+      else if (l.leaveType === 'EL') elAvailed += days;
+      else if (l.leaveType === 'HPL') hplAvailed += days;
+      else if (l.leaveType === 'Comm') {
+        commutedAvailed += days;
+        hplAvailed += days * 2; // Commuted is debited at 2x against HPL
+      } else if (l.leaveType === 'SpCL') specialClAvailed += days;
+      else if (l.leaveType === 'CCL') cclAvailed += days;
+    }
 
     return {
       leaveId: l.id,
@@ -200,12 +219,22 @@ export function canApplyLeave(
   fromDate: string,
   toDate: string,
   existingSanctionedLeaves: LeaveApplication[] = [],
-  halfDay?: boolean
+  halfDay?: boolean,
+  dailyBreakdown?: import('../types/academic').DailyLeaveBreakdownItem[]
 ): LeaveValidationResult {
   const isContractual = staff.employmentType === 'Contractual';
-  const requestedDays = halfDay ? 0.5 : calculateLeaveDays(fromDate, toDate);
+  
+  let requestedDays = halfDay ? 0.5 : calculateLeaveDays(fromDate, toDate);
+  if (dailyBreakdown && dailyBreakdown.length > 0) {
+    requestedDays = dailyBreakdown.reduce((acc, item) => {
+      if (item.leaveType === 'Sunday' || item.leaveType === 'Holiday' || item.leaveType === 'None' || item.isNonWorkingDay) {
+        return acc;
+      }
+      return acc + (item.halfDay ? 0.5 : 1);
+    }, 0);
+  }
 
-  if (requestedDays <= 0) {
+  if (requestedDays <= 0 && (!dailyBreakdown || dailyBreakdown.length === 0)) {
     return { canApply: false, reason: 'To-Date must be on or after From-Date.' };
   }
 
@@ -222,7 +251,11 @@ export function canApplyLeave(
   });
 
   if (hasOverlap) {
-    return { canApply: false, reason: 'You already have an existing leave applied or sanctioned during these dates.' };
+    return {
+      canApply: false,
+      requiresPrincipalOverride: true,
+      reason: 'You already have an existing leave applied or sanctioned during these dates. Requires Principal Override.'
+    };
   }
 
   // -------------------------------------------------------------
@@ -289,6 +322,38 @@ export function canApplyLeave(
   // REGULAR TEACHERS STATUTORY RULES
   // -------------------------------------------------------------
   const balance = getLeaveBalance(staff, existingSanctionedLeaves, fromDate);
+
+  if (dailyBreakdown && dailyBreakdown.length > 0) {
+    let clReq = 0;
+    let elReq = 0;
+    let hplReq = 0;
+    let cclReq = 0;
+    let commReq = 0;
+
+    for (const item of dailyBreakdown) {
+      if (item.leaveType === 'Sunday' || item.leaveType === 'Holiday' || item.leaveType === 'None' || item.isNonWorkingDay) continue;
+      const count = item.halfDay ? 0.5 : 1;
+      if (item.leaveType === 'CL') clReq += count;
+      else if (item.leaveType === 'EL') elReq += count;
+      else if (item.leaveType === 'HPL') hplReq += count;
+      else if (item.leaveType === 'CCL') cclReq += count;
+      else if (item.leaveType === 'Comm') commReq += count;
+    }
+
+    if (clReq > 0 && balance.clRemaining < clReq) {
+      return { canApply: false, reason: `Insufficient Casual Leave (CL) balance for combined leave. Required: ${clReq}, Available: ${balance.clRemaining}.` };
+    }
+    if (elReq > 0 && balance.elRemaining < elReq) {
+      return { canApply: false, reason: `Insufficient Earned Leave (EL) balance for combined leave. Required: ${elReq}, Available: ${balance.elRemaining}.` };
+    }
+    if (hplReq > 0 && balance.hplRemaining < hplReq) {
+      return { canApply: false, reason: `Insufficient Half Pay Leave (HPL) balance for combined leave. Required: ${hplReq}, Available: ${balance.hplRemaining}.` };
+    }
+    if (commReq > 0 && balance.hplRemaining < commReq * 2) {
+      return { canApply: false, reason: `Insufficient HPL balance for Commuted Leave. Required: ${commReq * 2} HPL, Available: ${balance.hplRemaining} HPL.` };
+    }
+    return { canApply: true };
+  }
 
   if (leaveType === 'CL') {
     if (balance.clRemaining < requestedDays) {

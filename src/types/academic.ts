@@ -1837,6 +1837,16 @@ export interface TeacherAttendanceRecord {
   verifiedAt?: string;
 }
 
+export interface DailyLeaveBreakdownItem {
+  date: string; // YYYY-MM-DD
+  dayName?: string; // e.g. "Monday", "Sunday"
+  leaveType: LeaveType | 'Holiday' | 'Sunday' | 'None';
+  halfDay?: boolean;
+  halfDaySession?: 'First Half' | 'Second Half';
+  isNonWorkingDay?: boolean; // true for Sunday / Calendar Holiday
+  reason?: string;
+}
+
 export interface LeaveApplication {
   id: string; // e.g. "la-1724058000"
   employeeCode: string;
@@ -1849,6 +1859,8 @@ export interface LeaveApplication {
   totalDays: number;
   halfDay?: boolean;
   halfDaySession?: 'First Half' | 'Second Half';
+  isCombinedLeave?: boolean;
+  dailyLeaveBreakdown?: DailyLeaveBreakdownItem[];
   reason: string;
   stationLeavingPermission: boolean;
   stationAddress?: string;

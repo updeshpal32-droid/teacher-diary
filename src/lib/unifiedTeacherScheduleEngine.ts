@@ -1,4 +1,14 @@
-import { TimetableSlot, ProxyDutyAssignment, SubjectResponsibilityAssignment, TeacherAttendanceRecord, LeaveApplication, OnDutyRecord, TeacherTask, HourlyActivity } from '../types/academic';
+import {
+  TimetableSlot,
+  ProxyDutyAssignment,
+  SubjectResponsibilityAssignment,
+  TeacherAttendanceRecord,
+  LeaveApplication,
+  OnDutyRecord,
+  TeacherTask,
+  HourlyActivity,
+  CampusDutyAssignment
+} from '../types/academic';
 import { normalizeFacultyKey, checkTeacherAbsenceOnDate } from './attendanceAbsenceEngine';
 import { getDayOfWeekFromDate } from './activeDateContext';
 
@@ -415,4 +425,218 @@ export function checkTeachingPeriodOverlap(
   }
 
   return { hasOverlap: false };
+}
+
+/**
+ * Converts campus duties (Morning Gate, Recess, Afternoon Gate) into authentic tasks for this teacher.
+ */
+export function convertCampusDutiesToTasks(
+  campusDuties: CampusDutyAssignment[] = [],
+  targetDate: string,
+  staff?: { employeeCode?: string; name?: string } | null,
+  existingTasks: TeacherTask[] = []
+): TeacherTask[] {
+  if (!staff || !targetDate) return [];
+  const canonicalDate = normalizeDateStr(targetDate);
+  const dayName = getDayOfWeekFromDate(canonicalDate);
+  if (!dayName || dayName === 'Sunday') return [];
+
+  const empCode = (staff.employeeCode || '').trim();
+  const staffName = (staff.name || '').trim();
+  const staffKey = normalizeFacultyKey(staffName);
+  const staffNameLower = staffName.toLowerCase();
+
+  const isAssigned = (dutyType: string) => {
+    return campusDuties.some(d => {
+      const isDay = (d.dayOfWeek || '').toLowerCase() === dayName.toLowerCase() || (d.date && normalizeDateStr(d.date) === canonicalDate);
+      const isType = d.dutyType === dutyType;
+      const dEmp = (d.teacherEmployeeCode || '').trim();
+      const dName = (d.teacherName || '').trim();
+      const dKey = normalizeFacultyKey(dName);
+
+      const matchEmp = empCode && dEmp && (empCode.toLowerCase() === dEmp.toLowerCase());
+      const matchName = (staffKey && dKey && staffKey === dKey) || (dName && staffNameLower && dName.toLowerCase().includes(staffNameLower));
+
+      return isDay && isType && (matchEmp || matchName);
+    });
+  };
+
+  const tasks: TeacherTask[] = [];
+  const nowIso = new Date().toISOString();
+
+  // 1. Morning Gate & Assembly Duty (07:15 - 07:50 AM)
+  const isPhysEdOrAssemblyLead = staffNameLower.includes('updesh') || staffNameLower.includes('hemananda') || isAssigned('Morning Gate & Assembly');
+  if (isPhysEdOrAssemblyLead) {
+    const taskId = `task-gate-morning-${canonicalDate}-${empCode || '01'}`;
+    const existing = existingTasks.find(t => t.id === taskId);
+    tasks.push({
+      id: taskId,
+      title: existing?.title || 'Morning School Assembly & Gate / Student Discipline Duty',
+      description: existing?.description || 'Supervise morning arrival gate, student uniform verification, house assembly march past lines, prayer, and National Anthem.',
+      category: 'Assembly & Duty',
+      priority: 'Do First (Urgent & Important)',
+      status: existing?.status || 'Pending',
+      dueDate: canonicalDate,
+      dueTime: '07:15',
+      estimatedMinutes: 35,
+      subtasks: existing?.subtasks || [
+        { id: `st-gate-1-${taskId}`, title: 'Main gate student arrival monitoring & late-comer log', completed: existing?.status === 'Completed' },
+        { id: `st-gate-2-${taskId}`, title: 'Assembly prayer ground microphone check & line order', completed: existing?.status === 'Completed' }
+      ],
+      tags: ['Campus Duty', 'Morning Assembly', 'Discipline'],
+      isTopPriority: true,
+      overloadImpact: false,
+      assignedBy: 'Principal / Senior Teacher',
+      assignedByRole: 'Principal',
+      createdAt: existing?.createdAt || nowIso,
+      updatedAt: existing?.updatedAt || nowIso
+    });
+  }
+
+  // 2. Recess & Playground Duty (10:30 - 11:00 AM)
+  const isRecessAssigned = isAssigned('Recess & Playground') || dayName === 'Monday' || dayName === 'Friday';
+  if (isRecessAssigned) {
+    const taskId = `task-recess-${canonicalDate}-${empCode || '01'}`;
+    const existing = existingTasks.find(t => t.id === taskId);
+    tasks.push({
+      id: taskId,
+      title: existing?.title || 'Recess & Mid-Day Meal Campus Supervision Duty',
+      description: existing?.description || 'Monitor central corridor safety, clean drinking water stations, mid-day meal cleanliness, and playground vigil during break.',
+      category: 'Assembly & Duty',
+      priority: 'Schedule (Important & Not Urgent)',
+      status: existing?.status || 'Pending',
+      dueDate: canonicalDate,
+      dueTime: '10:30',
+      estimatedMinutes: 30,
+      subtasks: existing?.subtasks || [
+        { id: `st-rec-1-${taskId}`, title: 'Corridor & staircase student safety supervision', completed: existing?.status === 'Completed' },
+        { id: `st-rec-2-${taskId}`, title: 'Playground & water cooler hygiene monitoring', completed: existing?.status === 'Completed' }
+      ],
+      tags: ['Campus Duty', 'Recess Duty', 'Student Safety'],
+      isTopPriority: false,
+      overloadImpact: false,
+      assignedBy: 'Principal / Discipline Committee',
+      assignedByRole: 'Incharge',
+      createdAt: existing?.createdAt || nowIso,
+      updatedAt: existing?.updatedAt || nowIso
+    });
+  }
+
+  // 3. Afternoon Gate & Dispersal Duty (14:10 - 14:40)
+  if (isAssigned('Afternoon Gate & Dispersal')) {
+    const taskId = `task-gate-afternoon-${canonicalDate}-${empCode || '01'}`;
+    const existing = existingTasks.find(t => t.id === taskId);
+    tasks.push({
+      id: taskId,
+      title: existing?.title || 'Afternoon Gate Dispersal & Student Bus Safety Supervision',
+      description: existing?.description || 'Supervise primary and secondary student dismissal, school bus boarding queues, and pedestrian safety at school gate.',
+      category: 'Assembly & Duty',
+      priority: 'Do First (Urgent & Important)',
+      status: existing?.status || 'Pending',
+      dueDate: canonicalDate,
+      dueTime: '14:10',
+      estimatedMinutes: 30,
+      subtasks: existing?.subtasks || [
+        { id: `st-aft-1-${taskId}`, title: 'Dismissal order check & primary queue supervision', completed: existing?.status === 'Completed' },
+        { id: `st-aft-2-${taskId}`, title: 'Bus departure & main gate exit safety verification', completed: existing?.status === 'Completed' }
+      ],
+      tags: ['Campus Duty', 'Afternoon Dispersal', 'Bus Safety'],
+      isTopPriority: true,
+      overloadImpact: false,
+      assignedBy: 'Principal / Safety Committee',
+      assignedByRole: 'Principal',
+      createdAt: existing?.createdAt || nowIso,
+      updatedAt: existing?.updatedAt || nowIso
+    });
+  }
+
+  return tasks;
+}
+
+/**
+ * Strictly filters non-teaching tasks to only include those belonging to the logged-in teacher.
+ * Drops:
+ * - Any foreign PROXY DUTY tasks (since all proxies are generated canonically by unified schedule engine)
+ * - Any residual 08:00 generic placeholder proxy tasks
+ * - Any auto-generated teaching or duty tasks from other dates
+ * - Any seed tasks (DEFAULT_TASKS) not assigned to this teacher
+ */
+export function filterAuthenticTeacherTasks({
+  tasks,
+  staff,
+  activeDate
+}: {
+  tasks: TeacherTask[];
+  staff?: { employeeCode?: string; name?: string; primarySubject?: string; assignedSubjects?: string[] } | null;
+  activeDate: string;
+}): TeacherTask[] {
+  if (!tasks || !Array.isArray(tasks)) return [];
+
+  const empCode = (staff?.employeeCode || '').trim();
+  const staffName = (staff?.name || '').trim();
+  const staffKey = normalizeFacultyKey(staffName);
+  const isUpdesh = empCode === '108894' || staffKey.includes('updesh');
+
+  return tasks.filter(task => {
+    // 1. Drop any legacy/residual proxy tasks (all proxies are generated canonically by unified schedule engine)
+    if (
+      task.id.startsWith('task-proxy-') ||
+      task.id.startsWith('proxy-duty-') ||
+      task.category === 'Arrangement / Proxy Duty' ||
+      task.tags?.includes('Proxy Duty') ||
+      task.tags?.includes('Timetable Arrangement') ||
+      task.title.toLowerCase().includes('proxy duty') ||
+      task.title.toLowerCase().startsWith('proxy:')
+    ) {
+      return false;
+    }
+
+    // 2. Drop any legacy/residual auto-generated teaching or duty tasks from other dates
+    if (
+      task.id.startsWith('task-teaching-') ||
+      task.id.startsWith('tt-period-') ||
+      task.id.startsWith('task-gate-') ||
+      task.id.startsWith('task-recess-')
+    ) {
+      return false;
+    }
+
+    // 3. Drop seed DEFAULT_TASKS if logged in as another teacher (unless it's Updesh's account)
+    if (!isUpdesh) {
+      if (
+        task.id === 'tsk-201' || // GeM Portal Science Lab
+        task.id === 'tsk-202' || // Grade PT-1 Mathematics
+        task.id === 'tsk-204' || // National Sports Meet
+        task.id === 'tsk-205'    // Independence Day Parade
+      ) {
+        return false;
+      }
+    }
+
+    // 4. Verify ownership / assignment of custom tasks
+    const assignedToStr = (task.assignedTo || '').trim();
+    if (assignedToStr) {
+      const assignedLower = assignedToStr.toLowerCase();
+      if (assignedLower === 'self' || assignedLower.startsWith('self')) {
+        return true;
+      }
+
+      const assignedKey = normalizeFacultyKey(assignedToStr);
+      if (staffKey && (assignedKey === staffKey || assignedKey.includes(staffKey) || staffKey.includes(assignedKey))) {
+        return true;
+      }
+      if (empCode && assignedToStr.includes(empCode)) {
+        return true;
+      }
+
+      // If assigned explicitly to another known teacher name, drop it
+      const foreignNames = ['hemananda', 'barik', 'manju', 'xess', 'karishma', 'kerketta', 'santosh', 'naik', 'priyabrata', 'padhan', 'sanjukta', 'kujur', 'sipika', 'patel', 'jyoti', 'dhuma', 'samya', 'raha', 'santwana', 'dash', 'gayatri', 'omprakash', 'sharma'];
+      const matchesOther = foreignNames.some(fn => assignedLower.includes(fn) && !staffName.toLowerCase().includes(fn));
+      if (matchesOther) {
+        return false;
+      }
+    }
+
+    return true;
+  });
 }

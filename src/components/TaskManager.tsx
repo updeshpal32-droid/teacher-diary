@@ -25,7 +25,8 @@ import {
   LeaveApplication,
   OnDutyRecord,
   ProxyDutyAssignment,
-  SubjectResponsibilityAssignment
+  SubjectResponsibilityAssignment,
+  CampusDutyAssignment
 } from '../types/academic';
 import { UserAccount } from '../types/auth';
 import { isTeacherAvailableForDeadline, checkTeacherAbsenceOnDate } from '../lib/attendanceAbsenceEngine';
@@ -35,6 +36,8 @@ import { useActiveWorkingDate } from '../lib/activeDateContext';
 import {
   getUnifiedTeachingPeriodsForTeacher,
   convertTeachingPeriodsToTasks,
+  convertCampusDutiesToTasks,
+  filterAuthenticTeacherTasks,
   checkTeachingPeriodOverlap,
   UnifiedTeachingPeriod
 } from '../lib/unifiedTeacherScheduleEngine';
@@ -711,7 +714,8 @@ export const TaskManager: React.FC<TaskManagerProps> = ({ devMode, currentUser, 
         subjectResponsibilities,
         attendanceRecords,
         leaveApplications,
-        onDutyRecords
+        onDutyRecords,
+        campusDuties
       ] = await Promise.all([
         db.get<TeacherTask[]>(scopedTaskKey),
         db.get<TeacherTask[]>('setup:tasks'),
@@ -722,7 +726,8 @@ export const TaskManager: React.FC<TaskManagerProps> = ({ devMode, currentUser, 
         db.get<SubjectResponsibilityAssignment[]>('setup:subject_responsibilities'),
         db.get<TeacherAttendanceRecord[]>('setup:teacher_attendance'),
         db.get<LeaveApplication[]>('setup:leave_applications'),
-        db.get<OnDutyRecord[]>('setup:on_duty_records')
+        db.get<OnDutyRecord[]>('setup:on_duty_records'),
+        db.get<CampusDutyAssignment[]>('setup:campus_duty_assignments')
       ]);
 
       let baseTasks: TeacherTask[] = [];
@@ -754,13 +759,22 @@ export const TaskManager: React.FC<TaskManagerProps> = ({ devMode, currentUser, 
 
       setUnifiedTeachingPeriods(periods);
 
-      // Generate canonical tasks for today's periods
+      // 1. Generate canonical tasks for today's periods (regular, support, confirmed proxy)
       const generatedTeachingTasks = convertTeachingPeriodsToTasks(periods, activeWorkingDate, baseTasks);
 
-      // Merge non-teaching tasks + generated teaching tasks
+      // 2. Generate canonical campus duties (morning gate, recess, afternoon gate)
+      const campusDutyTasks = convertCampusDutiesToTasks(campusDuties || [], activeWorkingDate, staffObj, baseTasks);
+
+      // 3. Filter authentic non-teaching tasks (created by or explicitly assigned to this teacher)
       const teachingTaskIds = new Set(generatedTeachingTasks.map(t => t.id));
-      const nonTeachingTasks = baseTasks.filter(t => !teachingTaskIds.has(t.id) && !t.id.startsWith('tt-period-') && !t.id.startsWith('proxy-duty-') && !t.id.startsWith('task-teaching-'));
-      const mergedAllTasks = [...generatedTeachingTasks, ...nonTeachingTasks];
+      const campusDutyIds = new Set(campusDutyTasks.map(t => t.id));
+      const authenticNonTeachingTasks = filterAuthenticTeacherTasks({
+        tasks: baseTasks,
+        staff: staffObj,
+        activeDate: activeWorkingDate
+      }).filter(t => !teachingTaskIds.has(t.id) && !campusDutyIds.has(t.id));
+
+      const mergedAllTasks = [...generatedTeachingTasks, ...campusDutyTasks, ...authenticNonTeachingTasks];
 
       setTasks(mergedAllTasks);
       await db.set(scopedTaskKey, mergedAllTasks);

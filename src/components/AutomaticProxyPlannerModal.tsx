@@ -947,8 +947,7 @@ export const AutomaticProxyPlannerModal: React.FC<AutomaticProxyPlannerModalProp
       });
 
       const writePromises: Promise<any>[] = [
-        db.set('setup:proxy_duty_assignments', updatedProxies),
-        db.set('setup:tasks', updatedTasks)
+        db.set('setup:proxy_duty_assignments', updatedProxies)
       ];
 
       for (const [scopedKey, taskList] of scopedTasksMap.entries()) {

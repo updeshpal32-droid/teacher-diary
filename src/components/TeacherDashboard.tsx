@@ -21,7 +21,8 @@ import {
   PortfolioAssignment,
   AcademicResponsibility,
   SubjectResponsibilityAssignment,
-  OnDutyRecord
+  OnDutyRecord,
+  CampusDutyAssignment
 } from '../types/academic';
 import {
   db,
@@ -61,6 +62,8 @@ import { AutomaticProxyPlannerModal } from './AutomaticProxyPlannerModal';
 import {
   getUnifiedTeachingPeriodsForTeacher,
   convertTeachingPeriodsToTasks,
+  convertCampusDutiesToTasks,
+  filterAuthenticTeacherTasks,
   checkTeachingPeriodOverlap,
   UnifiedTeachingPeriod
 } from '../lib/unifiedTeacherScheduleEngine';
@@ -575,6 +578,7 @@ export const TeacherDashboard: React.FC<TeacherDashboardProps> = ({
   const [leaveApplications, setLeaveApplications] = useState<LeaveApplication[]>(DEFAULT_LEAVE_APPLICATIONS);
   const [proxyAssignments, setProxyAssignments] = useState<ProxyDutyAssignment[]>(DEFAULT_PROXY_DUTIES);
   const [onDutyRecords, setOnDutyRecords] = useState<OnDutyRecord[]>([]);
+  const [campusDuties, setCampusDuties] = useState<CampusDutyAssignment[]>([]);
   const [newTaskPriority, setNewTaskPriority] = useState<string>('Do First (Urgent & Important)');
   const [newTaskAssignedBy, setNewTaskAssignedBy] = useState<'Self' | 'Principal' | 'Incharge'>('Self');
   const [newTaskDueTime, setNewTaskDueTime] = useState('15:00');
@@ -665,7 +669,8 @@ export const TeacherDashboard: React.FC<TeacherDashboardProps> = ({
         savedTemplates,
         savedAssignments,
         savedSubAssignments,
-        savedOD
+        savedOD,
+        savedCampusDuties
       ] = await Promise.all([
         db.get<SchoolDetails>('setup:school'),
         db.get<TeacherProfile>(scopedKey),
@@ -688,7 +693,8 @@ export const TeacherDashboard: React.FC<TeacherDashboardProps> = ({
         db.get<PortfolioTemplate[]>('setup:portfolio_templates'),
         db.get<PortfolioAssignment[]>('setup:portfolio_assignments'),
         getSubjectResponsibilities(),
-        db.get<OnDutyRecord[]>('setup:on_duty_records')
+        db.get<OnDutyRecord[]>('setup:on_duty_records'),
+        db.get<CampusDutyAssignment[]>('setup:campus_duty_assignments')
       ]);
       setProfileRequests(savedProfileReqs || []);
       if (savedStaff && savedStaff.length > 0) setStaffList(savedStaff);
@@ -698,6 +704,7 @@ export const TeacherDashboard: React.FC<TeacherDashboardProps> = ({
       if (savedLeaves && savedLeaves.length > 0) setLeaveApplications(savedLeaves);
       if (savedProxies !== null && Array.isArray(savedProxies)) setProxyAssignments(savedProxies);
       if (savedOD && savedOD.length > 0) setOnDutyRecords(savedOD);
+      if (savedCampusDuties && savedCampusDuties.length > 0) setCampusDuties(savedCampusDuties);
 
       if (s) setSchool(s);
 
@@ -866,15 +873,23 @@ export const TeacherDashboard: React.FC<TeacherDashboardProps> = ({
         const detect = detectCurrentActivePeriod(pt);
         setActivePeriodInfo(detect);
       }
+      let rawLoadedTasks: TeacherTask[] = [];
       if (savedScopedTasks && Array.isArray(savedScopedTasks) && savedScopedTasks.length > 0) {
-        setTasks(savedScopedTasks);
+        rawLoadedTasks = savedScopedTasks;
       } else if (u?.employeeCode === '108894' && globalTasks && globalTasks.length > 0) {
-        setTasks(globalTasks);
+        rawLoadedTasks = globalTasks;
       } else if (savedScopedTasks && Array.isArray(savedScopedTasks)) {
-        setTasks(savedScopedTasks);
+        rawLoadedTasks = savedScopedTasks;
       } else {
-        setTasks([]);
+        rawLoadedTasks = [];
       }
+
+      const authenticLoadedTasks = filterAuthenticTeacherTasks({
+        tasks: rawLoadedTasks,
+        staff: effectiveTeacher,
+        activeDate: activeWorkingDate
+      });
+      setTasks(authenticLoadedTasks);
       let effectiveStaff = (savedStaff && savedStaff.length > 0) ? [...savedStaff] : [...DEFAULT_STAFF_DETAILS];
       const existingStaffKeys = new Set(effectiveStaff.map(s => normalizeFacultyKey(s.name)));
       DEFAULT_STAFF_DETAILS.forEach(defStaff => {
@@ -1179,17 +1194,35 @@ export const TeacherDashboard: React.FC<TeacherDashboardProps> = ({
   const approvedInspections = inspections.filter(i => i.status === 'Approved' || i.status === 'Inspected & Stamped');
   const pendingInspectionsCount = inspections.filter(i => i.status === 'Pending').length;
 
-  // Unified Teaching Tasks for Action Center
+  // 1. Unified Teaching Tasks for Action Center (Regular, Support, and Confirmed Proxy for THIS teacher with real start times)
   const unifiedTeachingTasks = useMemo(() => {
     return convertTeachingPeriodsToTasks(unifiedTeachingPeriods, activeWorkingDate, tasks);
   }, [unifiedTeachingPeriods, activeWorkingDate, tasks]);
 
-  // Merged Tasks: Priority Teaching Tasks on Top!
-  const allDashboardTasks = useMemo(() => {
+  // 2. Campus Duties (Morning Gate, Recess, Afternoon Gate for THIS teacher on activeWorkingDate)
+  const campusDutyTasks = useMemo(() => {
+    return convertCampusDutiesToTasks(campusDuties, activeWorkingDate, currentUser || (teacher.employeeCode ? teacher : null), tasks);
+  }, [campusDuties, activeWorkingDate, currentUser, teacher, tasks]);
+
+  // 3. Authentic Non-Teaching Tasks (Created by teacher or explicitly assigned to THIS teacher)
+  const authenticNonTeachingTasks = useMemo(() => {
     const teachingIds = new Set(unifiedTeachingTasks.map(t => t.id));
-    const nonTeaching = tasks.filter(t => !teachingIds.has(t.id));
-    return [...unifiedTeachingTasks, ...nonTeaching];
-  }, [unifiedTeachingTasks, tasks]);
+    const campusDutyIds = new Set(campusDutyTasks.map(t => t.id));
+
+    const staffObj = currentUser || (teacher.employeeCode ? teacher : null);
+    const filtered = filterAuthenticTeacherTasks({
+      tasks,
+      staff: staffObj,
+      activeDate: activeWorkingDate
+    });
+
+    return filtered.filter(t => !teachingIds.has(t.id) && !campusDutyIds.has(t.id));
+  }, [tasks, unifiedTeachingTasks, campusDutyTasks, currentUser, teacher, activeWorkingDate]);
+
+  // Merged Tasks: Teaching Periods first, Campus Duties second, Other Authentic Tasks third!
+  const allDashboardTasks = useMemo(() => {
+    return [...unifiedTeachingTasks, ...campusDutyTasks, ...authenticNonTeachingTasks];
+  }, [unifiedTeachingTasks, campusDutyTasks, authenticNonTeachingTasks]);
 
   // Filter Tasks by Tab
   const filteredTasks = useMemo(() => {

@@ -206,12 +206,12 @@ export const TaskManager: React.FC<TaskManagerProps> = ({ devMode, currentUser, 
   // Dynamic Unified Teacher Schedule & Canonical Tasks Integration
   const effectiveTeacher = useMemo(() => {
     if (activeInspectedTeacher) return activeInspectedTeacher;
-    if (currentUser) {
-      const match = staffList.find(s => s.employeeCode === currentUser.employeeCode || normalizeFacultyKey(s.name) === normalizeFacultyKey(currentUser.name));
-      if (match) return match;
-      return currentUser;
-    }
-    return staffList[0] || { employeeCode: '108894', name: 'UPDESH SINGH PAL' };
+    const allStaff = staffList && staffList.length > 0 ? staffList : DEFAULT_STAFF_DETAILS;
+    const codeToMatch = currentUser?.employeeCode || (currentUser?.role === 'admin' ? '108894' : '108894');
+    const nameToMatch = currentUser?.name ? normalizeFacultyKey(currentUser.name) : normalizeFacultyKey('UPDESH SINGH PAL');
+    const match = allStaff.find(s => s.employeeCode === codeToMatch || normalizeFacultyKey(s.name) === nameToMatch);
+    if (match) return match;
+    return currentUser || allStaff[0] || { employeeCode: '108894', name: 'UPDESH SINGH PAL' };
   }, [activeInspectedTeacher, currentUser, staffList]);
 
   const unifiedTeachingPeriods = useMemo((): UnifiedTeachingPeriod[] => {
@@ -250,8 +250,19 @@ export const TaskManager: React.FC<TaskManagerProps> = ({ devMode, currentUser, 
   }, [tasks, unifiedTeachingTasks, campusDutyTasks, effectiveTeacher, activeWorkingDate]);
 
   const allEffectiveTasks = useMemo(() => {
-    return [...unifiedTeachingTasks, ...campusDutyTasks, ...authenticNonTeachingTasks];
-  }, [unifiedTeachingTasks, campusDutyTasks, authenticNonTeachingTasks]);
+    const combined = [...unifiedTeachingTasks, ...campusDutyTasks, ...authenticNonTeachingTasks];
+    const todayTasksList = combined.filter(t => t.dueDate === activeWorkingDate);
+
+    console.log('[TaskManager] activeWorkingDate:', activeWorkingDate);
+    console.log('[TaskManager] unifiedPeriods length:', unifiedTeachingPeriods.length, 'periods:', unifiedTeachingPeriods.map(p => `P${p.periodNumber}: ${p.subjectName} (${p.className})`));
+    console.log('[TaskManager] teachingTasks length:', unifiedTeachingTasks.length, 'tasks:', unifiedTeachingTasks.map(t => ({ title: t.title, dueDate: t.dueDate })));
+    console.log('[TaskManager] campusDutyTasks length:', campusDutyTasks.length, 'tasks:', campusDutyTasks.map(t => ({ title: t.title, dueDate: t.dueDate })));
+    console.log('[TaskManager] allEffectiveTasks length:', combined.length);
+    console.log('[TaskManager] allEffectiveTasks filtered by dueDate === activeWorkingDate (titles):', todayTasksList.map(t => t.title));
+    console.log('[TaskManager] Today count:', todayTasksList.length);
+
+    return combined;
+  }, [unifiedTeachingTasks, campusDutyTasks, authenticNonTeachingTasks, activeWorkingDate, unifiedTeachingPeriods]);
 
   const formEndMinutes = React.useMemo(() => {
     if (!formDueTime) return '12:40';

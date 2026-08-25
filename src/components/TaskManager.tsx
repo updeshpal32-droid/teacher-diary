@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
 import {
   db,
   DEFAULT_TASKS,
@@ -112,7 +112,6 @@ interface TaskManagerProps {
 export const TaskManager: React.FC<TaskManagerProps> = ({ devMode, currentUser, onSyncToWorkload }) => {
   const { activeDate: activeWorkingDate, activeDayName } = useActiveWorkingDate();
   const [tasks, setTasks] = useState<TeacherTask[]>([]);
-  const [unifiedTeachingPeriods, setUnifiedTeachingPeriods] = useState<UnifiedTeachingPeriod[]>([]);
   const [activeView, setActiveView] = useState<'matrix' | 'list' | 'recurring' | 'ai'>('list');
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedCategory, setSelectedCategory] = useState<string>('All');
@@ -189,6 +188,71 @@ export const TaskManager: React.FC<TaskManagerProps> = ({ devMode, currentUser, 
   const [quickEstimatedMinutes, setQuickEstimatedMinutes] = useState(45);
   const [quickAssignedTo, setQuickAssignedTo] = useState('Self');
 
+  // Schedule & Faculty State
+  const [activeInspectedTeacher, setActiveInspectedTeacher] = useState<StaffDetailRecord | null>(null);
+  const [staffList, setStaffList] = useState<StaffDetailRecord[]>([]);
+  const [attendanceRecords, setAttendanceRecords] = useState<TeacherAttendanceRecord[]>([]);
+  const [leaveApplications, setLeaveApplications] = useState<LeaveApplication[]>([]);
+  const [onDutyRecords, setOnDutyRecords] = useState<OnDutyRecord[]>([]);
+  const [periodTimings, setPeriodTimings] = useState<Record<number, { time: string; label: string }>>(DEFAULT_PERIOD_TIMINGS);
+  const [timetable, setTimetable] = useState<TimetableSlot[]>([]);
+  const [proxyAssignments, setProxyAssignments] = useState<ProxyDutyAssignment[]>([]);
+  const [subjectResponsibilities, setSubjectResponsibilities] = useState<SubjectResponsibilityAssignment[]>([]);
+  const [campusDuties, setCampusDuties] = useState<CampusDutyAssignment[]>([]);
+  const [timeGateWarning, setTimeGateWarning] = useState<string | null>(null);
+  const teacherCode = currentUser?.employeeCode;
+  const isAdmin = currentUser?.role === 'admin';
+
+  // Dynamic Unified Teacher Schedule & Canonical Tasks Integration
+  const effectiveTeacher = useMemo(() => {
+    if (activeInspectedTeacher) return activeInspectedTeacher;
+    if (currentUser) {
+      const match = staffList.find(s => s.employeeCode === currentUser.employeeCode || normalizeFacultyKey(s.name) === normalizeFacultyKey(currentUser.name));
+      if (match) return match;
+      return currentUser;
+    }
+    return staffList[0] || { employeeCode: '108894', name: 'UPDESH SINGH PAL' };
+  }, [activeInspectedTeacher, currentUser, staffList]);
+
+  const unifiedTeachingPeriods = useMemo((): UnifiedTeachingPeriod[] => {
+    return getUnifiedTeachingPeriodsForTeacher({
+      staff: effectiveTeacher,
+      targetDate: activeWorkingDate,
+      timetable: (timetable && timetable.length > 0) ? timetable : DEFAULT_TIMETABLE,
+      proxyAssignments: (proxyAssignments && proxyAssignments.length > 0) ? proxyAssignments : DEFAULT_PROXY_DUTIES,
+      subjectResponsibilities: (subjectResponsibilities && subjectResponsibilities.length > 0) ? subjectResponsibilities : DEFAULT_SUBJECT_RESPONSIBILITIES,
+      attendanceRecords,
+      leaveApplications,
+      onDutyRecords,
+      periodTimings
+    });
+  }, [effectiveTeacher, activeWorkingDate, timetable, proxyAssignments, subjectResponsibilities, attendanceRecords, leaveApplications, onDutyRecords, periodTimings]);
+
+  const unifiedTeachingTasks = useMemo(() => {
+    return convertTeachingPeriodsToTasks(unifiedTeachingPeriods, activeWorkingDate, tasks);
+  }, [unifiedTeachingPeriods, activeWorkingDate, tasks]);
+
+  const campusDutyTasks = useMemo(() => {
+    return convertCampusDutiesToTasks(campusDuties || [], activeWorkingDate, effectiveTeacher, tasks);
+  }, [campusDuties, activeWorkingDate, effectiveTeacher, tasks]);
+
+  const authenticNonTeachingTasks = useMemo(() => {
+    const teachingIds = new Set(unifiedTeachingTasks.map(t => t.id));
+    const campusDutyIds = new Set(campusDutyTasks.map(t => t.id));
+
+    const filtered = filterAuthenticTeacherTasks({
+      tasks,
+      staff: effectiveTeacher,
+      activeDate: activeWorkingDate
+    });
+
+    return filtered.filter(t => !teachingIds.has(t.id) && !campusDutyIds.has(t.id));
+  }, [tasks, unifiedTeachingTasks, campusDutyTasks, effectiveTeacher, activeWorkingDate]);
+
+  const allEffectiveTasks = useMemo(() => {
+    return [...unifiedTeachingTasks, ...campusDutyTasks, ...authenticNonTeachingTasks];
+  }, [unifiedTeachingTasks, campusDutyTasks, authenticNonTeachingTasks]);
+
   const formEndMinutes = React.useMemo(() => {
     if (!formDueTime) return '12:40';
     const [h, m] = formDueTime.split(':').map(Number);
@@ -229,16 +293,6 @@ export const TaskManager: React.FC<TaskManagerProps> = ({ devMode, currentUser, 
   const quickDescInputRef = useRef<HTMLTextAreaElement>(null);
   const quickAddContainerRef = useRef<HTMLFormElement>(null);
 
-  const [activeInspectedTeacher, setActiveInspectedTeacher] = useState<StaffDetailRecord | null>(null);
-  const [staffList, setStaffList] = useState<StaffDetailRecord[]>([]);
-  const [attendanceRecords, setAttendanceRecords] = useState<TeacherAttendanceRecord[]>([]);
-  const [leaveApplications, setLeaveApplications] = useState<LeaveApplication[]>([]);
-  const [onDutyRecords, setOnDutyRecords] = useState<OnDutyRecord[]>([]);
-  const [periodTimings, setPeriodTimings] = useState<Record<number, { time: string; label: string }>>(DEFAULT_PERIOD_TIMINGS);
-  const [timeGateWarning, setTimeGateWarning] = useState<string | null>(null);
-  const teacherCode = currentUser?.employeeCode;
-  const isAdmin = currentUser?.role === 'admin';
-
   useEffect(() => {
     const initData = async () => {
       const activeUser = currentUser || (await getCurrentUser());
@@ -251,20 +305,28 @@ export const TaskManager: React.FC<TaskManagerProps> = ({ devMode, currentUser, 
       await loadSmartSettings();
       await loadAvailableTags(code);
 
-      // Load faculty, attendance, and dynamic period timings
+      // Load faculty, attendance, timetable, proxies, and dynamic period timings
       try {
-        const [staffData, attData, leaveData, odData, ptData] = await Promise.all([
+        const [staffData, attData, leaveData, odData, ptData, ttData, proxyData, srData, cdData] = await Promise.all([
           db.get<StaffDetailRecord[]>('setup:staff_details'),
           db.get<TeacherAttendanceRecord[]>('setup:teacher_attendance'),
           db.get<LeaveApplication[]>('setup:leave_applications'),
           db.get<OnDutyRecord[]>('setup:on_duty_records'),
-          db.get<Record<number, { time: string; label: string }>>('setup:period_timings')
+          db.get<Record<number, { time: string; label: string }>>('setup:period_timings'),
+          db.get<TimetableSlot[]>('setup:timetable'),
+          db.get<ProxyDutyAssignment[]>('setup:proxy_duty_assignments'),
+          db.get<SubjectResponsibilityAssignment[]>('setup:subject_responsibilities'),
+          db.get<CampusDutyAssignment[]>('setup:campus_duty_assignments')
         ]);
         if (staffData) setStaffList(staffData);
         if (attData) setAttendanceRecords(attData);
         if (leaveData) setLeaveApplications(leaveData);
         if (odData) setOnDutyRecords(odData);
         if (ptData && Object.keys(ptData).length > 0) setPeriodTimings(ptData);
+        if (ttData && ttData.length > 0) setTimetable(ttData);
+        if (proxyData && proxyData.length > 0) setProxyAssignments(proxyData);
+        if (srData && srData.length > 0) setSubjectResponsibilities(srData);
+        if (cdData && cdData.length > 0) setCampusDuties(cdData);
       } catch (err) {
         console.error('Error loading staff attendance and period timings for tasks:', err);
       }
@@ -776,38 +838,12 @@ export const TaskManager: React.FC<TaskManagerProps> = ({ devMode, currentUser, 
         activeDate: activeWorkingDate
       });
 
-      // Compute Unified Teaching Periods for target date
-      const periods = getUnifiedTeachingPeriodsForTeacher({
-        staff: staffObj,
-        targetDate: activeWorkingDate,
-        timetable: (timetable && timetable.length > 0) ? timetable : DEFAULT_TIMETABLE,
-        proxyAssignments: proxyAssignments || DEFAULT_PROXY_DUTIES,
-        subjectResponsibilities: subjectResponsibilities || DEFAULT_SUBJECT_RESPONSIBILITIES,
-        attendanceRecords: attendanceRecords || [],
-        leaveApplications: leaveApplications || [],
-        onDutyRecords: onDutyRecords || []
-      });
+      if (timetable && timetable.length > 0) setTimetable(timetable);
+      if (proxyAssignments && proxyAssignments.length > 0) setProxyAssignments(proxyAssignments);
+      if (subjectResponsibilities && subjectResponsibilities.length > 0) setSubjectResponsibilities(subjectResponsibilities);
+      if (campusDuties && campusDuties.length > 0) setCampusDuties(campusDuties);
 
-      setUnifiedTeachingPeriods(periods);
-
-      // 1. Generate canonical tasks for today's periods (regular, support, confirmed proxy)
-      const generatedTeachingTasks = convertTeachingPeriodsToTasks(periods, activeWorkingDate, baseTasks);
-
-      // 2. Generate canonical campus duties (morning gate, recess, afternoon gate)
-      const campusDutyTasks = convertCampusDutiesToTasks(campusDuties || [], activeWorkingDate, staffObj, baseTasks);
-
-      // 3. Filter authentic non-teaching tasks (created by or explicitly assigned to this teacher)
-      const teachingTaskIds = new Set(generatedTeachingTasks.map(t => t.id));
-      const campusDutyIds = new Set(campusDutyTasks.map(t => t.id));
-      const authenticNonTeachingTasks = baseTasks.filter(t => !teachingTaskIds.has(t.id) && !campusDutyIds.has(t.id));
-
-      const mergedAllTasks = [...generatedTeachingTasks, ...campusDutyTasks, ...authenticNonTeachingTasks];
-
-      setTasks(mergedAllTasks);
-      await db.set(scopedTaskKey, mergedAllTasks);
-      if (currentEmpCode === '108894') {
-        await db.set('setup:tasks', mergedAllTasks);
-      }
+      setTasks(baseTasks);
 
       // Explicit Console Logs for verification
       const staffObjName = ('name' in staffObj && staffObj.name) ? staffObj.name : 'Unknown';
@@ -815,8 +851,8 @@ export const TaskManager: React.FC<TaskManagerProps> = ({ devMode, currentUser, 
       console.log('[TaskManager:loadTasks] currentUser.employeeCode:', activeUser?.employeeCode);
       console.log('[TaskManager:loadTasks] inspectedTeacher:', inspected ? `${inspected.name} (${inspected.employeeCode})` : null);
       console.log('[TaskManager:loadTasks] final staffObj used:', `${staffObjName} (${staffObjCode})`);
-      console.log('[TaskManager:loadTasks] count of tasks after filter:', mergedAllTasks.length);
-      console.log('[TaskManager:loadTasks] sample task titles:', mergedAllTasks.map(t => t.title));
+      console.log('[TaskManager:loadTasks] count of tasks after filter:', baseTasks.length);
+      console.log('[TaskManager:loadTasks] sample task titles:', baseTasks.map(t => t.title));
     } catch (err) {
       console.error('Error loading tasks with timetable sync:', err);
       setTasks([]);
@@ -1053,11 +1089,12 @@ export const TaskManager: React.FC<TaskManagerProps> = ({ devMode, currentUser, 
   };
 
   const handleToggleTaskStatus = async (id: string) => {
-    const target = tasks.find(t => t.id === id);
-    const nextStatus = target?.status === 'Completed' ? 'Pending' : 'Completed';
+    const target = allEffectiveTasks.find(t => t.id === id);
+    if (!target) return;
+    const nextStatus = target.status === 'Completed' ? 'Pending' : 'Completed';
 
     // Time-gated completion rule on active working date with dynamic period timings
-    if (nextStatus === 'Completed' && target) {
+    if (nextStatus === 'Completed') {
       const eligibility = isTaskCompletionAllowed(target, activeWorkingDate, periodTimings);
       if (!eligibility.allowed) {
         console.warn('[TaskManager:handleToggleTaskStatus] Blocked completion ahead of schedule:', eligibility.reason);
@@ -1069,29 +1106,42 @@ export const TaskManager: React.FC<TaskManagerProps> = ({ devMode, currentUser, 
 
     console.log('[TaskManager:handleToggleTaskStatus]', {
       taskId: id,
-      title: target?.title,
-      dueTime: target?.dueTime,
+      title: target.title,
+      dueTime: target.dueTime,
       now: new Date().toLocaleTimeString(),
       nextStatus,
       toggleAllowed: true
     });
     setTimeGateWarning(null);
-    const updated = tasks.map(t => {
-      if (t.id === id) {
-        return {
-          ...t,
-          status: nextStatus as any,
-          subtasks: t.subtasks.map(st => ({ ...st, completed: nextStatus === 'Completed' })),
-          updatedAt: new Date().toISOString()
-        };
-      }
-      return t;
-    });
+
+    const existingIndex = tasks.findIndex(t => t.id === id);
+    let updated: TeacherTask[];
+    if (existingIndex >= 0) {
+      updated = tasks.map(t => {
+        if (t.id === id) {
+          return {
+            ...t,
+            status: nextStatus as any,
+            subtasks: (t.subtasks || []).map(st => ({ ...st, completed: nextStatus === 'Completed' })),
+            updatedAt: new Date().toISOString()
+          };
+        }
+        return t;
+      });
+    } else {
+      const newTaskEntry: TeacherTask = {
+        ...target,
+        status: nextStatus as any,
+        subtasks: (target.subtasks || []).map(st => ({ ...st, completed: nextStatus === 'Completed' })),
+        updatedAt: new Date().toISOString()
+      };
+      updated = [newTaskEntry, ...tasks];
+    }
     await saveTasks(updated);
   };
 
   const handleToggleSubtask = async (taskId: string, subtaskId: string) => {
-    const target = tasks.find(t => t.id === taskId);
+    const target = allEffectiveTasks.find(t => t.id === taskId);
     if (!target) return;
 
     const nextSubtasks = (target.subtasks || []).map(st =>
@@ -1114,17 +1164,29 @@ export const TaskManager: React.FC<TaskManagerProps> = ({ devMode, currentUser, 
       nextStatus = 'In Progress';
     }
 
-    const updated = tasks.map(t => {
-      if (t.id === taskId) {
-        return {
-          ...t,
-          subtasks: nextSubtasks,
-          status: nextStatus as any,
-          updatedAt: new Date().toISOString()
-        };
-      }
-      return t;
-    });
+    const existingIndex = tasks.findIndex(t => t.id === taskId);
+    let updated: TeacherTask[];
+    if (existingIndex >= 0) {
+      updated = tasks.map(t => {
+        if (t.id === taskId) {
+          return {
+            ...t,
+            subtasks: nextSubtasks,
+            status: nextStatus as any,
+            updatedAt: new Date().toISOString()
+          };
+        }
+        return t;
+      });
+    } else {
+      const newTaskEntry: TeacherTask = {
+        ...target,
+        subtasks: nextSubtasks,
+        status: nextStatus as any,
+        updatedAt: new Date().toISOString()
+      };
+      updated = [newTaskEntry, ...tasks];
+    }
     await saveTasks(updated);
   };
 
@@ -1298,7 +1360,7 @@ export const TaskManager: React.FC<TaskManagerProps> = ({ devMode, currentUser, 
   };
 
   // Filtering with TickTick Smart Lists & Regular Lists
-  const filteredTasks = tasks.filter(t => {
+  const filteredTasks = allEffectiveTasks.filter(t => {
     const matchesQuery =
       t.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
       (t.description && t.description.toLowerCase().includes(searchQuery.toLowerCase())) ||
@@ -1345,11 +1407,11 @@ export const TaskManager: React.FC<TaskManagerProps> = ({ devMode, currentUser, 
   const dontDoTasks = filteredTasks.filter(t => t.priority === "Don't Do / Low Priority");
 
   // Summary Metrics
-  const totalCount = tasks.length;
-  const pendingCount = tasks.filter(t => t.status === 'Pending' || t.status === 'In Progress').length;
-  const completedCount = tasks.filter(t => t.status === 'Completed').length;
-  const doFirstCount = tasks.filter(t => t.priority === 'Do First (Urgent & Important)' && t.status !== 'Completed').length;
-  const overloadCount = tasks.filter(t => t.overloadImpact && t.status !== 'Completed').length;
+  const totalCount = allEffectiveTasks.length;
+  const pendingCount = allEffectiveTasks.filter(t => t.status === 'Pending' || t.status === 'In Progress').length;
+  const completedCount = allEffectiveTasks.filter(t => t.status === 'Completed').length;
+  const doFirstCount = allEffectiveTasks.filter(t => t.priority === 'Do First (Urgent & Important)' && t.status !== 'Completed').length;
+  const overloadCount = allEffectiveTasks.filter(t => t.overloadImpact && t.status !== 'Completed').length;
 
   return (
     <div className="space-y-6">
@@ -1683,7 +1745,7 @@ export const TaskManager: React.FC<TaskManagerProps> = ({ devMode, currentUser, 
                   const tomorrowStr = getOffsetDateStr(todayStr, 1);
                   const next7Str = getOffsetDateStr(todayStr, 7);
 
-                  const count = tasks.filter(t => {
+                  const count = allEffectiveTasks.filter(t => {
                     if (list.id === 'inbox') return !t.listId || t.listId === 'inbox';
                     if (list.id === 'today') return t.dueDate === todayStr;
                     if (list.id === 'tomorrow') return t.dueDate === tomorrowStr;

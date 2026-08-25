@@ -52,7 +52,8 @@ import {
 import {
   isTaskCompletionAllowed,
   formatTime12h,
-  getTaskScheduledEndTime
+  getTaskScheduledEndTime,
+  getTaskTimeRangeDisplay
 } from '../lib/taskTimeGatingEngine';
 import {
   CheckSquare,
@@ -1279,6 +1280,23 @@ export const TaskManager: React.FC<TaskManagerProps> = ({ devMode, currentUser, 
     recognition.start();
   };
 
+  const getOffsetDateStr = (baseDateStr: string, offsetDays: number): string => {
+    try {
+      const [y, m, d] = (baseDateStr || '').split('-').map(Number);
+      if (!y || !m || !d) throw new Error('Invalid date');
+      const date = new Date(y, m - 1, d);
+      date.setDate(date.getDate() + offsetDays);
+      const resY = date.getFullYear();
+      const resM = String(date.getMonth() + 1).padStart(2, '0');
+      const resD = String(date.getDate()).padStart(2, '0');
+      return `${resY}-${resM}-${resD}`;
+    } catch (_) {
+      const d = new Date();
+      d.setDate(d.getDate() + offsetDays);
+      return d.toISOString().split('T')[0];
+    }
+  };
+
   // Filtering with TickTick Smart Lists & Regular Lists
   const filteredTasks = tasks.filter(t => {
     const matchesQuery =
@@ -1295,16 +1313,11 @@ export const TaskManager: React.FC<TaskManagerProps> = ({ devMode, currentUser, 
         ? t.overloadImpact
         : t.status === selectedStatus;
 
-    // List filtering
+    // List filtering anchored to activeWorkingDate
     let matchesList = true;
-    const todayStr = new Date().toISOString().split('T')[0];
-    const tomorrowDate = new Date();
-    tomorrowDate.setDate(tomorrowDate.getDate() + 1);
-    const tomorrowStr = tomorrowDate.toISOString().split('T')[0];
-
-    const next7Date = new Date();
-    next7Date.setDate(next7Date.getDate() + 7);
-    const next7Str = next7Date.toISOString().split('T')[0];
+    const todayStr = activeWorkingDate || new Date().toISOString().split('T')[0];
+    const tomorrowStr = getOffsetDateStr(todayStr, 1);
+    const next7Str = getOffsetDateStr(todayStr, 7);
 
     if (selectedListId === 'inbox') {
       matchesList = !t.listId || t.listId === 'inbox';
@@ -1665,14 +1678,10 @@ export const TaskManager: React.FC<TaskManagerProps> = ({ devMode, currentUser, 
                 {taskLists.filter(l => l.type === 'smart').map(list => {
                   const isSelected = selectedListId === list.id;
                   
-                  // Compute count for this list
-                  const todayStr = new Date().toISOString().split('T')[0];
-                  const tomorrowDate = new Date();
-                  tomorrowDate.setDate(tomorrowDate.getDate() + 1);
-                  const tomorrowStr = tomorrowDate.toISOString().split('T')[0];
-                  const next7Date = new Date();
-                  next7Date.setDate(next7Date.getDate() + 7);
-                  const next7Str = next7Date.toISOString().split('T')[0];
+                  // Compute count for this list anchored to activeWorkingDate
+                  const todayStr = activeWorkingDate || new Date().toISOString().split('T')[0];
+                  const tomorrowStr = getOffsetDateStr(todayStr, 1);
+                  const next7Str = getOffsetDateStr(todayStr, 7);
 
                   const count = tasks.filter(t => {
                     if (list.id === 'inbox') return !t.listId || t.listId === 'inbox';
@@ -3509,6 +3518,7 @@ const MatrixTaskCard: React.FC<{
   const completedSubtasksCount = task.subtasks ? task.subtasks.filter(s => s.completed).length : 0;
   const eligibility = isTaskCompletionAllowed(task, activeWorkingDate || task.dueDate || '', periodTimings);
   const isLocked = eligibility.isLocked && !isDone;
+  const timeRange = getTaskTimeRangeDisplay(task, periodTimings);
 
   return (
     <div
@@ -3556,6 +3566,15 @@ const MatrixTaskCard: React.FC<{
             </div>
 
             <div className="flex flex-wrap items-center gap-2 text-[10px] text-slate-400">
+              {timeRange && (
+                <span
+                  className="px-1.5 py-0.2 rounded bg-indigo-950/80 text-indigo-300 border border-indigo-800 font-mono flex items-center gap-1"
+                  title={`Scheduled Time: ${timeRange.display}`}
+                >
+                  <Clock className="w-2.5 h-2.5 text-indigo-400" />
+                  <span>{timeRange.display}</span>
+                </span>
+              )}
               {isLocked && eligibility.scheduledEndTime12h && (
                 <span
                   className="px-1.5 py-0.2 rounded bg-amber-950/80 text-amber-300 border border-amber-800 font-mono flex items-center gap-1"
@@ -3663,6 +3682,7 @@ const ListTaskCard: React.FC<{
   const isDone = task.status === 'Completed';
   const eligibility = isTaskCompletionAllowed(task, activeWorkingDate || task.dueDate || '', periodTimings);
   const isLocked = eligibility.isLocked && !isDone;
+  const timeRange = getTaskTimeRangeDisplay(task, periodTimings);
 
   return (
     <div
@@ -3709,6 +3729,15 @@ const ListTaskCard: React.FC<{
               >
                 {task.title}
               </h4>
+              {timeRange && (
+                <span
+                  className="px-2 py-0.5 rounded-full bg-indigo-950/80 border border-indigo-800 text-indigo-300 text-[10px] font-mono flex items-center gap-1 font-semibold"
+                  title={`Scheduled Time: ${timeRange.display}`}
+                >
+                  <Clock className="w-3 h-3 text-indigo-400" />
+                  <span>{timeRange.display}</span>
+                </span>
+              )}
               {isLocked && eligibility.scheduledEndTime12h && (
                 <span
                   className="px-2 py-0.5 rounded-full bg-amber-950 border border-amber-800 text-amber-300 text-[10px] font-mono flex items-center gap-1"

@@ -122,13 +122,11 @@ export function getTaskScheduledEndTime(
   // 1. Teaching Period tasks (Period N)
   const periodNumber = extractPeriodNumber(task);
   if (periodNumber !== null) {
-    // Check dynamic active period timings config first
     if (activeTimings && activeTimings[periodNumber]?.time) {
       const parsedEnd = parseEndTimeFromSlotString(activeTimings[periodNumber].time);
       if (parsedEnd) return parsedEnd;
     }
 
-    // Fallback to default KVS period end time
     if (DEFAULT_KVS_PERIOD_END_TIMES[periodNumber]) {
       return DEFAULT_KVS_PERIOD_END_TIMES[periodNumber];
     }
@@ -212,6 +210,190 @@ export function getTaskScheduledEndTime(
         return `${String(endH).padStart(2, '0')}:${String(endM).padStart(2, '0')}`;
       }
       return parsedStart;
+    }
+  }
+
+  return null;
+}
+
+export interface TaskTimeRangeDisplay {
+  startTime: string;
+  endTime: string;
+  startTime12h: string;
+  endTime12h: string;
+  display: string;
+}
+
+/**
+ * Derives the formatted start time and end time range for any task
+ * based on active period timings config or custom task properties.
+ */
+export function getTaskTimeRangeDisplay(
+  task: TeacherTask,
+  periodTimings?: Record<number, { time: string; label: string }> | null
+): TaskTimeRangeDisplay | null {
+  const activeTimings = periodTimings && Object.keys(periodTimings).length > 0 ? periodTimings : DEFAULT_PERIOD_TIMINGS;
+
+  // 1. Teaching Periods
+  const periodNumber = extractPeriodNumber(task);
+  if (periodNumber !== null) {
+    if (activeTimings && activeTimings[periodNumber]?.time) {
+      const slotStr = activeTimings[periodNumber].time;
+      const cleaned = slotStr.replace(/[–—]/g, '-').trim();
+      if (cleaned.includes('-')) {
+        const [startPart, endPart] = cleaned.split('-').map(s => s.trim());
+        const start24 = normalizeTo24HourTime(startPart);
+        const end24 = normalizeTo24HourTime(endPart);
+        if (start24 && end24) {
+          const s12 = formatTime12h(start24);
+          const e12 = formatTime12h(end24);
+          return {
+            startTime: start24,
+            endTime: end24,
+            startTime12h: s12,
+            endTime12h: e12,
+            display: `${s12} – ${e12}`
+          };
+        }
+      }
+    }
+    if (DEFAULT_KVS_PERIOD_END_TIMES[periodNumber]) {
+      const end24 = DEFAULT_KVS_PERIOD_END_TIMES[periodNumber];
+      const e12 = formatTime12h(end24);
+      return {
+        startTime: '',
+        endTime: end24,
+        startTime12h: '',
+        endTime12h: e12,
+        display: `Period ${periodNumber} (Finishes ${e12})`
+      };
+    }
+  }
+
+  // 2. Campus Duties
+  const titleLower = (task.title || '').toLowerCase();
+  const descLower = (task.description || '').toLowerCase();
+
+  // Morning Assembly & Gate (07:15 - Period 1 start)
+  if (
+    task.id.startsWith('task-gate-morning') ||
+    titleLower.includes('morning school assembly') ||
+    titleLower.includes('morning gate')
+  ) {
+    let p1Start = '07:50';
+    if (activeTimings && activeTimings[1]?.time) {
+      const match = activeTimings[1].time.match(/(\d{1,2}):(\d{2})(?:\s*([ap]m))?/i);
+      if (match) {
+        const parsed = normalizeTo24HourTime(match[0]);
+        if (parsed) p1Start = parsed;
+      }
+    }
+    return {
+      startTime: '07:15',
+      endTime: p1Start,
+      startTime12h: '7:15 AM',
+      endTime12h: formatTime12h(p1Start),
+      display: `7:15 AM – ${formatTime12h(p1Start)}`
+    };
+  }
+
+  // Recess (Period 4 end - Period 5 start)
+  if (
+    task.id.startsWith('task-recess') ||
+    titleLower.includes('recess duty') ||
+    descLower.includes('lunch-time') ||
+    descLower.includes('recess supervision')
+  ) {
+    let p4End = '10:30';
+    let p5Start = '11:00';
+    if (activeTimings && activeTimings[4]?.time) {
+      const endParsed = parseEndTimeFromSlotString(activeTimings[4].time);
+      if (endParsed) p4End = endParsed;
+    }
+    if (activeTimings && activeTimings[5]?.time) {
+      const match = activeTimings[5].time.match(/(\d{1,2}):(\d{2})(?:\s*([ap]m))?/i);
+      if (match) {
+        const parsed = normalizeTo24HourTime(match[0]);
+        if (parsed) p5Start = parsed;
+      }
+    }
+    return {
+      startTime: p4End,
+      endTime: p5Start,
+      startTime12h: formatTime12h(p4End),
+      endTime12h: formatTime12h(p5Start),
+      display: `${formatTime12h(p4End)} – ${formatTime12h(p5Start)}`
+    };
+  }
+
+  // Afternoon Gate & Dispersal
+  if (
+    task.id.startsWith('task-gate-afternoon') ||
+    titleLower.includes('afternoon gate') ||
+    titleLower.includes('dispersal & bus stand')
+  ) {
+    let p8End = '13:40';
+    let dispersalEnd = '14:10';
+    if (activeTimings && activeTimings[8]?.time) {
+      const parsed = parseEndTimeFromSlotString(activeTimings[8].time);
+      if (parsed) {
+        p8End = parsed;
+        const [h, m] = p8End.split(':').map(Number);
+        const total = h * 60 + m + 30;
+        dispersalEnd = `${String(Math.floor(total / 60) % 24).padStart(2, '0')}:${String(total % 60).padStart(2, '0')}`;
+      }
+    }
+    return {
+      startTime: p8End,
+      endTime: dispersalEnd,
+      startTime12h: formatTime12h(p8End),
+      endTime12h: formatTime12h(dispersalEnd),
+      display: `${formatTime12h(p8End)} – ${formatTime12h(dispersalEnd)}`
+    };
+  }
+
+  // 3. Custom / Timed Tasks with dueTime
+  if (task.dueTime) {
+    const timeStr = task.dueTime.trim();
+    if (timeStr.includes('-') || timeStr.includes('–') || timeStr.toLowerCase().includes('to')) {
+      const parts = timeStr.replace(/[–—]/g, '-').split(timeStr.includes('-') ? '-' : 'to').map(s => s.trim());
+      if (parts.length >= 2) {
+        const s24 = normalizeTo24HourTime(parts[0]);
+        const e24 = normalizeTo24HourTime(parts[1]);
+        if (s24 && e24) {
+          const s12 = formatTime12h(s24);
+          const e12 = formatTime12h(e24);
+          return {
+            startTime: s24,
+            endTime: e24,
+            startTime12h: s12,
+            endTime12h: e12,
+            display: `${s12} – ${e12}`
+          };
+        }
+      }
+    }
+
+    const parsedStart = normalizeTo24HourTime(timeStr);
+    if (parsedStart) {
+      const [startH, startM] = parsedStart.split(':').map(Number);
+      const duration = task.estimatedMinutes && task.estimatedMinutes > 0 ? task.estimatedMinutes : 0;
+      let end24 = parsedStart;
+      if (duration > 0) {
+        const totalMinutes = startH * 60 + startM + duration;
+        const endH = Math.floor(totalMinutes / 60) % 24;
+        const endM = totalMinutes % 60;
+        end24 = `${String(endH).padStart(2, '0')}:${String(endM).padStart(2, '0')}`;
+      }
+      const s12 = formatTime12h(parsedStart);
+      const e12 = formatTime12h(end24);
+      return {
+        startTime: parsedStart,
+        endTime: end24,
+        startTime12h: s12,
+        endTime12h: e12,
+        display: duration > 0 ? `${s12} – ${e12}` : s12
+      };
     }
   }
 

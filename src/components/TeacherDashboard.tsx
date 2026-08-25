@@ -71,7 +71,8 @@ import {
 import {
   isTaskCompletionAllowed,
   formatTime12h,
-  getTaskScheduledEndTime
+  getTaskScheduledEndTime,
+  getTaskTimeRangeDisplay
 } from '../lib/taskTimeGatingEngine';
 import {
   LayoutDashboard,
@@ -2702,6 +2703,7 @@ export const TeacherDashboard: React.FC<TeacherDashboardProps> = ({
                 const isSuperior = task.assignedByRole === 'Principal' || task.assignedByRole === 'Incharge' || task.assignedByRole === 'Committee';
                 const eligibility = isTaskCompletionAllowed(task, activeWorkingDate, periodTimings);
                 const isLocked = eligibility.isLocked && !isDone;
+                const timeRange = getTaskTimeRangeDisplay(task, periodTimings);
 
                 return (
                   <div
@@ -2748,6 +2750,16 @@ export const TeacherDashboard: React.FC<TeacherDashboardProps> = ({
                             <h5 className={`font-bold text-xs ${isDone ? 'line-through text-slate-500' : 'text-white'}`}>
                               {task.title}
                             </h5>
+
+                            {timeRange && (
+                              <span
+                                className="px-1.5 py-0.2 rounded text-[9px] font-bold bg-indigo-500/10 text-indigo-300 border border-indigo-500/30 flex items-center gap-1 font-mono"
+                                title={`Scheduled Time: ${timeRange.display}`}
+                              >
+                                <Clock className="w-2.5 h-2.5 text-indigo-400" />
+                                <span>{timeRange.display}</span>
+                              </span>
+                            )}
 
                             {isLocked && eligibility.scheduledEndTime12h && (
                               <span

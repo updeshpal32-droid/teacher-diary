@@ -2582,18 +2582,13 @@ export const TeacherDashboard: React.FC<TeacherDashboardProps> = ({
               <div>
                 <div className="flex items-center gap-2">
                   <Star className="w-5 h-5 text-amber-400" />
-                  <h3 className="font-bold text-base text-white">
+                  <h3 className="font-bold text-base text-white m-0">
                     {isAdmin ? 'Institutional Directives & Priority Tasks' : "Today's Top Priority Tasks & Action Center"}
                   </h3>
                   <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-500/20 text-amber-300 border border-amber-500/30">
                     {tasks.filter(t => t.status !== 'Completed').length} Pending
                   </span>
                 </div>
-                <p className="text-[11px] text-slate-400 mt-0.5">
-                  {isAdmin
-                    ? 'Directives issued by Principal, Section Incharges, and Committees across the institution.'
-                    : 'Directives from Principal & Section Incharges alongside personal lesson planning and evaluation items.'}
-                </p>
               </div>
 
               <button

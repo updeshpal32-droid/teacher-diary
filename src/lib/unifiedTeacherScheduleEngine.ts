@@ -578,15 +578,19 @@ export function filterAuthenticTeacherTasks({
   const isUpdesh = empCode === '108894' || staffKey.includes('updesh');
 
   return tasks.filter(task => {
+    const taskTitleLower = (task.title || '').toLowerCase();
+    const taskDescLower = (task.description || '').toLowerCase();
+    const taskTagsLower = (task.tags || []).map(t => t.toLowerCase());
+
     // 1. Drop any legacy/residual proxy tasks (all proxies are generated canonically by unified schedule engine)
     if (
       task.id.startsWith('task-proxy-') ||
       task.id.startsWith('proxy-duty-') ||
       task.category === 'Arrangement / Proxy Duty' ||
-      task.tags?.includes('Proxy Duty') ||
-      task.tags?.includes('Timetable Arrangement') ||
-      task.title.toLowerCase().includes('proxy duty') ||
-      task.title.toLowerCase().startsWith('proxy:')
+      taskTagsLower.includes('proxy duty') ||
+      taskTagsLower.includes('timetable arrangement') ||
+      taskTitleLower.includes('proxy duty') ||
+      taskTitleLower.startsWith('proxy:')
     ) {
       return false;
     }
@@ -596,24 +600,43 @@ export function filterAuthenticTeacherTasks({
       task.id.startsWith('task-teaching-') ||
       task.id.startsWith('tt-period-') ||
       task.id.startsWith('task-gate-') ||
-      task.id.startsWith('task-recess-')
+      task.id.startsWith('task-recess-') ||
+      taskTitleLower.startsWith('campus duty:')
     ) {
       return false;
     }
 
-    // 3. Drop seed DEFAULT_TASKS if logged in as another teacher (unless it's Updesh's account)
+    // 3. Drop seed DEFAULT_TASKS or foreign subject tasks if logged in as another teacher
     if (!isUpdesh) {
       if (
         task.id === 'tsk-201' || // GeM Portal Science Lab
         task.id === 'tsk-202' || // Grade PT-1 Mathematics
         task.id === 'tsk-204' || // National Sports Meet
-        task.id === 'tsk-205'    // Independence Day Parade
+        task.id === 'tsk-205' || // Independence Day Parade
+        taskTitleLower.includes('physical education') ||
+        taskTitleLower.includes('asset register') ||
+        taskTitleLower.includes('stock verification') ||
+        taskTitleLower.includes('gem portal') ||
+        taskTitleLower.includes('sports / rsm') ||
+        taskDescLower.includes('physical education') ||
+        taskDescLower.includes('asset register') ||
+        taskDescLower.includes('stock verification')
       ) {
         return false;
       }
     }
 
-    // 4. Verify ownership / assignment of custom tasks
+    // 4. Drop manual/AI teaching period tasks if they don't match this teacher's assigned subjects
+    if (task.category === 'Teaching' && !task.id.startsWith('task-teaching-')) {
+      if (!isUpdesh && (taskTitleLower.includes('physical education') || taskTitleLower.includes('pe '))) {
+        return false;
+      }
+      if (empCode === '102725' && !taskTitleLower.includes('library') && !taskTitleLower.includes('english') && !taskTitleLower.includes('reading') && !taskTitleLower.includes('book')) {
+        return false;
+      }
+    }
+
+    // 5. Verify ownership / assignment of custom tasks
     const assignedToStr = (task.assignedTo || '').trim();
     if (assignedToStr) {
       const assignedLower = assignedToStr.toLowerCase();
@@ -630,7 +653,7 @@ export function filterAuthenticTeacherTasks({
       }
 
       // If assigned explicitly to another known teacher name, drop it
-      const foreignNames = ['hemananda', 'barik', 'manju', 'xess', 'karishma', 'kerketta', 'santosh', 'naik', 'priyabrata', 'padhan', 'sanjukta', 'kujur', 'sipika', 'patel', 'jyoti', 'dhuma', 'samya', 'raha', 'santwana', 'dash', 'gayatri', 'omprakash', 'sharma'];
+      const foreignNames = ['hemananda', 'barik', 'updesh', 'manju', 'xess', 'karishma', 'kerketta', 'santosh', 'naik', 'priyabrata', 'padhan', 'sanjukta', 'kujur', 'sipika', 'patel', 'jyoti', 'dhuma', 'samya', 'raha', 'santwana', 'dash', 'gayatri', 'omprakash', 'sharma'];
       const matchesOther = foreignNames.some(fn => assignedLower.includes(fn) && !staffName.toLowerCase().includes(fn));
       if (matchesOther) {
         return false;

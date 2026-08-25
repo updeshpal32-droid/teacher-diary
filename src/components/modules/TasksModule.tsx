@@ -4,13 +4,16 @@ import { TaskManager } from '../TaskManager';
 import { WorkloadTracker } from '../WorkloadTracker';
 import { WorkDoneOtherThanTeaching26 } from '../WorkDoneOtherThanTeaching26';
 
+import { UserAccount } from '../../types/auth';
+
 interface TasksModuleProps {
   devMode: boolean;
+  currentUser?: UserAccount | null;
 }
 
 export type TasksSubTab = 'tasks' | 'hourly' | 'other_work';
 
-export const TasksModule: React.FC<TasksModuleProps> = ({ devMode }) => {
+export const TasksModule: React.FC<TasksModuleProps> = ({ devMode, currentUser }) => {
   const [activeTab, setActiveTab] = useState<TasksSubTab>('tasks');
 
   return (
@@ -54,8 +57,8 @@ export const TasksModule: React.FC<TasksModuleProps> = ({ devMode }) => {
         </button>
       </div>
 
-      {activeTab === 'tasks' && <TaskManager devMode={devMode} />}
-      {activeTab === 'hourly' && <WorkloadTracker devMode={devMode} />}
+      {activeTab === 'tasks' && <TaskManager devMode={devMode} currentUser={currentUser} />}
+      {activeTab === 'hourly' && <WorkloadTracker devMode={devMode} currentUser={currentUser} />}
       {activeTab === 'other_work' && <WorkDoneOtherThanTeaching26 devMode={devMode} />}
     </div>
   );

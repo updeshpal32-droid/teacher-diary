@@ -8,7 +8,8 @@ import {
   getTeacherPersonalTags,
   saveTeacherPersonalTags,
   saveGlobalAdminTags,
-  getGlobalAdminTags
+  getGlobalAdminTags,
+  getCurrentUser
 } from '../lib/storage';
 import {
   TeacherTask,
@@ -231,9 +232,10 @@ export const TaskManager: React.FC<TaskManagerProps> = ({ devMode, currentUser, 
 
   useEffect(() => {
     const initData = async () => {
-      const inspected = currentUser?.role === 'admin' ? (await getActiveInspectedTeacher()) : null;
+      const activeUser = currentUser || (await getCurrentUser());
+      const inspected = activeUser?.role === 'admin' ? (await getActiveInspectedTeacher()) : null;
       setActiveInspectedTeacher(inspected);
-      const code = (currentUser?.role === 'admin' && inspected?.employeeCode) ? inspected.employeeCode : (currentUser?.employeeCode || '108894');
+      const code = (activeUser?.role === 'admin' && inspected?.employeeCode) ? inspected.employeeCode : (activeUser?.employeeCode || '108894');
       await loadTasks(code);
       await loadPresets();
       await loadTaskLists();
@@ -259,13 +261,15 @@ export const TaskManager: React.FC<TaskManagerProps> = ({ devMode, currentUser, 
     initData();
 
     const handleTimetableUpdate = async () => {
-      const inspected = currentUser?.role === 'admin' ? (await getActiveInspectedTeacher()) : null;
-      const code = (currentUser?.role === 'admin' && inspected?.employeeCode) ? inspected.employeeCode : (currentUser?.employeeCode || '108894');
+      const activeUser = currentUser || (await getCurrentUser());
+      const inspected = activeUser?.role === 'admin' ? (await getActiveInspectedTeacher()) : null;
+      const code = (activeUser?.role === 'admin' && inspected?.employeeCode) ? inspected.employeeCode : (activeUser?.employeeCode || '108894');
       await loadTasks(code);
     };
 
     const handleTeacherChanged = async (e: any) => {
-      if (currentUser?.role !== 'admin') return;
+      const activeUser = currentUser || (await getCurrentUser());
+      if (activeUser?.role !== 'admin') return;
       const inspected = e.detail || (await getActiveInspectedTeacher());
       setActiveInspectedTeacher(inspected);
       const code = inspected?.employeeCode || '108894';
@@ -282,7 +286,7 @@ export const TaskManager: React.FC<TaskManagerProps> = ({ devMode, currentUser, 
       window.removeEventListener('kvs-auth-changed', handleTimetableUpdate);
       window.removeEventListener('kvs-active-teacher-changed', handleTeacherChanged);
     };
-  }, [currentUser?.employeeCode, currentUser?.role]);
+  }, [currentUser?.employeeCode, currentUser?.role, activeWorkingDate]);
 
   const loadAvailableTags = async (overrideTeacherCode?: string) => {
     try {
@@ -703,8 +707,9 @@ export const TaskManager: React.FC<TaskManagerProps> = ({ devMode, currentUser, 
 
   const loadTasks = async (targetEmpCode?: string) => {
     try {
-      const inspected = currentUser?.role === 'admin' ? (await getActiveInspectedTeacher()) : null;
-      const currentEmpCode = targetEmpCode || (currentUser?.role === 'admin' && inspected?.employeeCode ? inspected.employeeCode : (currentUser?.employeeCode || '108894'));
+      const activeUser = currentUser || (await getCurrentUser());
+      const inspected = activeUser?.role === 'admin' ? (await getActiveInspectedTeacher()) : null;
+      const currentEmpCode = targetEmpCode || (activeUser?.role === 'admin' && inspected?.employeeCode ? inspected.employeeCode : (activeUser?.employeeCode || '108894'));
       const scopedTaskKey = getTeacherScopedStorageKey('setup:tasks', currentEmpCode);
 
       const [
@@ -732,22 +737,27 @@ export const TaskManager: React.FC<TaskManagerProps> = ({ devMode, currentUser, 
       ]);
 
       const allStaff = (staffDetailsList && staffDetailsList.length > 0) ? staffDetailsList : DEFAULT_STAFF_DETAILS;
-      const matchedStaff = allStaff.find(s => s.employeeCode === currentEmpCode || (currentUser?.name && normalizeFacultyKey(s.name) === normalizeFacultyKey(currentUser.name)));
-      const staffObj = matchedStaff || (currentUser?.role === 'admin' && inspected ? inspected : currentUser) || { employeeCode: currentEmpCode };
+      const matchedStaff = allStaff.find(s => s.employeeCode === currentEmpCode || (activeUser?.name && normalizeFacultyKey(s.name) === normalizeFacultyKey(activeUser.name)));
+      const staffObj = matchedStaff || (activeUser?.role === 'admin' && inspected ? inspected : activeUser) || { employeeCode: currentEmpCode };
 
-      let baseTasks: TeacherTask[] = [];
+      let rawBaseTasks: TeacherTask[] = [];
 
       if (storedScoped && Array.isArray(storedScoped)) {
-        baseTasks = storedScoped;
+        rawBaseTasks = storedScoped;
       } else if (currentEmpCode === '108894' && globalStored && globalStored.length > 0) {
         // Updesh Singh Pal inherits existing tasks
-        baseTasks = globalStored;
-        await db.set(scopedTaskKey, globalStored);
+        rawBaseTasks = globalStored;
       } else {
         // Other teachers start fresh with isolated task list
-        baseTasks = [];
-        await db.set(scopedTaskKey, []);
+        rawBaseTasks = [];
       }
+
+      // Purge path: strictly remove tasks that do not belong to this teacher
+      const baseTasks = filterAuthenticTeacherTasks({
+        tasks: rawBaseTasks,
+        staff: staffObj,
+        activeDate: activeWorkingDate
+      });
 
       // Compute Unified Teaching Periods for target date
       const periods = getUnifiedTeachingPeriodsForTeacher({
@@ -772,11 +782,7 @@ export const TaskManager: React.FC<TaskManagerProps> = ({ devMode, currentUser, 
       // 3. Filter authentic non-teaching tasks (created by or explicitly assigned to this teacher)
       const teachingTaskIds = new Set(generatedTeachingTasks.map(t => t.id));
       const campusDutyIds = new Set(campusDutyTasks.map(t => t.id));
-      const authenticNonTeachingTasks = filterAuthenticTeacherTasks({
-        tasks: baseTasks,
-        staff: staffObj,
-        activeDate: activeWorkingDate
-      }).filter(t => !teachingTaskIds.has(t.id) && !campusDutyIds.has(t.id));
+      const authenticNonTeachingTasks = baseTasks.filter(t => !teachingTaskIds.has(t.id) && !campusDutyIds.has(t.id));
 
       const mergedAllTasks = [...generatedTeachingTasks, ...campusDutyTasks, ...authenticNonTeachingTasks];
 
@@ -785,6 +791,15 @@ export const TaskManager: React.FC<TaskManagerProps> = ({ devMode, currentUser, 
       if (currentEmpCode === '108894') {
         await db.set('setup:tasks', mergedAllTasks);
       }
+
+      // Explicit Console Logs for verification
+      const staffObjName = ('name' in staffObj && staffObj.name) ? staffObj.name : 'Unknown';
+      const staffObjCode = ('employeeCode' in staffObj && staffObj.employeeCode) ? staffObj.employeeCode : currentEmpCode;
+      console.log('[TaskManager:loadTasks] currentUser.employeeCode:', activeUser?.employeeCode);
+      console.log('[TaskManager:loadTasks] inspectedTeacher:', inspected ? `${inspected.name} (${inspected.employeeCode})` : null);
+      console.log('[TaskManager:loadTasks] final staffObj used:', `${staffObjName} (${staffObjCode})`);
+      console.log('[TaskManager:loadTasks] count of tasks after filter:', mergedAllTasks.length);
+      console.log('[TaskManager:loadTasks] sample task titles:', mergedAllTasks.map(t => t.title));
     } catch (err) {
       console.error('Error loading tasks with timetable sync:', err);
       setTasks([]);
@@ -793,8 +808,9 @@ export const TaskManager: React.FC<TaskManagerProps> = ({ devMode, currentUser, 
 
   const saveTasks = async (updated: TeacherTask[]) => {
     setTasks(updated);
-    const inspected = currentUser?.role === 'admin' ? (await getActiveInspectedTeacher()) : null;
-    const currentEmpCode = (currentUser?.role === 'admin' && inspected?.employeeCode) ? inspected.employeeCode : (currentUser?.employeeCode || '108894');
+    const activeUser = currentUser || (await getCurrentUser());
+    const inspected = activeUser?.role === 'admin' ? (await getActiveInspectedTeacher()) : null;
+    const currentEmpCode = (activeUser?.role === 'admin' && inspected?.employeeCode) ? inspected.employeeCode : (activeUser?.employeeCode || '108894');
     const scopedTaskKey = getTeacherScopedStorageKey('setup:tasks', currentEmpCode);
     await db.set(scopedTaskKey, updated);
     if (currentEmpCode === '108894') {

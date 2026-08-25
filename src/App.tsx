@@ -460,7 +460,7 @@ export default function App() {
 
           {activeModule === 'office' && <OfficeModule devMode={devMode} />}
 
-          {activeModule === 'tasks' && <TasksModule devMode={devMode} />}
+          {activeModule === 'tasks' && <TasksModule devMode={devMode} currentUser={currentUser} />}
 
           {activeModule === 'settings' && (
             <SettingsModule

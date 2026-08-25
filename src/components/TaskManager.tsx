@@ -1353,7 +1353,7 @@ export const TaskManager: React.FC<TaskManagerProps> = ({ devMode, currentUser, 
           <div>
             <div className="flex items-center gap-2 text-xs font-mono font-semibold text-purple-400 uppercase tracking-wider mb-1">
               <ListTodo className="w-4 h-4 text-purple-400" />
-              <span>Integrated Teacher Task Management System</span>
+              <span>Teacher Task Management</span>
               {devMode && (
                 <span className="px-2 py-0.5 rounded-full bg-amber-500/20 text-amber-300 border border-amber-500/40 text-[10px] font-bold">
                   DEV MODE
@@ -1361,11 +1361,8 @@ export const TaskManager: React.FC<TaskManagerProps> = ({ devMode, currentUser, 
               )}
             </div>
             <h2 className="text-2xl font-bold text-white tracking-tight">
-              Task Hub, Eisenhower Matrix & Subtask Tracker
+              Task Hub
             </h2>
-            <p className="text-sm text-slate-400 mt-1 max-w-2xl">
-              Organize academic duties, GeM portal procurement steps, sports training drills, and administrative assignments with urgent/important prioritization and subtask checklists.
-            </p>
           </div>
 
           <div className="flex flex-wrap items-center gap-3">
@@ -1424,17 +1421,6 @@ export const TaskManager: React.FC<TaskManagerProps> = ({ devMode, currentUser, 
       <div className="flex flex-col md:flex-row items-stretch md:items-center justify-between gap-4 p-3 rounded-2xl bg-slate-900 border border-slate-800">
         <div className="flex items-center gap-1.5 overflow-x-auto pb-2 md:pb-0 scrollbar-none">
           <button
-            onClick={() => setActiveView('matrix')}
-            className={`px-3.5 py-2 rounded-xl font-bold text-xs flex items-center gap-2 whitespace-nowrap transition-all cursor-pointer ${
-              activeView === 'matrix'
-                ? 'bg-purple-600 text-white shadow-md shadow-purple-600/30'
-                : 'text-slate-400 hover:text-white hover:bg-slate-800'
-            }`}
-          >
-            <Grid className="w-3.5 h-3.5" />
-            <span>Eisenhower Matrix</span>
-          </button>
-          <button
             onClick={() => setActiveView('list')}
             className={`px-3.5 py-2 rounded-xl font-bold text-xs flex items-center gap-2 whitespace-nowrap transition-all cursor-pointer ${
               activeView === 'list'
@@ -1458,6 +1444,17 @@ export const TaskManager: React.FC<TaskManagerProps> = ({ devMode, currentUser, 
           >
             <RotateCcw className="w-3.5 h-3.5" />
             <span>Duty Presets & Recurring</span>
+          </button>
+          <button
+            onClick={() => setActiveView('matrix')}
+            className={`px-3.5 py-2 rounded-xl font-bold text-xs flex items-center gap-2 whitespace-nowrap transition-all cursor-pointer ${
+              activeView === 'matrix'
+                ? 'bg-purple-600 text-white shadow-md shadow-purple-600/30'
+                : 'text-slate-400 hover:text-white hover:bg-slate-800'
+            }`}
+          >
+            <Grid className="w-3.5 h-3.5" />
+            <span>Eisenhower Matrix</span>
           </button>
           <button
             onClick={() => setActiveView('ai')}

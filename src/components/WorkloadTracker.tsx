@@ -59,13 +59,11 @@ import {
   Share2,
   Trash2,
   Edit2,
-  ListTodo,
   Tag,
   Briefcase,
   Award,
   RotateCcw
 } from 'lucide-react';
-import { TaskManager } from './TaskManager';
 
 interface WorkloadTrackerProps {
   devMode?: boolean;
@@ -409,7 +407,7 @@ export function generateTeacherDailyWorkload(
 }
 
 export function WorkloadTracker({ devMode = true, currentUser }: WorkloadTrackerProps) {
-  const [subTab, setSubTab] = useState<'tracker' | 'tasks' | 'evidence' | 'heatmap' | 'kanban' | 'pdf' | 'calendar' | 'ai'>('tracker');
+  const [subTab, setSubTab] = useState<'tracker' | 'evidence' | 'heatmap' | 'kanban' | 'pdf' | 'calendar' | 'ai'>('tracker');
 
   // Data states
   const [activities, setActivities] = useState<HourlyActivity[]>([]);
@@ -1147,7 +1145,6 @@ export function WorkloadTracker({ devMode = true, currentUser }: WorkloadTracker
       <div className="flex items-center gap-2 overflow-x-auto pb-2 border-b border-[var(--glass-border)] no-scrollbar">
         {[
           { id: 'tracker', label: 'Hourly Timeline', icon: Clock },
-          { id: 'tasks', label: 'Task Management System', icon: ListTodo },
           { id: 'evidence', label: 'Verifiable Evidence Proof', icon: ShieldCheck, badge: evidenceList.length },
           { id: 'heatmap', label: 'Workload Heatmap', icon: BarChart3 },
           { id: 'kanban', label: 'Kanban Workload Board', icon: Layers },
@@ -1178,38 +1175,6 @@ export function WorkloadTracker({ devMode = true, currentUser }: WorkloadTracker
           );
         })}
       </div>
-
-      {/* SUB-VIEW 0: TASK MANAGEMENT SYSTEM */}
-      {subTab === 'tasks' && (
-        <TaskManager
-          currentUser={currentUser}
-          devMode={devMode}
-          onSyncToWorkload={async (task) => {
-            const newActivity: HourlyActivity = {
-              id: 'act-' + Date.now(),
-              date: task.dueDate || new Date().toISOString().split('T')[0],
-              startTime: task.dueTime || '10:00',
-              endTime: '11:00',
-              title: task.title,
-              description: task.description || '',
-              category: task.category,
-              status: task.status === 'Completed' ? 'Done' : 'Pending',
-              priority: task.priority,
-              className: task.linkedClass || currentUser?.assignedClasses?.[0] || 'IX-A',
-              subjectName: task.linkedSubject || currentUser?.assignedSubjects?.[0] || 'General Duty',
-              isOverlappingDuty: task.overloadImpact,
-              overloadReason: task.overloadImpact ? 'Duty overlap logged from Task System' : '',
-              evidenceIds: [],
-              kanbanColumn: task.status === 'Completed' ? 'Completed' : 'Pending',
-              createdAt: new Date().toISOString(),
-              updatedAt: new Date().toISOString()
-            };
-            await saveActivities([newActivity, ...activities]);
-            alert(`Synced "${task.title}" to Hourly Timeline!`);
-            setSubTab('tracker');
-          }}
-        />
-      )}
 
       {/* SUB-VIEW 1: HOURLY TIMELINE & QUICK LOG */}
       {subTab === 'tracker' && (

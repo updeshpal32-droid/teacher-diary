@@ -132,9 +132,10 @@ interface TeacherDashboardProps {
 
 export interface FormattedRoleBadge {
   id: string;
-  rolePrefix: 'In-Charge' | 'Member' | 'Convenor' | 'Coordinator';
+  rolePrefix: 'In-Charge' | 'Member' | 'Convenor' | 'Coordinator' | 'Academic Support' | 'Remedial In-Charge' | 'Special Assignment';
   cleanName: string;
   isLeadership: boolean;
+  isAcademicSupport?: boolean;
 }
 
 export function formatAndDeduplicateResponsibilities(responsibilities: AcademicResponsibility[]): FormattedRoleBadge[] {
@@ -144,9 +145,15 @@ export function formatAndDeduplicateResponsibilities(responsibilities: AcademicR
   const result: FormattedRoleBadge[] = [];
 
   responsibilities.forEach((resp, idx) => {
-    let rolePrefix: 'In-Charge' | 'Member' | 'Convenor' | 'Coordinator' = 'In-Charge';
+    let rolePrefix: FormattedRoleBadge['rolePrefix'] = 'In-Charge';
     const rLower = (resp.role || '').toLowerCase();
-    if (rLower.includes('member')) {
+    if (rLower.includes('academic support') || rLower.includes('co-teaching')) {
+      rolePrefix = 'Academic Support';
+    } else if (rLower.includes('remedial')) {
+      rolePrefix = 'Remedial In-Charge';
+    } else if (rLower.includes('special assignment')) {
+      rolePrefix = 'Special Assignment';
+    } else if (rLower.includes('member')) {
       rolePrefix = 'Member';
     } else if (rLower.includes('convenor')) {
       rolePrefix = 'Convenor';
@@ -158,13 +165,13 @@ export function formatAndDeduplicateResponsibilities(responsibilities: AcademicR
 
     // Clean dutyName by removing redundant bracketed roles and trailing phrases
     let cleanName = (resp.dutyName || '')
-      .replace(/\s*\((In-Charge|Incharge|Member|Convenor|Coordinator)\)\s*/gi, '')
+      .replace(/\s*\((In-Charge|Incharge|Member|Convenor|Coordinator|Academic Support|Co-Teaching)\)\s*/gi, '')
       .replace(/\s+In-?charge\s*$/i, '')
       .replace(/\s+Member\s*$/i, '')
       .trim();
 
     // Skip if it is redundant Class Teacher assignment
-    if (/^Class Teacher/i.test(cleanName)) {
+    if (/^Class Teacher/i.test(cleanName) || /^Co-Class Teacher/i.test(cleanName)) {
       return;
     }
 
@@ -176,18 +183,22 @@ export function formatAndDeduplicateResponsibilities(responsibilities: AcademicR
     seen.add(key);
 
     const isLeadership = rolePrefix === 'In-Charge' || rolePrefix === 'Convenor' || rolePrefix === 'Coordinator';
+    const isAcademicSupport = rolePrefix === 'Academic Support' || rolePrefix === 'Remedial In-Charge' || rolePrefix === 'Special Assignment';
 
     result.push({
       id: resp.id || `resp-${idx}`,
       rolePrefix,
       cleanName,
-      isLeadership
+      isLeadership,
+      isAcademicSupport
     });
   });
 
   return result.sort((a, b) => {
     if (a.isLeadership && !b.isLeadership) return -1;
     if (!a.isLeadership && b.isLeadership) return 1;
+    if (a.isAcademicSupport && !b.isAcademicSupport) return -1;
+    if (!a.isAcademicSupport && b.isAcademicSupport) return 1;
     return a.cleanName.localeCompare(b.cleanName);
   });
 }
@@ -713,106 +724,69 @@ export const TeacherDashboard: React.FC<TeacherDashboardProps> = ({
         ? savedStaff.find(st => st.employeeCode === u.employeeCode || (u.name && st.name && st.name.toLowerCase() === u.name.toLowerCase()))
         : null;
 
-      // Extract any incharge duties mentioned in principalRemarks if not present in academicResponsibilities
-      const remarksInchargeList: { dutyName: string; role: string }[] = [];
-      if (staffMatch?.principalRemarks) {
-        const parts = staffMatch.principalRemarks.split(';');
-        for (const p of parts) {
-          const trimmed = p.trim();
-          if (trimmed && !trimmed.toLowerCase().startsWith('ct:') && !trimmed.toLowerCase().startsWith('co-ct:')) {
-            const roleMatch = trimmed.match(/^([^()]+)s*(?:(([^()]+)))?/);
-            if (roleMatch) {
-              remarksInchargeList.push({
-                dutyName: roleMatch[1].trim(),
-                role: roleMatch[2]?.trim() || 'In-Charge'
-              });
-            }
-          }
-        }
-      }
-
-      const mergedResponsibilities = [
-        ...(scopedTeacher?.academicResponsibilities || [])
-      ];
-
-      for (const rem of remarksInchargeList) {
-        if (!mergedResponsibilities.some(r => r.dutyName.toLowerCase() === rem.dutyName.toLowerCase())) {
-          mergedResponsibilities.push({
-            id: `resp-${Date.now()}-${Math.random().toString(36).substring(2, 5)}`,
-            dutyName: rem.dutyName,
-            role: (rem.role as any) || 'In-Charge',
-            levelOrClass: 'School Wide',
-            academicYear: '2026-27',
-            keyOutcomes: 'Assigned official Vidyalaya portfolio.'
-          });
-        }
-      }
-
-      // Merge Official Portfolio Assignments from Committees Directory (setup:portfolio_assignments)
+      // Source Teacher Academic & Leadership Responsibilities EXCLUSIVELY from Live Roles & Committees Stores:
+      // 1. Live Portfolio & Committee Assignments (setup:portfolio_assignments)
       const activeTemplates = (savedTemplates && savedTemplates.length > 0) ? savedTemplates : DEFAULT_PORTFOLIO_TEMPLATES;
-      const activeAssignments = (savedAssignments && savedAssignments.length > 0) ? savedAssignments : DEFAULT_PORTFOLIO_ASSIGNMENTS;
+      const activeAssignments = (savedAssignments !== null && Array.isArray(savedAssignments)) ? savedAssignments : DEFAULT_PORTFOLIO_ASSIGNMENTS;
 
       const myAssignments = activeAssignments.filter(a => {
         if (a.status !== 'Active') return false;
-        if (u?.employeeCode && a.teacherEmployeeCode && a.teacherEmployeeCode.toLowerCase() === u.employeeCode.toLowerCase()) return true;
-        if (u?.name && a.teacherName && a.teacherName.trim().toLowerCase() === u.name.trim().toLowerCase()) return true;
-        if (u?.name && a.teacherName) {
-          const cleanU = u.name.toLowerCase().replace(/^(mr|mrs|ms|dr|smt|shri)\.?\s+/i, '').replace(/[^a-z0-9]/g, '');
-          const cleanA = a.teacherName.toLowerCase().replace(/^(mr|mrs|ms|dr|smt|shri)\.?\s+/i, '').replace(/[^a-z0-9]/g, '');
-          if (cleanU && cleanA && (cleanU === cleanA || cleanU.includes(cleanA) || cleanA.includes(cleanU))) return true;
-        }
+        if (u?.employeeCode && a.teacherEmployeeCode && a.teacherEmployeeCode.trim().toLowerCase() === u.employeeCode.trim().toLowerCase()) return true;
+        if (u?.name && a.teacherName && normalizeFacultyKey(a.teacherName) === normalizeFacultyKey(u.name)) return true;
         return false;
       });
 
+      const liveResponsibilities: AcademicResponsibility[] = [];
+
       myAssignments.forEach(asgn => {
         const template = activeTemplates.find(t => t.id === asgn.portfolioTemplateId);
-        const dutyName = template ? template.name : asgn.portfolioTemplateId;
-        const roleName = asgn.role === 'In-charge' ? 'In-Charge' : 'Member';
+        const dutyName = template ? template.name : (asgn.portfolioTemplateId || 'Committee Assignment');
+        const roleName = asgn.role === 'In-charge' ? 'In-Charge' : (asgn.role || 'Member');
 
-        const exists = mergedResponsibilities.find(
-          r => r.dutyName.toLowerCase() === dutyName.toLowerCase() ||
-               (template && r.dutyName.toLowerCase().includes(template.name.toLowerCase())) ||
-               (template && template.name.toLowerCase().includes(r.dutyName.toLowerCase()))
-        );
-
-        if (exists) {
-          exists.dutyName = dutyName;
-          exists.role = roleName as any;
-          exists.keyOutcomes = template?.description || exists.keyOutcomes;
-        } else {
-          mergedResponsibilities.push({
-            id: `port-${asgn.id}`,
-            dutyName: dutyName,
-            role: roleName as any,
-            levelOrClass: template?.category || 'School Wide',
-            academicYear: '2026-27',
-            keyOutcomes: template?.description || 'Official Vidyalaya Institutional Portfolio'
-          });
-        }
+        liveResponsibilities.push({
+          id: `port-${asgn.id}`,
+          dutyName: dutyName,
+          role: roleName as any,
+          levelOrClass: template?.category || 'School Wide',
+          academicYear: '2026-27',
+          keyOutcomes: template?.description || 'Official Vidyalaya Institutional Portfolio'
+        });
       });
 
-      // Merge Subject & Academic Responsibilities (e.g. Odia to Sipika Patel, Math Support to Karishma Kerketta)
-      const activeSubjList = (savedSubAssignments && savedSubAssignments.length > 0) ? savedSubAssignments : DEFAULT_SUBJECT_RESPONSIBILITIES;
+      // 2. Live Subject & Academic Responsibilities (setup:subject_responsibilities)
+      const activeSubjList = (savedSubAssignments !== null && Array.isArray(savedSubAssignments)) ? savedSubAssignments : DEFAULT_SUBJECT_RESPONSIBILITIES;
       const mySubjectResponsibilities = activeSubjList.filter(sra => {
         if (sra.status !== 'Active') return false;
-        if (u?.employeeCode && sra.employeeCode && sra.employeeCode.toLowerCase() === u.employeeCode.toLowerCase()) return true;
+        if (sra.assignmentType === 'Specific Period') {
+          if (sra.fromDate && activeWorkingDate < sra.fromDate) return false;
+          if (sra.toDate && activeWorkingDate > sra.toDate) return false;
+        }
+        if (u?.employeeCode && sra.employeeCode && sra.employeeCode.trim().toLowerCase() === u.employeeCode.trim().toLowerCase()) return true;
         if (u?.name && sra.teacherName && normalizeFacultyKey(sra.teacherName) === normalizeFacultyKey(u.name)) return true;
         return false;
       });
 
       mySubjectResponsibilities.forEach(sra => {
         const dutyName = `${sra.subjectName} (${sra.className})`;
-        const exists = mergedResponsibilities.find(r => r.dutyName.toLowerCase() === dutyName.toLowerCase());
-        if (!exists) {
-          mergedResponsibilities.push({
-            id: `sra-${sra.id}`,
-            dutyName: dutyName,
-            role: (sra.supportType === 'Primary Teacher / In-Charge' ? 'In-Charge' : 'Co-Incharge') as any,
-            levelOrClass: sra.className,
-            academicYear: '2026-27',
-            keyOutcomes: sra.roleNote || `Academic Responsibility for ${sra.subjectName} in ${sra.className}`
-          });
+        let roleStr = 'Academic Support';
+        if (sra.supportType === 'Primary Teacher / In-Charge') {
+          roleStr = 'In-Charge';
+        } else if (sra.supportType === 'Remedial In-Charge') {
+          roleStr = 'Remedial In-Charge';
+        } else if (sra.supportType === 'Special Assignment') {
+          roleStr = 'Special Assignment';
+        } else {
+          roleStr = 'Academic Support';
         }
+
+        liveResponsibilities.push({
+          id: `sra-${sra.id}`,
+          dutyName: dutyName,
+          role: roleStr as any,
+          levelOrClass: sra.className,
+          academicYear: '2026-27',
+          keyOutcomes: sra.roleNote || `Academic Responsibility for ${sra.subjectName} in ${sra.className}`
+        });
       });
 
       // Construct accurate teacher profile
@@ -824,7 +798,7 @@ export const TeacherDashboard: React.FC<TeacherDashboardProps> = ({
         employeeCode: u?.employeeCode || scopedTeacher?.employeeCode || staffMatch?.employeeCode || defaultTeacher?.employeeCode || DEFAULT_TEACHER.employeeCode,
         classTeacherRole: u?.isClassTeacherOf ? `Class Teacher ${u.isClassTeacherOf}` : (scopedTeacher?.classTeacherRole || (staffMatch?.principalRemarks?.includes('CT:') ? staffMatch.principalRemarks.match(/CT:\s*([^;]+)/)?.[1]?.trim() || '' : '')),
         coClassTeacherRole: u?.isCoClassTeacherOf ? `Co-Class Teacher ${u.isCoClassTeacherOf}` : (scopedTeacher?.coClassTeacherRole || (staffMatch?.principalRemarks?.includes('Co-CT:') ? staffMatch.principalRemarks.match(/Co-CT:\s*([^;]+)/)?.[1]?.trim() || '' : '')),
-        academicResponsibilities: mergedResponsibilities
+        academicResponsibilities: liveResponsibilities
       };
 
       if (u && (scopedTeacher?.name || staffMatch?.name)) {
@@ -1435,16 +1409,26 @@ export const TeacherDashboard: React.FC<TeacherDashboardProps> = ({
                     className={`px-2.5 py-1 rounded-xl text-xs font-bold flex items-center gap-1.5 shadow-xs transition-all ${
                       badge.isLeadership
                         ? 'bg-emerald-950/80 hover:bg-emerald-900/90 text-emerald-200 border border-emerald-500/50'
+                        : badge.isAcademicSupport
+                        ? 'bg-purple-950/80 hover:bg-purple-900/90 text-purple-200 border border-purple-500/40'
                         : 'bg-indigo-950/80 hover:bg-indigo-900/90 text-indigo-200 border border-indigo-500/40'
                     }`}
                   >
                     {badge.isLeadership ? (
                       <Sparkles className="w-3.5 h-3.5 text-amber-400" />
+                    ) : badge.isAcademicSupport ? (
+                      <BookOpen className="w-3.5 h-3.5 text-purple-400" />
                     ) : (
                       <Users className="w-3.5 h-3.5 text-indigo-400" />
                     )}
                     <span>
-                      <strong className={`font-black ${badge.isLeadership ? 'text-emerald-300' : 'text-indigo-300'}`}>
+                      <strong className={`font-black ${
+                        badge.isLeadership
+                          ? 'text-emerald-300'
+                          : badge.isAcademicSupport
+                          ? 'text-purple-300'
+                          : 'text-indigo-300'
+                      }`}>
                         {badge.rolePrefix}:
                       </strong>{' '}
                       {badge.cleanName}

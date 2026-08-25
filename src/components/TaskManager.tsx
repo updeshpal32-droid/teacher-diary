@@ -46,8 +46,14 @@ import {
   DEFAULT_PROXY_DUTIES,
   DEFAULT_SUBJECT_RESPONSIBILITIES,
   DEFAULT_TIMETABLE,
-  DEFAULT_STAFF_DETAILS
+  DEFAULT_STAFF_DETAILS,
+  DEFAULT_PERIOD_TIMINGS
 } from '../lib/storage';
+import {
+  isTaskCompletionAllowed,
+  formatTime12h,
+  getTaskScheduledEndTime
+} from '../lib/taskTimeGatingEngine';
 import {
   CheckSquare,
   Plus,
@@ -227,6 +233,8 @@ export const TaskManager: React.FC<TaskManagerProps> = ({ devMode, currentUser, 
   const [attendanceRecords, setAttendanceRecords] = useState<TeacherAttendanceRecord[]>([]);
   const [leaveApplications, setLeaveApplications] = useState<LeaveApplication[]>([]);
   const [onDutyRecords, setOnDutyRecords] = useState<OnDutyRecord[]>([]);
+  const [periodTimings, setPeriodTimings] = useState<Record<number, { time: string; label: string }>>(DEFAULT_PERIOD_TIMINGS);
+  const [timeGateWarning, setTimeGateWarning] = useState<string | null>(null);
   const teacherCode = currentUser?.employeeCode;
   const isAdmin = currentUser?.role === 'admin';
 
@@ -242,20 +250,22 @@ export const TaskManager: React.FC<TaskManagerProps> = ({ devMode, currentUser, 
       await loadSmartSettings();
       await loadAvailableTags(code);
 
-      // Load faculty and attendance data for deadline availability checking
+      // Load faculty, attendance, and dynamic period timings
       try {
-        const [staffData, attData, leaveData, odData] = await Promise.all([
+        const [staffData, attData, leaveData, odData, ptData] = await Promise.all([
           db.get<StaffDetailRecord[]>('setup:staff_details'),
           db.get<TeacherAttendanceRecord[]>('setup:teacher_attendance'),
           db.get<LeaveApplication[]>('setup:leave_applications'),
-          db.get<OnDutyRecord[]>('setup:on_duty_records')
+          db.get<OnDutyRecord[]>('setup:on_duty_records'),
+          db.get<Record<number, { time: string; label: string }>>('setup:period_timings')
         ]);
         if (staffData) setStaffList(staffData);
         if (attData) setAttendanceRecords(attData);
         if (leaveData) setLeaveApplications(leaveData);
         if (odData) setOnDutyRecords(odData);
+        if (ptData && Object.keys(ptData).length > 0) setPeriodTimings(ptData);
       } catch (err) {
-        console.error('Error loading staff attendance for tasks:', err);
+        console.error('Error loading staff attendance and period timings for tasks:', err);
       }
     };
     initData();
@@ -264,6 +274,10 @@ export const TaskManager: React.FC<TaskManagerProps> = ({ devMode, currentUser, 
       const activeUser = currentUser || (await getCurrentUser());
       const inspected = activeUser?.role === 'admin' ? (await getActiveInspectedTeacher()) : null;
       const code = (activeUser?.role === 'admin' && inspected?.employeeCode) ? inspected.employeeCode : (activeUser?.employeeCode || '108894');
+      try {
+        const ptData = await db.get<Record<number, { time: string; label: string }>>('setup:period_timings');
+        if (ptData && Object.keys(ptData).length > 0) setPeriodTimings(ptData);
+      } catch (_) {}
       await loadTasks(code);
     };
 
@@ -1040,6 +1054,18 @@ export const TaskManager: React.FC<TaskManagerProps> = ({ devMode, currentUser, 
   const handleToggleTaskStatus = async (id: string) => {
     const target = tasks.find(t => t.id === id);
     const nextStatus = target?.status === 'Completed' ? 'Pending' : 'Completed';
+
+    // Time-gated completion rule on active working date with dynamic period timings
+    if (nextStatus === 'Completed' && target) {
+      const eligibility = isTaskCompletionAllowed(target, activeWorkingDate, periodTimings);
+      if (!eligibility.allowed) {
+        console.warn('[TaskManager:handleToggleTaskStatus] Blocked completion ahead of schedule:', eligibility.reason);
+        setTimeGateWarning(eligibility.reason || 'This task cannot be marked completed until its scheduled finishing time.');
+        setTimeout(() => setTimeGateWarning(null), 5000);
+        return;
+      }
+    }
+
     console.log('[TaskManager:handleToggleTaskStatus]', {
       taskId: id,
       title: target?.title,
@@ -1048,6 +1074,7 @@ export const TaskManager: React.FC<TaskManagerProps> = ({ devMode, currentUser, 
       nextStatus,
       toggleAllowed: true
     });
+    setTimeGateWarning(null);
     const updated = tasks.map(t => {
       if (t.id === id) {
         return {
@@ -1063,16 +1090,35 @@ export const TaskManager: React.FC<TaskManagerProps> = ({ devMode, currentUser, 
   };
 
   const handleToggleSubtask = async (taskId: string, subtaskId: string) => {
+    const target = tasks.find(t => t.id === taskId);
+    if (!target) return;
+
+    const nextSubtasks = (target.subtasks || []).map(st =>
+      st.id === subtaskId ? { ...st, completed: !st.completed } : st
+    );
+    const allDone = nextSubtasks.length > 0 && nextSubtasks.every(s => s.completed);
+
+    let nextStatus = target.status;
+    if (allDone) {
+      const eligibility = isTaskCompletionAllowed(target, activeWorkingDate, periodTimings);
+      if (!eligibility.allowed) {
+        // Can mark subtask, but keep parent status In Progress until finish time
+        nextStatus = 'In Progress';
+        setTimeGateWarning(`Subtask updated. ${eligibility.reason || 'Task will remain In Progress until its scheduled finishing time.'}`);
+        setTimeout(() => setTimeGateWarning(null), 5000);
+      } else {
+        nextStatus = 'Completed';
+      }
+    } else if (target.status === 'Completed') {
+      nextStatus = 'In Progress';
+    }
+
     const updated = tasks.map(t => {
       if (t.id === taskId) {
-        const nextSubtasks = t.subtasks.map(st =>
-          st.id === subtaskId ? { ...st, completed: !st.completed } : st
-        );
-        const allDone = nextSubtasks.every(s => s.completed);
         return {
           ...t,
           subtasks: nextSubtasks,
-          status: (allDone ? 'Completed' : t.status === 'Completed' ? 'In Progress' : t.status) as any,
+          status: nextStatus as any,
           updatedAt: new Date().toISOString()
         };
       }
@@ -1471,6 +1517,8 @@ export const TaskManager: React.FC<TaskManagerProps> = ({ devMode, currentUser, 
                     <MatrixTaskCard
                       key={task.id}
                       task={task}
+                      activeWorkingDate={activeWorkingDate}
+                      periodTimings={periodTimings}
                       onToggleStatus={() => handleToggleTaskStatus(task.id)}
                       onToggleSubtask={stId => handleToggleSubtask(task.id, stId)}
                       onEdit={() => handleOpenEditModal(task)}
@@ -1508,6 +1556,8 @@ export const TaskManager: React.FC<TaskManagerProps> = ({ devMode, currentUser, 
                     <MatrixTaskCard
                       key={task.id}
                       task={task}
+                      activeWorkingDate={activeWorkingDate}
+                      periodTimings={periodTimings}
                       onToggleStatus={() => handleToggleTaskStatus(task.id)}
                       onToggleSubtask={stId => handleToggleSubtask(task.id, stId)}
                       onEdit={() => handleOpenEditModal(task)}
@@ -1545,6 +1595,8 @@ export const TaskManager: React.FC<TaskManagerProps> = ({ devMode, currentUser, 
                     <MatrixTaskCard
                       key={task.id}
                       task={task}
+                      activeWorkingDate={activeWorkingDate}
+                      periodTimings={periodTimings}
                       onToggleStatus={() => handleToggleTaskStatus(task.id)}
                       onToggleSubtask={stId => handleToggleSubtask(task.id, stId)}
                       onEdit={() => handleOpenEditModal(task)}
@@ -1582,6 +1634,8 @@ export const TaskManager: React.FC<TaskManagerProps> = ({ devMode, currentUser, 
                     <MatrixTaskCard
                       key={task.id}
                       task={task}
+                      activeWorkingDate={activeWorkingDate}
+                      periodTimings={periodTimings}
                       onToggleStatus={() => handleToggleTaskStatus(task.id)}
                       onToggleSubtask={stId => handleToggleSubtask(task.id, stId)}
                       onEdit={() => handleOpenEditModal(task)}
@@ -2569,6 +2623,22 @@ export const TaskManager: React.FC<TaskManagerProps> = ({ devMode, currentUser, 
               </div>
             </div>
 
+            {/* Time-Gated Task Warning Banner */}
+            {timeGateWarning && (
+              <div className="p-3.5 rounded-xl bg-amber-500/10 border border-amber-500/30 text-amber-300 text-xs flex items-center justify-between gap-2 animate-fadeIn">
+                <div className="flex items-center gap-2">
+                  <Lock className="w-4 h-4 text-amber-400 shrink-0" />
+                  <span>{timeGateWarning}</span>
+                </div>
+                <button
+                  onClick={() => setTimeGateWarning(null)}
+                  className="text-amber-400 hover:text-white text-xs cursor-pointer p-0.5"
+                >
+                  ✕
+                </button>
+              </div>
+            )}
+
             {/* Task Cards Stream */}
             <div className="space-y-2.5">
               {filteredTasks.length === 0 ? (
@@ -2588,6 +2658,8 @@ export const TaskManager: React.FC<TaskManagerProps> = ({ devMode, currentUser, 
                   <ListTaskCard
                     key={task.id}
                     task={task}
+                    activeWorkingDate={activeWorkingDate}
+                    periodTimings={periodTimings}
                     onToggleStatus={() => handleToggleTaskStatus(task.id)}
                     onToggleSubtask={stId => handleToggleSubtask(task.id, stId)}
                     onEdit={() => handleOpenEditModal(task)}
@@ -3411,6 +3483,8 @@ export const TaskManager: React.FC<TaskManagerProps> = ({ devMode, currentUser, 
 // Sub-component: Matrix Task Card
 const MatrixTaskCard: React.FC<{
   task: TeacherTask;
+  activeWorkingDate?: string;
+  periodTimings?: Record<number, { time: string; label: string }> | null;
   onToggleStatus: () => void;
   onToggleSubtask: (subtaskId: string) => void;
   onEdit: () => void;
@@ -3420,6 +3494,8 @@ const MatrixTaskCard: React.FC<{
   onToggleExpand: () => void;
 }> = ({
   task,
+  activeWorkingDate,
+  periodTimings,
   onToggleStatus,
   onToggleSubtask,
   onEdit,
@@ -3431,6 +3507,8 @@ const MatrixTaskCard: React.FC<{
   const isDone = task.status === 'Completed';
   const subtasksCount = task.subtasks ? task.subtasks.length : 0;
   const completedSubtasksCount = task.subtasks ? task.subtasks.filter(s => s.completed).length : 0;
+  const eligibility = isTaskCompletionAllowed(task, activeWorkingDate || task.dueDate || '', periodTimings);
+  const isLocked = eligibility.isLocked && !isDone;
 
   return (
     <div
@@ -3445,10 +3523,27 @@ const MatrixTaskCard: React.FC<{
           <button
             onClick={onToggleStatus}
             className={`mt-0.5 p-0.5 rounded transition-colors cursor-pointer ${
-              isDone ? 'text-emerald-400' : 'text-slate-500 hover:text-purple-400'
+              isDone
+                ? 'text-emerald-400'
+                : isLocked
+                ? 'text-amber-400/70 hover:text-amber-300'
+                : 'text-slate-500 hover:text-purple-400'
             }`}
+            title={
+              isDone
+                ? 'Mark as Incomplete'
+                : isLocked
+                ? eligibility.reason || `Scheduled until ${eligibility.scheduledEndTime12h}. Available after completion.`
+                : 'Mark as Completed'
+            }
           >
-            {isDone ? <CheckCircle2 className="w-4 h-4" /> : <XCircle className="w-4 h-4" />}
+            {isDone ? (
+              <CheckCircle2 className="w-4 h-4" />
+            ) : isLocked ? (
+              <Lock className="w-3.5 h-3.5 text-amber-400/80" />
+            ) : (
+              <XCircle className="w-4 h-4" />
+            )}
           </button>
 
           <div className="flex-1 min-w-0 space-y-1">
@@ -3461,6 +3556,15 @@ const MatrixTaskCard: React.FC<{
             </div>
 
             <div className="flex flex-wrap items-center gap-2 text-[10px] text-slate-400">
+              {isLocked && eligibility.scheduledEndTime12h && (
+                <span
+                  className="px-1.5 py-0.2 rounded bg-amber-950/80 text-amber-300 border border-amber-800 font-mono flex items-center gap-1"
+                  title={eligibility.reason}
+                >
+                  <Lock className="w-2.5 h-2.5 text-amber-400" />
+                  <span>Finishes {eligibility.scheduledEndTime12h}</span>
+                </span>
+              )}
               <span className="px-1.5 py-0.2 rounded bg-slate-800 text-slate-300 font-mono">
                 {task.category}
               </span>
@@ -3535,6 +3639,8 @@ const MatrixTaskCard: React.FC<{
 // Sub-component: List Task Card
 const ListTaskCard: React.FC<{
   task: TeacherTask;
+  activeWorkingDate?: string;
+  periodTimings?: Record<number, { time: string; label: string }> | null;
   onToggleStatus: () => void;
   onToggleSubtask: (subtaskId: string) => void;
   onEdit: () => void;
@@ -3544,6 +3650,8 @@ const ListTaskCard: React.FC<{
   onToggleExpand: () => void;
 }> = ({
   task,
+  activeWorkingDate,
+  periodTimings,
   onToggleStatus,
   onToggleSubtask,
   onEdit,
@@ -3553,6 +3661,8 @@ const ListTaskCard: React.FC<{
   onToggleExpand
 }) => {
   const isDone = task.status === 'Completed';
+  const eligibility = isTaskCompletionAllowed(task, activeWorkingDate || task.dueDate || '', periodTimings);
+  const isLocked = eligibility.isLocked && !isDone;
 
   return (
     <div
@@ -3567,10 +3677,27 @@ const ListTaskCard: React.FC<{
           <button
             onClick={onToggleStatus}
             className={`mt-1 p-1 rounded-lg transition-colors cursor-pointer ${
-              isDone ? 'bg-emerald-500/20 text-emerald-400' : 'bg-slate-800 text-slate-400 hover:text-purple-400'
+              isDone
+                ? 'bg-emerald-500/20 text-emerald-400'
+                : isLocked
+                ? 'bg-amber-500/10 text-amber-400/80 hover:bg-amber-500/20'
+                : 'bg-slate-800 text-slate-400 hover:text-purple-400'
             }`}
+            title={
+              isDone
+                ? 'Mark as Incomplete'
+                : isLocked
+                ? eligibility.reason || `Scheduled until ${eligibility.scheduledEndTime12h}. Available after completion.`
+                : 'Mark as Completed'
+            }
           >
-            <CheckCircle2 className="w-5 h-5" />
+            {isDone ? (
+              <CheckCircle2 className="w-5 h-5" />
+            ) : isLocked ? (
+              <Lock className="w-5 h-5 text-amber-400" />
+            ) : (
+              <CheckCircle2 className="w-5 h-5" />
+            )}
           </button>
 
           <div className="space-y-1 flex-1">
@@ -3582,6 +3709,15 @@ const ListTaskCard: React.FC<{
               >
                 {task.title}
               </h4>
+              {isLocked && eligibility.scheduledEndTime12h && (
+                <span
+                  className="px-2 py-0.5 rounded-full bg-amber-950 border border-amber-800 text-amber-300 text-[10px] font-mono flex items-center gap-1"
+                  title={eligibility.reason}
+                >
+                  <Lock className="w-2.5 h-2.5 text-amber-400" />
+                  <span>Finishes {eligibility.scheduledEndTime12h}</span>
+                </span>
+              )}
               {task.id.startsWith('proxy-duty-') && (
                 <span className="px-2 py-0.5 rounded-full bg-rose-500/20 border border-rose-500/50 text-rose-300 text-[10px] font-black tracking-wide flex items-center gap-1 animate-pulse" title="Proxy Substitution Duty assigned by Principal / Incharge">
                   <AlertTriangle className="w-3 h-3 text-rose-400" />

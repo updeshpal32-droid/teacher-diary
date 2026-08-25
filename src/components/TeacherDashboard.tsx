@@ -69,6 +69,11 @@ import {
   UnifiedTeachingPeriod
 } from '../lib/unifiedTeacherScheduleEngine';
 import {
+  isTaskCompletionAllowed,
+  formatTime12h,
+  getTaskScheduledEndTime
+} from '../lib/taskTimeGatingEngine';
+import {
   LayoutDashboard,
   Clock,
   BookOpen,
@@ -121,7 +126,8 @@ import {
   Target,
   CheckCheck,
   Users2,
-  Activity
+  Activity,
+  Lock
 } from 'lucide-react';
 
 interface TeacherDashboardProps {
@@ -551,6 +557,7 @@ export const TeacherDashboard: React.FC<TeacherDashboardProps> = ({
   const [periodTimings, setPeriodTimings] = useState<Record<number, { time: string; label: string }>>(DEFAULT_PERIOD_TIMINGS);
   const [currentUser, setCurrentUser] = useState<UserAccount | null>(null);
   const [loading, setLoading] = useState(true);
+  const [timeGateWarning, setTimeGateWarning] = useState<string | null>(null);
 
   // Active period detection & live schedule status
   const [activePeriodInfo, setActivePeriodInfo] = useState<{
@@ -1029,6 +1036,18 @@ export const TeacherDashboard: React.FC<TeacherDashboardProps> = ({
     const target = allDashboardTasks.find(t => t.id === taskId);
     if (!target) return;
     const newStatus = target.status === 'Completed' ? 'Pending' : 'Completed';
+
+    // Time-gated completion rule on active working date
+    if (newStatus === 'Completed') {
+      const eligibility = isTaskCompletionAllowed(target, activeWorkingDate, periodTimings);
+      if (!eligibility.allowed) {
+        console.warn('[TeacherDashboard:handleToggleTask] Blocked completion ahead of schedule:', eligibility.reason);
+        setTimeGateWarning(eligibility.reason || 'This task cannot be marked completed until its scheduled finishing time.');
+        setTimeout(() => setTimeGateWarning(null), 5000);
+        return;
+      }
+    }
+
     console.log('[TeacherDashboard:handleToggleTask]', {
       taskId: target.id,
       title: target.title,
@@ -1037,6 +1056,7 @@ export const TeacherDashboard: React.FC<TeacherDashboardProps> = ({
       newStatus,
       toggleAllowed: true
     });
+    setTimeGateWarning(null);
     const updated = allDashboardTasks.map(t =>
       t.id === taskId
         ? {
@@ -2659,11 +2679,29 @@ export const TeacherDashboard: React.FC<TeacherDashboardProps> = ({
               </button>
             </div>
 
+            {/* Time-Gated Task Warning Banner */}
+            {timeGateWarning && (
+              <div className="p-3 rounded-xl bg-amber-500/10 border border-amber-500/30 text-amber-300 text-xs flex items-center justify-between gap-2 animate-fadeIn">
+                <div className="flex items-center gap-2">
+                  <Lock className="w-4 h-4 text-amber-400 shrink-0" />
+                  <span>{timeGateWarning}</span>
+                </div>
+                <button
+                  onClick={() => setTimeGateWarning(null)}
+                  className="text-amber-400 hover:text-white text-xs cursor-pointer p-0.5"
+                >
+                  ✕
+                </button>
+              </div>
+            )}
+
             {/* Tasks List */}
             <div className="space-y-2.5">
               {filteredTasks.map(task => {
                 const isDone = task.status === 'Completed';
                 const isSuperior = task.assignedByRole === 'Principal' || task.assignedByRole === 'Incharge' || task.assignedByRole === 'Committee';
+                const eligibility = isTaskCompletionAllowed(task, activeWorkingDate, periodTimings);
+                const isLocked = eligibility.isLocked && !isDone;
 
                 return (
                   <div
@@ -2681,11 +2719,25 @@ export const TeacherDashboard: React.FC<TeacherDashboardProps> = ({
                         <button
                           type="button"
                           onClick={() => handleToggleTask(task.id)}
-                          className="mt-0.5 text-slate-400 hover:text-purple-400 cursor-pointer"
-                          title={isDone ? 'Mark as Incomplete' : 'Mark as Completed'}
+                          className={`mt-0.5 transition-colors cursor-pointer ${
+                            isDone
+                              ? 'text-emerald-400'
+                              : isLocked
+                              ? 'text-amber-400/70 hover:text-amber-300'
+                              : 'text-slate-400 hover:text-purple-400'
+                          }`}
+                          title={
+                            isDone
+                              ? 'Mark as Incomplete'
+                              : isLocked
+                              ? eligibility.reason || `Scheduled until ${eligibility.scheduledEndTime12h}. Available after completion.`
+                              : 'Mark as Completed'
+                          }
                         >
                           {isDone ? (
                             <CheckSquare className="w-4 h-4 text-emerald-400" />
+                          ) : isLocked ? (
+                            <Lock className="w-4 h-4 text-amber-400/80" />
                           ) : (
                             <Square className="w-4 h-4 text-slate-500 hover:text-white" />
                           )}
@@ -2696,6 +2748,16 @@ export const TeacherDashboard: React.FC<TeacherDashboardProps> = ({
                             <h5 className={`font-bold text-xs ${isDone ? 'line-through text-slate-500' : 'text-white'}`}>
                               {task.title}
                             </h5>
+
+                            {isLocked && eligibility.scheduledEndTime12h && (
+                              <span
+                                className="px-1.5 py-0.2 rounded text-[9px] font-bold bg-amber-500/10 text-amber-300 border border-amber-500/30 flex items-center gap-1"
+                                title={eligibility.reason}
+                              >
+                                <Lock className="w-2.5 h-2.5 text-amber-400" />
+                                <span>Finishes {eligibility.scheduledEndTime12h}</span>
+                              </span>
+                            )}
 
                             {isSuperior ? (
                               <span className="px-2 py-0.5 rounded text-[9px] font-bold bg-amber-500/20 text-amber-300 border border-amber-500/40 flex items-center gap-1">

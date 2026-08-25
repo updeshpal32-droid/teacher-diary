@@ -1066,26 +1066,29 @@ export const TeacherDashboard: React.FC<TeacherDashboardProps> = ({
         return true;
       }
 
-      // Priority E: Active Subject Responsibility (e.g. Odia to Sipika Patel, Math support to Karishma Kerketta)
-      const matchingSubjectAssignment = myActiveSubjectResponsibilities.find(sra => {
+      // Priority E: Primary Teacher / In-Charge Subject Responsibility ONLY (e.g. Sipika Patel for Odia)
+      // Note: Academic Support / Co-Teaching does NOT own or steal the primary teacher's slots
+      const matchingPrimarySubject = myActiveSubjectResponsibilities.find(sra => {
+        if (sra.supportType !== 'Primary Teacher / In-Charge') return false;
         const slotCleanClass = slotClass.toLowerCase().replace('class ', '').trim();
         const sraCleanClass = sra.className.toLowerCase().replace('class ', '').trim();
-        const classMatch = slotCleanClass === sraCleanClass || slotCleanClass.includes(sraCleanClass) || sraCleanClass.includes(slotCleanClass);
+        const classMatch = slotCleanClass === sraCleanClass || slotCleanClass.includes(sraCleanClass) || sraCleanClass.includes(slotCleanClass) || sraCleanClass.includes('to');
         const subjMatch = sra.subjectName && (
           slotSubject.includes(sra.subjectName.toLowerCase()) ||
           sra.subjectName.toLowerCase().includes(slotSubject)
         );
-        return classMatch && subjMatch;
+        return classMatch && subjMatch && (!slotTeacher || slotTeacher.includes('assigned staff') || slotTeacher.includes('odia'));
       });
 
-      if (matchingSubjectAssignment) {
+      if (matchingPrimarySubject) {
         return true;
       }
 
       return false;
     });
 
-    // 2. Strict Deduplication: An individual teacher can ONLY be present in ONE class per period!
+    // 2. Strict Deduplication & Support Re-Labeling:
+    // Support teachers teach their assigned support subject during THEIR OWN existing period in that class
     const singleClassPerPeriodMap = new Map<number, TimetableSlot>();
 
     for (const slot of matchingSlots) {
@@ -1096,10 +1099,31 @@ export const TeacherDashboard: React.FC<TeacherDashboardProps> = ({
         slotTeacher.includes(teacherNameLower) ||
         (slot.isArrangement && (slot.arrangementTeacherName || '').toLowerCase().includes(teacherNameLower));
 
+      let effectiveSlot = { ...slot };
+
+      // Check if this teacher has an active Support / Co-Teaching assignment for this class
+      const supportAssignment = myActiveSubjectResponsibilities.find(sra => {
+        if (sra.supportType !== 'Academic Support / Co-Teaching') return false;
+        const slotCleanClass = (slot.className || '').toLowerCase().replace('class ', '').trim();
+        const sraCleanClass = sra.className.toLowerCase().replace('class ', '').trim();
+        return slotCleanClass === sraCleanClass || slotCleanClass.includes(sraCleanClass) || sraCleanClass.includes(slotCleanClass);
+      });
+
+      if (supportAssignment) {
+        effectiveSlot = {
+          ...effectiveSlot,
+          originalSubject: slot.subjectName,
+          subjectName: supportAssignment.subjectName,
+          isSupportSubject: true,
+          supportType: supportAssignment.supportType,
+          supportRoleNote: supportAssignment.roleNote
+        } as any;
+      }
+
       if (!singleClassPerPeriodMap.has(pNum)) {
-        singleClassPerPeriodMap.set(pNum, slot);
+        singleClassPerPeriodMap.set(pNum, effectiveSlot);
       } else if (isDirectMatch) {
-        singleClassPerPeriodMap.set(pNum, slot);
+        singleClassPerPeriodMap.set(pNum, effectiveSlot);
       }
     }
 
@@ -2491,13 +2515,18 @@ export const TeacherDashboard: React.FC<TeacherDashboardProps> = ({
 
                         {/* Class Details */}
                         <div className="space-y-1">
-                          <div className="flex items-center gap-2">
+                          <div className="flex items-center gap-2 flex-wrap">
                             <span className="px-2 py-0.5 rounded text-xs font-mono font-black bg-amber-500/20 text-amber-300 border border-amber-500/30">
                               {slot.className}{slot.section ? `-${slot.section}` : ''}
                             </span>
-                            <h5 className="font-bold text-sm text-white truncate">
+                            <h5 className="font-bold text-sm text-white truncate m-0">
                               {slot.subjectName}
                             </h5>
+                            {(slot as any).isSupportSubject && (
+                              <span className="px-1.5 py-0.5 rounded text-[9px] font-bold bg-purple-500/20 text-purple-300 border border-purple-500/30" title={`Academic Support for ${(slot as any).originalSubject} period`}>
+                                Academic Support ({(slot as any).originalSubject})
+                              </span>
+                            )}
                           </div>
 
                           <div className="text-[11px] text-slate-400 flex items-center gap-1.5">

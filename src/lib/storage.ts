@@ -3074,9 +3074,9 @@ export const DEFAULT_SUBJECT_RESPONSIBILITIES: SubjectResponsibilityAssignment[]
   },
   {
     id: 'sra-2',
-    employeeCode: 'CS.107861', // Karishma Kerketta
+    employeeCode: 'CS.129498', // Karishma Kerketta
     teacherName: 'KARISHMA KERKETTA',
-    designation: 'PRT',
+    designation: 'COMPUTER INSTRUCTOR',
     subjectName: 'Mathematics',
     className: 'Class V-A',
     section: 'A',
@@ -3085,6 +3085,57 @@ export const DEFAULT_SUBJECT_RESPONSIBILITIES: SubjectResponsibilityAssignment[]
     fromDate: '2026-08-12',
     toDate: '2027-03-31',
     roleNote: 'Class V Math academic support as per New Academic Plan (12-08-2026) to improve scholastic competency.',
+    status: 'Active',
+    assignedBy: 'Shri Hemananda Barik (Principal I/c)',
+    assignedAt: '2026-08-12T10:30:00.000Z'
+  },
+  {
+    id: 'sra-3',
+    employeeCode: '108894', // Updesh Singh Pal
+    teacherName: 'UPDESH SINGH PAL',
+    designation: 'TGT (P&HE)',
+    subjectName: 'Hindi',
+    className: 'Class V-A',
+    section: 'A',
+    supportType: 'Academic Support / Co-Teaching',
+    assignmentType: 'Whole Session',
+    fromDate: '2026-08-12',
+    toDate: '2027-03-31',
+    roleNote: 'Class V Hindi academic support as per New Academic Plan (12-08-2026) to improve reading/writing competency.',
+    status: 'Active',
+    assignedBy: 'Shri Hemananda Barik (Principal I/c)',
+    assignedAt: '2026-08-12T10:30:00.000Z'
+  },
+  {
+    id: 'sra-4',
+    employeeCode: '102725', // Dipanwita Mandal
+    teacherName: 'DIPANWITA MANDAL',
+    designation: 'Librarian',
+    subjectName: 'English',
+    className: 'Class V-A',
+    section: 'A',
+    supportType: 'Academic Support / Co-Teaching',
+    assignmentType: 'Whole Session',
+    fromDate: '2026-08-12',
+    toDate: '2027-03-31',
+    roleNote: 'Class V English academic support as per New Academic Plan (12-08-2026) to improve reading/writing competency.',
+    status: 'Active',
+    assignedBy: 'Shri Hemananda Barik (Principal I/c)',
+    assignedAt: '2026-08-12T10:30:00.000Z'
+  },
+  {
+    id: 'sra-5',
+    employeeCode: '106020', // Samya Raha
+    teacherName: 'SAMYA RAHA',
+    designation: 'TGT (Art Education)',
+    subjectName: 'TWAU',
+    className: 'Class V-A',
+    section: 'A',
+    supportType: 'Academic Support / Co-Teaching',
+    assignmentType: 'Whole Session',
+    fromDate: '2026-08-12',
+    toDate: '2027-03-31',
+    roleNote: 'Class V TWAU academic support as per New Academic Plan (12-08-2026) to improve scholastic competency.',
     status: 'Active',
     assignedBy: 'Shri Hemananda Barik (Principal I/c)',
     assignedAt: '2026-08-12T10:30:00.000Z'

@@ -245,6 +245,30 @@ export const AutomaticProxyPlannerModal: React.FC<AutomaticProxyPlannerModalProp
         }
       }
     }
+
+    // Primary Teacher / In-Charge Subject Responsibility ONLY (e.g. Sipika Patel for Odia)
+    const slotClass = (slot.className || '').toLowerCase().replace('class ', '').trim();
+    const slotSubj = (slot.subjectName || '').toLowerCase().trim();
+    const hasPrimaryResp = subjectResponsibilities.some(sra => {
+      if (sra.status !== 'Active' || sra.supportType !== 'Primary Teacher / In-Charge') return false;
+      const empMatch = sra.employeeCode && staff.employeeCode && sra.employeeCode.toLowerCase() === staff.employeeCode.toLowerCase();
+      const nameMatch = sra.teacherName && normalizeFacultyKey(sra.teacherName) === staffKey;
+      if (!empMatch && !nameMatch) return false;
+
+      if (sra.assignmentType === 'Specific Period') {
+        if (sra.fromDate && selectedDate < sra.fromDate) return false;
+        if (sra.toDate && selectedDate > sra.toDate) return false;
+      }
+
+      const sraClass = sra.className.toLowerCase().replace('class ', '').trim();
+      const sraSubj = sra.subjectName.toLowerCase().trim();
+      const classMatch = slotClass === sraClass || slotClass.includes(sraClass) || sraClass.includes(slotClass) || sraClass.includes('to');
+      const subjMatch = slotSubj.includes(sraSubj) || sraSubj.includes(slotSubj);
+      return classMatch && subjMatch && (!slot.teacherName || slot.teacherName.toLowerCase().includes('assigned') || slot.teacherName.toLowerCase().includes('odia'));
+    });
+
+    if (hasPrimaryResp) return true;
+
     return false;
   };
 
@@ -483,12 +507,33 @@ export const AutomaticProxyPlannerModal: React.FC<AutomaticProxyPlannerModalProp
       return isSlotAssignedToStaff(slot, activeStaffForProxy);
     });
 
-    // Deduplicate by period number so the same period is never shown multiple times
+    // Deduplicate by period number and re-label Support / Co-Teaching subject responsibilities
     const periodMap = new Map<number, TimetableSlot>();
     for (const slot of directSlots) {
       const pNum = Number(slot.period || slot.periodNumber || 1);
       if (!periodMap.has(pNum)) {
-        periodMap.set(pNum, slot);
+        let finalSlot = { ...slot };
+        const supportAssignment = subjectResponsibilities.find(sra => {
+          if (sra.status !== 'Active' || sra.supportType !== 'Academic Support / Co-Teaching') return false;
+          const empMatch = activeStaffForProxy.employeeCode && sra.employeeCode && sra.employeeCode.toLowerCase() === activeStaffForProxy.employeeCode.toLowerCase();
+          const nameMatch = activeStaffForProxy.name && sra.teacherName && normalizeFacultyKey(sra.teacherName) === normalizeFacultyKey(activeStaffForProxy.name);
+          if (!empMatch && !nameMatch) return false;
+
+          const slotCleanClass = (slot.className || '').toLowerCase().replace('class ', '').trim();
+          const sraCleanClass = sra.className.toLowerCase().replace('class ', '').trim();
+          return slotCleanClass === sraCleanClass || slotCleanClass.includes(sraCleanClass) || sraCleanClass.includes(slotCleanClass);
+        });
+
+        if (supportAssignment) {
+          finalSlot = {
+            ...finalSlot,
+            originalSubject: slot.subjectName,
+            subjectName: supportAssignment.subjectName,
+            notes: supportAssignment.roleNote || `Support / Co-Teaching for ${supportAssignment.subjectName}`
+          } as any;
+        }
+
+        periodMap.set(pNum, finalSlot);
       }
     }
 
@@ -499,7 +544,7 @@ export const AutomaticProxyPlannerModal: React.FC<AutomaticProxyPlannerModalProp
     console.log(`[TEACHER SCHEDULED PERIODS] ${activeStaffForProxy.name} on ${currentDayOfWeek} (Total: ${finalSlots.length} periods):`, finalSlots.map(s => `P${s.period || s.periodNumber}: ${s.className} (${s.subjectName})`));
 
     return finalSlots;
-  }, [activeStaffForProxy, timetable, currentDayOfWeek, selectedDate, attendanceRecords, leaveApplications, onDutyRecords]);
+  }, [activeStaffForProxy, timetable, currentDayOfWeek, selectedDate, attendanceRecords, leaveApplications, onDutyRecords, subjectResponsibilities]);
 
   const getAvailableFreeTeachers = (
     periodNum: number,

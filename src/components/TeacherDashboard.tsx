@@ -617,12 +617,11 @@ export const TeacherDashboard: React.FC<TeacherDashboardProps> = ({
     window.addEventListener('kvs-school-updated', handleSchoolUpdate);
     window.addEventListener('kvs-sessions-updated', handleSessionsUpdate);
     window.addEventListener('kvs-auth-changed', handleAuthChange);
-    window.addEventListener('kvs-active-teacher-changed', handleAuthChange);
-    window.addEventListener('kvs-profile-request-resolved', handleAuthChange);
     window.addEventListener('kvs-teacher-attendance-updated', handleAuthChange);
     window.addEventListener('kvs-timetable-updated', handleAuthChange);
     window.addEventListener('kvs-portfolios-updated', handleAuthChange);
     window.addEventListener('kvs-subject-responsibilities-updated', handleAuthChange);
+    window.addEventListener('kvs-tasks-updated', handleAuthChange);
 
     return () => {
       window.removeEventListener('kvs-school-updated', handleSchoolUpdate);
@@ -634,6 +633,7 @@ export const TeacherDashboard: React.FC<TeacherDashboardProps> = ({
       window.removeEventListener('kvs-timetable-updated', handleAuthChange);
       window.removeEventListener('kvs-portfolios-updated', handleAuthChange);
       window.removeEventListener('kvs-subject-responsibilities-updated', handleAuthChange);
+      window.removeEventListener('kvs-tasks-updated', handleAuthChange);
     };
   }, [propUser]);
 
@@ -1034,31 +1034,38 @@ export const TeacherDashboard: React.FC<TeacherDashboardProps> = ({
         ? {
             ...t,
             status: newStatus as any,
+            subtasks: (t.subtasks || []).map(st => ({ ...st, completed: newStatus === 'Completed' })),
             updatedAt: new Date().toISOString()
           }
         : t
     );
     setTasks(updated);
-    const u = currentUser;
-    const scopedTaskKey = u?.employeeCode
-      ? getTeacherScopedStorageKey('setup:tasks', u.employeeCode)
+    const activeUser = currentUser || (await getCurrentUser());
+    const scopedTaskKey = activeUser?.employeeCode
+      ? getTeacherScopedStorageKey('setup:tasks', activeUser.employeeCode)
       : 'setup:tasks';
     await db.set(scopedTaskKey, updated);
-    if (u?.employeeCode === '108894') {
+    if (activeUser?.employeeCode === '108894') {
       await db.set('setup:tasks', updated);
+    }
+    if (typeof window !== 'undefined') {
+      window.dispatchEvent(new CustomEvent('kvs-tasks-updated', { detail: updated }));
     }
   };
 
   const handleDeleteTask = async (taskId: string) => {
     const updated = tasks.filter(t => t.id !== taskId);
     setTasks(updated);
-    const u = currentUser;
-    const scopedTaskKey = u?.employeeCode
-      ? getTeacherScopedStorageKey('setup:tasks', u.employeeCode)
+    const activeUser = currentUser || (await getCurrentUser());
+    const scopedTaskKey = activeUser?.employeeCode
+      ? getTeacherScopedStorageKey('setup:tasks', activeUser.employeeCode)
       : 'setup:tasks';
     await db.set(scopedTaskKey, updated);
-    if (u?.employeeCode === '108894') {
+    if (activeUser?.employeeCode === '108894') {
       await db.set('setup:tasks', updated);
+    }
+    if (typeof window !== 'undefined') {
+      window.dispatchEvent(new CustomEvent('kvs-tasks-updated', { detail: updated }));
     }
   };
 

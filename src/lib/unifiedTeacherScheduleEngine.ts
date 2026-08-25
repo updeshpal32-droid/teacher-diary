@@ -595,14 +595,22 @@ export function filterAuthenticTeacherTasks({
       return false;
     }
 
-    // 2. Drop any legacy/residual auto-generated teaching or duty tasks from other dates
-    if (
-      task.id.startsWith('task-teaching-') ||
-      task.id.startsWith('tt-period-') ||
-      task.id.startsWith('task-gate-') ||
-      task.id.startsWith('task-recess-') ||
-      taskTitleLower.startsWith('campus duty:')
-    ) {
+    // 2. Allow authentic teaching and campus duty tasks for this teacher to preserve completion status
+    if (task.id.startsWith('task-teaching-')) {
+      if (!isUpdesh && (taskTitleLower.includes('physical education') || taskTitleLower.includes('pe '))) {
+        return false;
+      }
+      if (empCode === '102725' && !taskTitleLower.includes('library') && !taskTitleLower.includes('english')) {
+        return false;
+      }
+      return true;
+    }
+
+    if (task.id.startsWith('task-gate-') || task.id.startsWith('task-recess-')) {
+      return true;
+    }
+
+    if (task.id.startsWith('tt-period-') || taskTitleLower.startsWith('campus duty:')) {
       return false;
     }
 

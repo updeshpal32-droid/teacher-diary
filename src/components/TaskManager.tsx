@@ -279,11 +279,13 @@ export const TaskManager: React.FC<TaskManagerProps> = ({ devMode, currentUser, 
 
     window.addEventListener('kvs-timetable-updated', handleTimetableUpdate);
     window.addEventListener('kvs-auth-changed', handleTimetableUpdate);
+    window.addEventListener('kvs-tasks-updated', handleTimetableUpdate);
     window.addEventListener('kvs-active-teacher-changed', handleTeacherChanged);
 
     return () => {
       window.removeEventListener('kvs-timetable-updated', handleTimetableUpdate);
       window.removeEventListener('kvs-auth-changed', handleTimetableUpdate);
+      window.removeEventListener('kvs-tasks-updated', handleTimetableUpdate);
       window.removeEventListener('kvs-active-teacher-changed', handleTeacherChanged);
     };
   }, [currentUser?.employeeCode, currentUser?.role, activeWorkingDate]);
@@ -815,6 +817,9 @@ export const TaskManager: React.FC<TaskManagerProps> = ({ devMode, currentUser, 
     await db.set(scopedTaskKey, updated);
     if (currentEmpCode === '108894') {
       await db.set('setup:tasks', updated);
+    }
+    if (typeof window !== 'undefined') {
+      window.dispatchEvent(new CustomEvent('kvs-tasks-updated', { detail: updated }));
     }
   };
 

@@ -479,13 +479,48 @@ const UPCOMING_ACADEMIC_DEADLINES = [
   }
 ];
 
+export function sanitizePeriodTimings(
+  timings?: Record<number, { time: string; label: string }> | null
+): Record<number, { time: string; label: string }> {
+  const base = timings && Object.keys(timings).length > 0 ? { ...timings } : { ...DEFAULT_PERIOD_TIMINGS };
+  let modified = false;
+  Object.keys(base).forEach(k => {
+    const pNum = Number(k);
+    if (base[pNum]?.time) {
+      const original = base[pNum].time;
+      const fixed = original
+        .replace(/11:(\d+)\s*PM/gi, '11:$1 AM')
+        .replace(/10:(\d+)\s*PM/gi, '10:$1 AM')
+        .replace(/09:(\d+)\s*PM/gi, '09:$1 AM')
+        .replace(/08:(\d+)\s*PM/gi, '08:$1 AM')
+        .replace(/07:(\d+)\s*PM/gi, '07:$1 AM');
+      if (fixed !== original) {
+        base[pNum] = { ...base[pNum], time: fixed };
+        modified = true;
+      }
+    }
+  });
+  if (modified) {
+    db.set('setup:period_timings', base).catch(() => {});
+  }
+  return base;
+}
+
 function parseTimeToMinutes(tStr: string): number {
   if (!tStr) return 0;
   const match = tStr.trim().match(/(\d+):(\d+)\s*(AM|PM)?/i);
   if (!match) return 0;
   let hours = parseInt(match[1], 10);
   const minutes = parseInt(match[2], 10);
-  const ampm = match[3] ? match[3].toUpperCase() : '';
+  let ampm = match[3] ? match[3].toUpperCase() : '';
+
+  // School context normalization:
+  // 1. Morning hours 7, 8, 9, 10, 11 are strictly AM (07:00 - 11:59 AM)
+  if (hours >= 7 && hours <= 11) {
+    ampm = 'AM';
+  } else if ((hours >= 1 && hours <= 6) || hours === 12) {
+    ampm = 'PM';
+  }
 
   if (ampm === 'PM' && hours < 12) hours += 12;
   if (ampm === 'AM' && hours === 12) hours = 0;
@@ -867,11 +902,10 @@ export const TeacherDashboard: React.FC<TeacherDashboardProps> = ({
       if (lp) setLessonPlans(lp);
       if (asst) setAssessments(asst);
       if (insp) setInspections(insp);
-      if (pt) {
-        setPeriodTimings(pt);
-        const detect = detectCurrentActivePeriod(pt);
-        setActivePeriodInfo(detect);
-      }
+      const sanitizedPT = sanitizePeriodTimings(pt || DEFAULT_PERIOD_TIMINGS);
+      setPeriodTimings(sanitizedPT);
+      const detect = detectCurrentActivePeriod(sanitizedPT);
+      setActivePeriodInfo(detect);
       let rawLoadedTasks: TeacherTask[] = [];
       if (savedScopedTasks && Array.isArray(savedScopedTasks) && savedScopedTasks.length > 0) {
         rawLoadedTasks = savedScopedTasks;

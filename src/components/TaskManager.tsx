@@ -1038,9 +1038,18 @@ export const TaskManager: React.FC<TaskManagerProps> = ({ devMode, currentUser, 
   };
 
   const handleToggleTaskStatus = async (id: string) => {
+    const target = tasks.find(t => t.id === id);
+    const nextStatus = target?.status === 'Completed' ? 'Pending' : 'Completed';
+    console.log('[TaskManager:handleToggleTaskStatus]', {
+      taskId: id,
+      title: target?.title,
+      dueTime: target?.dueTime,
+      now: new Date().toLocaleTimeString(),
+      nextStatus,
+      toggleAllowed: true
+    });
     const updated = tasks.map(t => {
       if (t.id === id) {
-        const nextStatus = t.status === 'Completed' ? 'Pending' : 'Completed';
         return {
           ...t,
           status: nextStatus as any,

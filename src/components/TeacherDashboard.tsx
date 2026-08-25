@@ -1029,6 +1029,14 @@ export const TeacherDashboard: React.FC<TeacherDashboardProps> = ({
     const target = allDashboardTasks.find(t => t.id === taskId);
     if (!target) return;
     const newStatus = target.status === 'Completed' ? 'Pending' : 'Completed';
+    console.log('[TeacherDashboard:handleToggleTask]', {
+      taskId: target.id,
+      title: target.title,
+      dueTime: target.dueTime,
+      now: new Date().toLocaleTimeString(),
+      newStatus,
+      toggleAllowed: true
+    });
     const updated = allDashboardTasks.map(t =>
       t.id === taskId
         ? {

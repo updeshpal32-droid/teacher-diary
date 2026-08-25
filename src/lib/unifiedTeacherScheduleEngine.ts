@@ -582,25 +582,25 @@ export function filterAuthenticTeacherTasks({
     const taskDescLower = (task.description || '').toLowerCase();
     const taskTagsLower = (task.tags || []).map(t => t.toLowerCase());
 
-    // 1. Drop any legacy/residual proxy tasks (all proxies are generated canonically by unified schedule engine)
+    // 1. Drop any legacy/residual non-canonical proxy tasks (canonical proxies have id starting with task-teaching-)
     if (
       task.id.startsWith('task-proxy-') ||
       task.id.startsWith('proxy-duty-') ||
+      task.id.startsWith('proxy-2026-') ||
       task.category === 'Arrangement / Proxy Duty' ||
-      taskTagsLower.includes('proxy duty') ||
-      taskTagsLower.includes('timetable arrangement') ||
-      taskTitleLower.includes('proxy duty') ||
-      taskTitleLower.startsWith('proxy:')
+      (!task.id.startsWith('task-teaching-') && (
+        taskTagsLower.includes('proxy duty') ||
+        taskTagsLower.includes('timetable arrangement') ||
+        taskTitleLower.includes('proxy duty') ||
+        taskTitleLower.startsWith('proxy:')
+      ))
     ) {
       return false;
     }
 
-    // 2. Allow authentic teaching and campus duty tasks for this teacher to preserve completion status
+    // 2. Allow authentic teaching, proxy substitution, and campus duty tasks for this teacher to preserve completion status
     if (task.id.startsWith('task-teaching-')) {
-      if (!isUpdesh && (taskTitleLower.includes('physical education') || taskTitleLower.includes('pe '))) {
-        return false;
-      }
-      if (empCode === '102725' && !taskTitleLower.includes('library') && !taskTitleLower.includes('english')) {
+      if (!isUpdesh && !taskTitleLower.startsWith('proxy:') && (taskTitleLower.includes('physical education') || taskTitleLower.includes('pe '))) {
         return false;
       }
       return true;

@@ -2755,7 +2755,7 @@ export const TeacherDashboard: React.FC<TeacherDashboardProps> = ({
                                 title={eligibility.reason}
                               >
                                 <Lock className="w-2.5 h-2.5 text-amber-400" />
-                                <span>Finishes {eligibility.scheduledEndTime12h}</span>
+                                <span>Available after {eligibility.scheduledEndTime12h}</span>
                               </span>
                             )}
 

@@ -3562,7 +3562,7 @@ const MatrixTaskCard: React.FC<{
                   title={eligibility.reason}
                 >
                   <Lock className="w-2.5 h-2.5 text-amber-400" />
-                  <span>Finishes {eligibility.scheduledEndTime12h}</span>
+                  <span>Available after {eligibility.scheduledEndTime12h}</span>
                 </span>
               )}
               <span className="px-1.5 py-0.2 rounded bg-slate-800 text-slate-300 font-mono">
@@ -3715,7 +3715,7 @@ const ListTaskCard: React.FC<{
                   title={eligibility.reason}
                 >
                   <Lock className="w-2.5 h-2.5 text-amber-400" />
-                  <span>Finishes {eligibility.scheduledEndTime12h}</span>
+                  <span>Available after {eligibility.scheduledEndTime12h}</span>
                 </span>
               )}
               {task.id.startsWith('proxy-duty-') && (

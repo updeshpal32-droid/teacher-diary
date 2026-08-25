@@ -12,8 +12,36 @@ export const DEFAULT_KVS_PERIOD_END_TIMES: Record<number, string> = {
   5: '11:40',
   6: '12:20',
   7: '13:00',
-  8: '13:40'
+  8: '13:40',
+  9: '14:20'
 };
+
+/**
+ * Normalizes any time string (e.g. "01:40 PM", "1:40PM", "13:40", "08:30 AM", "01:40")
+ * to strict 24-hour "HH:mm" format.
+ */
+export function normalizeTo24HourTime(rawStr?: string | null): string | null {
+  if (!rawStr || typeof rawStr !== 'string') return null;
+  const match = rawStr.match(/(\d{1,2}):(\d{2})(?:\s*([ap]m))?/i);
+  if (!match) return null;
+
+  let h = parseInt(match[1], 10);
+  const m = parseInt(match[2], 10);
+  const ampm = match[3]?.toUpperCase();
+
+  if (ampm === 'PM' && h < 12) {
+    h += 12;
+  } else if (ampm === 'AM' && h === 12) {
+    h = 0;
+  } else if (!ampm) {
+    // In school schedule context, hours between 1 and 6 without AM/PM marker are PM (13:00 - 18:00)
+    if (h >= 1 && h <= 6) {
+      h += 12;
+    }
+  }
+
+  return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`;
+}
 
 /**
  * Formats a 24-hour HH:mm string to a human-readable 12-hour string with AM/PM.
@@ -21,7 +49,8 @@ export const DEFAULT_KVS_PERIOD_END_TIMES: Record<number, string> = {
  */
 export function formatTime12h(time24?: string | null): string {
   if (!time24 || !time24.includes(':')) return time24 || '';
-  const [hStr, mStr] = time24.split(':');
+  const normalized = normalizeTo24HourTime(time24) || time24;
+  const [hStr, mStr] = normalized.split(':');
   const hours = parseInt(hStr, 10);
   const minutes = mStr.substring(0, 2);
   if (isNaN(hours)) return time24;
@@ -31,49 +60,57 @@ export function formatTime12h(time24?: string | null): string {
 }
 
 /**
- * Parses the end time from a period slot string (e.g. "08:00 - 08:40" or "08:00 to 08:40" or "08:40").
- * Returns "HH:mm" in 24-hour format.
+ * Parses the end time from a period slot string (e.g. "01:00 PM - 01:40 PM" or "08:00 to 08:40" or "13:40").
+ * Returns "HH:mm" in strict 24-hour format.
  */
 export function parseEndTimeFromSlotString(slotStr?: string | null): string | null {
   if (!slotStr || typeof slotStr !== 'string') return null;
   const cleaned = slotStr.replace(/[–—]/g, '-').trim();
 
-  // If format "08:00 - 08:40"
+  // If format "07:50 AM - 08:30 AM" or "01:00 PM - 01:40 PM"
   if (cleaned.includes('-')) {
     const parts = cleaned.split('-');
     const endPart = parts[parts.length - 1].trim();
-    const match = endPart.match(/(\d{1,2}):(\d{2})/);
-    if (match) {
-      const h = parseInt(match[1], 10);
-      const m = parseInt(match[2], 10);
-      return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`;
-    }
+    const result = normalizeTo24HourTime(endPart);
+    if (result) return result;
   }
 
   // If format "08:00 to 08:40"
   if (cleaned.toLowerCase().includes('to')) {
     const parts = cleaned.toLowerCase().split('to');
     const endPart = parts[parts.length - 1].trim();
-    const match = endPart.match(/(\d{1,2}):(\d{2})/);
-    if (match) {
-      const h = parseInt(match[1], 10);
-      const m = parseInt(match[2], 10);
-      return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`;
-    }
+    const result = normalizeTo24HourTime(endPart);
+    if (result) return result;
   }
 
-  const singleMatch = cleaned.match(/(\d{1,2}):(\d{2})/);
-  if (singleMatch) {
-    const h = parseInt(singleMatch[1], 10);
-    const m = parseInt(singleMatch[2], 10);
-    return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`;
+  return normalizeTo24HourTime(cleaned);
+}
+
+/**
+ * Extracts period number from task ID, title, or tags (e.g. "p8", "Period 8", "Period-8").
+ */
+export function extractPeriodNumber(task: TeacherTask): number | null {
+  // Check id
+  const idMatch = task.id.match(/-p(\d+)/i) || task.id.match(/period[-_]?(\d+)/i);
+  if (idMatch && idMatch[1]) return parseInt(idMatch[1], 10);
+
+  // Check title
+  const titleMatch = (task.title || '').match(/Period[- ]*(\d+)/i) || (task.title || '').match(/\(Period[- ]*(\d+)\)/i);
+  if (titleMatch && titleMatch[1]) return parseInt(titleMatch[1], 10);
+
+  // Check tags
+  if (task.tags && Array.isArray(task.tags)) {
+    for (const tag of task.tags) {
+      const tagMatch = tag.match(/Period[- ]*(\d+)/i);
+      if (tagMatch && tagMatch[1]) return parseInt(tagMatch[1], 10);
+    }
   }
 
   return null;
 }
 
 /**
- * Calculates the scheduled end / finishing time of a task as an "HH:mm" string.
+ * Calculates the scheduled end / finishing time of a task as an "HH:mm" 24-hour string.
  * Dynamically resolves against the school's active period timings config.
  */
 export function getTaskScheduledEndTime(
@@ -82,23 +119,8 @@ export function getTaskScheduledEndTime(
 ): string | null {
   const activeTimings = periodTimings && Object.keys(periodTimings).length > 0 ? periodTimings : DEFAULT_PERIOD_TIMINGS;
 
-  // 1. Teaching Period tasks (e.g. task-teaching-YYYY-MM-DD-p5 or Period N in tags / title)
-  const periodMatch = task.id.match(/-p(\d+)/i) || (task.title || '').match(/Period\s*(\d+)/i);
-  let periodNumber: number | null = null;
-  if (periodMatch && periodMatch[1]) {
-    periodNumber = parseInt(periodMatch[1], 10);
-  }
-
-  if (periodNumber === null && task.tags) {
-    for (const tag of task.tags) {
-      const tagMatch = tag.match(/Period\s*(\d+)/i);
-      if (tagMatch && tagMatch[1]) {
-        periodNumber = parseInt(tagMatch[1], 10);
-        break;
-      }
-    }
-  }
-
+  // 1. Teaching Period tasks (Period N)
+  const periodNumber = extractPeriodNumber(task);
   if (periodNumber !== null) {
     // Check dynamic active period timings config first
     if (activeTimings && activeTimings[periodNumber]?.time) {
@@ -123,10 +145,10 @@ export function getTaskScheduledEndTime(
     titleLower.includes('morning gate')
   ) {
     if (activeTimings && activeTimings[1]?.time) {
-      // Period 1 start time is Morning Gate finish time
-      const match = activeTimings[1].time.match(/(\d{1,2}):(\d{2})/);
+      const match = activeTimings[1].time.match(/(\d{1,2}):(\d{2})(?:\s*([ap]m))?/i);
       if (match) {
-        return `${match[1].padStart(2, '0')}:${match[2]}`;
+        const p1Start = normalizeTo24HourTime(match[0]);
+        if (p1Start) return p1Start;
       }
     }
     return '07:50';
@@ -140,9 +162,10 @@ export function getTaskScheduledEndTime(
     descLower.includes('recess supervision')
   ) {
     if (activeTimings && activeTimings[5]?.time) {
-      const match = activeTimings[5].time.match(/(\d{1,2}):(\d{2})/);
+      const match = activeTimings[5].time.match(/(\d{1,2}):(\d{2})(?:\s*([ap]m))?/i);
       if (match) {
-        return `${match[1].padStart(2, '0')}:${match[2]}`;
+        const p5Start = normalizeTo24HourTime(match[0]);
+        if (p5Start) return p5Start;
       }
     }
     return '11:00';
@@ -158,7 +181,7 @@ export function getTaskScheduledEndTime(
       const p8End = parseEndTimeFromSlotString(activeTimings[8].time);
       if (p8End) {
         const [h, m] = p8End.split(':').map(Number);
-        const total = h * 60 + m + 30; // 30 minutes dispersal
+        const total = h * 60 + m + 30; // 30 minutes dispersal buffer
         const endH = Math.floor(total / 60) % 24;
         const endM = total % 60;
         return `${String(endH).padStart(2, '0')}:${String(endM).padStart(2, '0')}`;
@@ -171,17 +194,16 @@ export function getTaskScheduledEndTime(
   if (task.dueTime) {
     const timeStr = task.dueTime.trim();
 
-    // If timeSlot range like "11:00 - 11:40" or "08:00-08:40"
-    if (timeStr.includes('-') || timeStr.includes('–')) {
+    // If timeSlot range like "11:00 - 11:40" or "01:00 PM - 01:40 PM"
+    if (timeStr.includes('-') || timeStr.includes('–') || timeStr.toLowerCase().includes('to')) {
       const parsed = parseEndTimeFromSlotString(timeStr);
       if (parsed) return parsed;
     }
 
-    // Single time like "14:00"
-    const singleMatch = timeStr.match(/(\d{1,2}):(\d{2})/);
-    if (singleMatch) {
-      const startH = parseInt(singleMatch[1], 10);
-      const startM = parseInt(singleMatch[2], 10);
+    // Single time like "13:40" or "01:40 PM"
+    const parsedStart = normalizeTo24HourTime(timeStr);
+    if (parsedStart) {
+      const [startH, startM] = parsedStart.split(':').map(Number);
       const duration = task.estimatedMinutes && task.estimatedMinutes > 0 ? task.estimatedMinutes : 0;
       if (duration > 0) {
         const totalMinutes = startH * 60 + startM + duration;
@@ -189,7 +211,7 @@ export function getTaskScheduledEndTime(
         const endM = totalMinutes % 60;
         return `${String(endH).padStart(2, '0')}:${String(endM).padStart(2, '0')}`;
       }
-      return `${String(startH).padStart(2, '0')}:${String(startM).padStart(2, '0')}`;
+      return parsedStart;
     }
   }
 
@@ -278,7 +300,7 @@ export function isTaskCompletionAllowed(
       isLocked: true,
       scheduledEndTime,
       scheduledEndTime12h,
-      reason: `This period/task is scheduled until ${scheduledEndTime12h}. It can be marked completed once the finishing time has passed.`
+      reason: `Available after ${scheduledEndTime12h} (Finishes at ${scheduledEndTime12h}).`
     };
   }
 

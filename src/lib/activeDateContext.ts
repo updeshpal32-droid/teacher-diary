@@ -18,11 +18,20 @@ export const EVENT_ACTIVE_DATE_CHANGED = 'kvs-active-date-changed';
 
 // In-memory cache for fast synchronous initial render
 let cachedActiveDate: string = (() => {
+  const today = getLocalTodayDateString();
   try {
-    const fromStorage = localStorage.getItem(STORAGE_KEY_ACTIVE_DATE);
-    if (fromStorage && fromStorage.includes('-')) return fromStorage;
+    const fromSession = typeof window !== 'undefined' ? sessionStorage.getItem('session_working_date') : null;
+    if (fromSession && fromSession.includes('-')) {
+      return fromSession;
+    }
+    const fromStorage = typeof window !== 'undefined' ? localStorage.getItem(STORAGE_KEY_ACTIVE_DATE) : null;
+    if (fromStorage && fromStorage.includes('-')) {
+      if (fromStorage >= today) {
+        return fromStorage;
+      }
+    }
   } catch (_) {}
-  return getLocalTodayDateString();
+  return today;
 })();
 
 /**
@@ -62,9 +71,24 @@ export function getActiveWorkingDateSync(): string {
  * Asynchronously fetch the active working date from storage.
  */
 export async function getActiveWorkingDate(): Promise<string> {
+  const today = getLocalTodayDateString();
   try {
+    if (typeof window !== 'undefined' && window.sessionStorage) {
+      const fromSession = sessionStorage.getItem('session_working_date');
+      if (fromSession && fromSession.includes('-')) {
+        cachedActiveDate = fromSession;
+        return fromSession;
+      }
+    }
+
     const stored = await db.get<string>(STORAGE_KEY_ACTIVE_DATE);
     if (stored && typeof stored === 'string' && stored.includes('-')) {
+      // If stored date is in the past relative to today, advance to today
+      if (stored < today) {
+        cachedActiveDate = today;
+        await setActiveWorkingDate(today);
+        return today;
+      }
       cachedActiveDate = stored;
       try {
         localStorage.setItem(STORAGE_KEY_ACTIVE_DATE, stored);
@@ -74,7 +98,8 @@ export async function getActiveWorkingDate(): Promise<string> {
   } catch (err) {
     console.warn('[ActiveDate] Error reading active date from db:', err);
   }
-  return cachedActiveDate;
+  cachedActiveDate = today;
+  return today;
 }
 
 /**
@@ -85,7 +110,12 @@ export async function setActiveWorkingDate(dateStr: string): Promise<void> {
   if (!dateStr || !dateStr.includes('-')) return;
   cachedActiveDate = dateStr;
   try {
-    localStorage.setItem(STORAGE_KEY_ACTIVE_DATE, dateStr);
+    if (typeof window !== 'undefined' && window.sessionStorage) {
+      sessionStorage.setItem('session_working_date', dateStr);
+    }
+    if (typeof window !== 'undefined' && window.localStorage) {
+      localStorage.setItem(STORAGE_KEY_ACTIVE_DATE, dateStr);
+    }
   } catch (_) {}
   try {
     await db.set(STORAGE_KEY_ACTIVE_DATE, dateStr);
@@ -135,6 +165,12 @@ export function useActiveWorkingDate() {
     setDateState(newDate);
   }, []);
 
+  const resetToToday = useCallback(async () => {
+    const today = getLocalTodayDateString();
+    await setActiveWorkingDate(today);
+    setDateState(today);
+  }, []);
+
   const activeDayName = useMemo(() => getDayOfWeekFromDate(activeDate), [activeDate]);
   const formattedDate = useMemo(() => formatDisplayDate(activeDate), [activeDate]);
   const isWeekend = useMemo(() => activeDayName === 'Sunday' || activeDayName === 'Saturday', [activeDayName]);
@@ -144,7 +180,8 @@ export function useActiveWorkingDate() {
     activeDayName,
     formattedDate,
     isWeekend,
-    setActiveDate: updateActiveDate
+    setActiveDate: updateActiveDate,
+    resetToToday
   };
 }
 

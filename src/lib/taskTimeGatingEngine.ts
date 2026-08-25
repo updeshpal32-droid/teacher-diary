@@ -29,15 +29,18 @@ export function normalizeTo24HourTime(rawStr?: string | null): string | null {
   const m = parseInt(match[2], 10);
   const ampm = match[3]?.toUpperCase();
 
-  if (ampm === 'PM' && h < 12) {
+  // In Indian school daily schedule (07:00 to 18:00):
+  // 1. Hours 7, 8, 9, 10, 11 are morning (07:00 - 11:59 AM). Even if a typo says '11:40 PM', in school period context it is 11:40 AM.
+  if (h >= 7 && h <= 11) {
+    // Remains 07:xx - 11:xx AM
+  } else if (h === 12) {
+    // 12:xx midday PM
+    h = 12;
+  } else if (h >= 1 && h <= 6) {
+    // 1 PM - 6 PM -> 13:xx - 18:xx
     h += 12;
-  } else if (ampm === 'AM' && h === 12) {
-    h = 0;
-  } else if (!ampm) {
-    // In school schedule context, hours between 1 and 6 without AM/PM marker are PM (13:00 - 18:00)
-    if (h >= 1 && h <= 6) {
-      h += 12;
-    }
+  } else if (h > 12 && h <= 23) {
+    // Already 24-hour (e.g. 13:40)
   }
 
   return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`;

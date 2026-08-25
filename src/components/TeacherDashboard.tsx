@@ -44,6 +44,7 @@ import {
   DEFAULT_PORTFOLIO_TEMPLATES,
   DEFAULT_PORTFOLIO_ASSIGNMENTS,
   DEFAULT_SUBJECT_RESPONSIBILITIES,
+  DEFAULT_ON_DUTY_RECORDS,
   getSubjectResponsibilities,
   getCurrentUser,
   getMergedStaffList
@@ -712,9 +713,23 @@ export const TeacherDashboard: React.FC<TeacherDashboardProps> = ({
       else setStaffList(DEFAULT_STAFF_DETAILS);
       if (savedAtt && savedAtt.length > 0) setAttendanceRecords(savedAtt);
       setSubjectAssignments(savedSubAssignments || DEFAULT_SUBJECT_RESPONSIBILITIES);
-      if (savedLeaves && savedLeaves.length > 0) setLeaveApplications(savedLeaves);
+      if (savedLeaves && savedLeaves.length > 0) {
+        setLeaveApplications(savedLeaves);
+      } else {
+        setLeaveApplications(DEFAULT_LEAVE_APPLICATIONS);
+      }
       if (savedProxies !== null && Array.isArray(savedProxies)) setProxyAssignments(savedProxies);
-      if (savedOD && savedOD.length > 0) setOnDutyRecords(savedOD);
+      if (savedOD && savedOD.length > 0) {
+        const sanitizedOD = savedOD.map(rec => {
+          if (rec.id === 'od-2026-08-15' && rec.fromDate === '2026-08-25') {
+            return { ...rec, fromDate: '2026-08-01', toDate: '2026-08-04' };
+          }
+          return rec;
+        });
+        setOnDutyRecords(sanitizedOD);
+      } else {
+        setOnDutyRecords(DEFAULT_ON_DUTY_RECORDS);
+      }
       if (savedCampusDuties && savedCampusDuties.length > 0) setCampusDuties(savedCampusDuties);
 
       if (s) setSchool(s);
@@ -811,7 +826,7 @@ export const TeacherDashboard: React.FC<TeacherDashboardProps> = ({
 
       setTeacher(effectiveTeacher);
       if (c) setClasses(c);
-      if (tt) {
+      if (tt && tt.length > 0) {
         const cleansed = tt
           .filter(
             s => s.id !== 'tt-fri-6' &&
@@ -836,6 +851,8 @@ export const TeacherDashboard: React.FC<TeacherDashboardProps> = ({
             return { ...s, teacherName: tName, teacherId: tId };
           });
         setTimetable(cleansed);
+      } else {
+        setTimetable(DEFAULT_TIMETABLE);
       }
       if (cal) setCalendar(cal);
       if (syl) setSyllabus(syl);
@@ -868,18 +885,110 @@ export const TeacherDashboard: React.FC<TeacherDashboardProps> = ({
       const existingStaffKeys = new Set(effectiveStaff.map(s => normalizeFacultyKey(s.name)));
       DEFAULT_STAFF_DETAILS.forEach(defStaff => {
         const key = normalizeFacultyKey(defStaff.name);
-        if (key && !existingStaffKeys.has(key)) {
-          effectiveStaff.push({ ...defStaff, serialNo: effectiveStaff.length + 1 });
+        if (!existingStaffKeys.has(key)) {
+          effectiveStaff.push(defStaff);
           existingStaffKeys.add(key);
         }
       });
       setStaffList(effectiveStaff);
     } catch (err) {
-      console.error('Error loading dashboard analytics:', err);
+      console.error('Error loading teacher dashboard data:', err);
     } finally {
       setLoading(false);
     }
   };
+
+  // Filtered Subject & Academic Responsibilities for the logged-in teacher
+  const myActiveSubjectResponsibilities = useMemo(() => {
+    const uEmp = currentUser?.employeeCode || teacher.employeeCode;
+    const normName = normalizeFacultyKey(currentUser?.name || teacher.name);
+    return subjectAssignments.filter(sra => {
+      if (sra.status !== 'Active') return false;
+      const empMatch = uEmp && sra.employeeCode && sra.employeeCode.toLowerCase() === uEmp.toLowerCase();
+      const nameMatch = normName && sra.teacherName && normalizeFacultyKey(sra.teacherName) === normName;
+      if (!empMatch && !nameMatch) return false;
+
+      if (sra.assignmentType === 'Specific Period') {
+        if (sra.fromDate && activeWorkingDate < sra.fromDate) return false;
+        if (sra.toDate && activeWorkingDate > sra.toDate) return false;
+      }
+      return true;
+    });
+  }, [subjectAssignments, currentUser?.employeeCode, teacher.employeeCode, teacher.name, currentUser?.name, activeWorkingDate]);
+
+  // Helper: map selectedDay to the corresponding date within the active working week
+  const selectedDayDate = useMemo(() => {
+    if (!selectedDay || selectedDay === activeDayName) return activeWorkingDate;
+    if (!activeWorkingDate || !activeWorkingDate.includes('-')) return activeWorkingDate;
+
+    const [y, m, d] = activeWorkingDate.split('-').map(Number);
+    if (isNaN(y) || isNaN(m) || isNaN(d)) return activeWorkingDate;
+    const dt = new Date(y, m - 1, d);
+    const currentDayIdx = dt.getDay();
+    const diffToMonday = (currentDayIdx === 0 ? -6 : 1) - currentDayIdx;
+    const monday = new Date(y, m - 1, d + diffToMonday);
+
+    const dayOffsets: Record<string, number> = {
+      'Monday': 0,
+      'Tuesday': 1,
+      'Wednesday': 2,
+      'Thursday': 3,
+      'Friday': 4,
+      'Saturday': 5,
+      'Sunday': 6
+    };
+
+    const targetOffset = dayOffsets[selectedDay] ?? 0;
+    const targetDt = new Date(monday.getFullYear(), monday.getMonth(), monday.getDate() + targetOffset);
+
+    const tY = targetDt.getFullYear();
+    const tM = String(targetDt.getMonth() + 1).padStart(2, '0');
+    const tD = String(targetDt.getDate()).padStart(2, '0');
+    return `${tY}-${tM}-${tD}`;
+  }, [activeWorkingDate, activeDayName, selectedDay]);
+
+  // Unified Teaching Periods (Canonical 40-minute periods, single class per period, support re-labeling & proxy inclusion)
+  const unifiedTeachingPeriods = useMemo((): UnifiedTeachingPeriod[] => {
+    return getUnifiedTeachingPeriodsForTeacher({
+      staff: currentUser || (teacher.employeeCode ? teacher : null),
+      targetDate: selectedDayDate,
+      timetable: (timetable && timetable.length > 0) ? timetable : DEFAULT_TIMETABLE,
+      proxyAssignments: proxyAssignments,
+      subjectResponsibilities: subjectAssignments,
+      attendanceRecords,
+      leaveApplications,
+      onDutyRecords,
+      periodTimings
+    });
+  }, [currentUser, teacher, selectedDayDate, timetable, proxyAssignments, subjectAssignments, attendanceRecords, leaveApplications, onDutyRecords, periodTimings]);
+
+  // Teacher's own scheduled classes for the selected day
+  const myTodayClasses = useMemo(() => {
+    const sorted = [...unifiedTeachingPeriods].sort((a, b) => {
+      return sortOrder === 'asc' ? a.periodNumber - b.periodNumber : b.periodNumber - a.periodNumber;
+    });
+
+    return sorted.map(p => ({
+      id: p.id,
+      day: selectedDay,
+      dayOfWeek: selectedDay,
+      period: p.periodNumber,
+      periodNumber: p.periodNumber,
+      className: p.className,
+      section: p.section,
+      subjectName: p.subjectName,
+      roomNo: p.roomNo,
+      isArrangement: p.isProxy || p.isArrangement,
+      isProxy: p.isProxy,
+      originalTeacherName: p.absentTeacherName,
+      absentTeacherCode: p.absentTeacherCode,
+      arrangementReason: p.arrangementReason,
+      isSupportSubject: p.isSupportSubject,
+      originalSubject: p.originalSubject,
+      supportType: p.supportType,
+      supportRoleNote: p.supportRoleNote
+    } as TimetableSlot));
+  }, [unifiedTeachingPeriods, selectedDay, sortOrder]);
 
   // Helper for faculty rendering with Regular (Sky) vs Contractual (Amber) badge
   const renderFacultyPill = (name?: string) => {
@@ -989,69 +1098,6 @@ export const TeacherDashboard: React.FC<TeacherDashboardProps> = ({
   // Current Teacher's identity
   const currentTeacherName = teacher.name || currentUser?.name || 'Teacher';
   const assignedClassesList = currentUser?.assignedClasses || ['VI-A', 'VII-A', 'VIII-A', 'IX-A', 'X-A'];
-
-  // Active Subject & Academic Responsibilities for this teacher (e.g. Odia to Sipika Patel, Math support to Karishma Kerketta)
-  const myActiveSubjectResponsibilities = useMemo(() => {
-    const uEmp = currentUser?.employeeCode || teacher.employeeCode;
-    const uName = teacher.name || currentUser?.name;
-    const normName = uName ? normalizeFacultyKey(uName) : '';
-
-    return subjectAssignments.filter(sra => {
-      if (sra.status !== 'Active') return false;
-      const empMatch = uEmp && sra.employeeCode && sra.employeeCode.toLowerCase() === uEmp.toLowerCase();
-      const nameMatch = normName && sra.teacherName && normalizeFacultyKey(sra.teacherName) === normName;
-      if (!empMatch && !nameMatch) return false;
-
-      if (sra.assignmentType === 'Specific Period') {
-        if (sra.fromDate && activeWorkingDate < sra.fromDate) return false;
-        if (sra.toDate && activeWorkingDate > sra.toDate) return false;
-      }
-      return true;
-    });
-  }, [subjectAssignments, currentUser?.employeeCode, teacher.employeeCode, teacher.name, currentUser?.name, activeWorkingDate]);
-
-  // Unified Teaching Periods (Canonical 40-minute periods, single class per period, support re-labeling & proxy inclusion)
-  const unifiedTeachingPeriods = useMemo((): UnifiedTeachingPeriod[] => {
-    return getUnifiedTeachingPeriodsForTeacher({
-      staff: currentUser || (teacher.employeeCode ? teacher : null),
-      targetDate: activeWorkingDate,
-      timetable,
-      proxyAssignments: proxyAssignments,
-      subjectResponsibilities: subjectAssignments,
-      attendanceRecords,
-      leaveApplications,
-      onDutyRecords,
-      periodTimings
-    });
-  }, [currentUser, teacher, activeWorkingDate, timetable, proxyAssignments, subjectAssignments, attendanceRecords, leaveApplications, onDutyRecords, periodTimings]);
-
-  // Teacher's own scheduled classes for the selected day
-  const myTodayClasses = useMemo(() => {
-    const sorted = [...unifiedTeachingPeriods].sort((a, b) => {
-      return sortOrder === 'asc' ? a.periodNumber - b.periodNumber : b.periodNumber - a.periodNumber;
-    });
-
-    return sorted.map(p => ({
-      id: p.id,
-      day: selectedDay,
-      dayOfWeek: selectedDay,
-      period: p.periodNumber,
-      periodNumber: p.periodNumber,
-      className: p.className,
-      section: p.section,
-      subjectName: p.subjectName,
-      roomNo: p.roomNo,
-      isArrangement: p.isProxy || p.isArrangement,
-      isProxy: p.isProxy,
-      originalTeacherName: p.absentTeacherName,
-      absentTeacherCode: p.absentTeacherCode,
-      arrangementReason: p.arrangementReason,
-      isSupportSubject: p.isSupportSubject,
-      originalSubject: p.originalSubject,
-      supportType: p.supportType,
-      supportRoleNote: p.supportRoleNote
-    } as TimetableSlot));
-  }, [unifiedTeachingPeriods, selectedDay, sortOrder]);
 
   // Determine active persona context:
   // If activePersona is explicitly set, use it. Otherwise, if role is data_entry_manager, default to 'teacher' workspace unless selected.

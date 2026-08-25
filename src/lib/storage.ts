@@ -2656,15 +2656,15 @@ export const DEFAULT_LEAVE_APPLICATIONS: LeaveApplication[] = [
     designation: 'PRT',
     employmentType: 'Regular',
     leaveType: 'CL',
-    fromDate: new Date().toISOString().split('T')[0],
-    toDate: new Date().toISOString().split('T')[0],
+    fromDate: '2026-08-05',
+    toDate: '2026-08-05',
     totalDays: 1,
     reason: 'Urgent domestic work at hometown',
     stationLeavingPermission: false,
     status: 'Sanctioned',
-    appliedAt: new Date().toISOString(),
+    appliedAt: '2026-08-01T08:00:00.000Z',
     sanctionedBy: 'Shri Hemananda Barik (Principal I/c)',
-    sanctionedAt: new Date().toISOString(),
+    sanctionedAt: '2026-08-01T10:00:00.000Z',
     principalRemarks: 'Sanctioned. Ensure proxy arrangements are in place.',
     proxyArrangementsConfirmed: true
   },
@@ -2712,8 +2712,8 @@ export const DEFAULT_ON_DUTY_RECORDS: OnDutyRecord[] = [
     description: 'Deputed as Team Manager & Contingent Leader for KVS Regional Athletics Contingent at National Sports Meet.',
     venue: 'KV No. 1 Bhubaneswar',
     officialOrderNo: 'KVS/RO/BBSR/SPORTS/2026/894',
-    fromDate: '2026-08-25',
-    toDate: '2026-08-28',
+    fromDate: '2026-08-01',
+    toDate: '2026-08-04',
     totalDays: 4,
     affectedPeriods: [
       { day: 'Tuesday', period: 1, className: 'VI-A', subjectName: 'Physical & Health Education' },
@@ -2721,8 +2721,8 @@ export const DEFAULT_ON_DUTY_RECORDS: OnDutyRecord[] = [
       { day: 'Wednesday', period: 2, className: 'VIII-A', subjectName: 'Physical & Health Education' }
     ],
     sanctionedByPrincipal: true,
-    sanctionedDate: '2026-08-18',
-    createdAt: new Date().toISOString()
+    sanctionedDate: '2026-07-28',
+    createdAt: '2026-07-28T09:00:00.000Z'
   }
 ];
 

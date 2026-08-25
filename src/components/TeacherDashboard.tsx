@@ -1334,9 +1334,16 @@ export const TeacherDashboard: React.FC<TeacherDashboardProps> = ({
     return timetable.filter(t => (t.dayOfWeek || t.day) === selectedDay);
   }, [timetable, selectedDay]);
 
-  const proxySlotsCount = allTodaySlots.filter(s => s.isArrangement).length;
-
   const todayDateStr = useMemo(() => new Date().toISOString().split('T')[0], []);
+  const effectiveDateStr = activeWorkingDate || todayDateStr;
+
+  // Proxy arrangements count for selected active day
+  const proxySlotsCount = useMemo(() => {
+    const activeProxies = (proxyAssignments || []).filter(
+      p => p.date === effectiveDateStr && (p.status as string) !== 'Cancelled'
+    );
+    return activeProxies.length;
+  }, [proxyAssignments, effectiveDateStr]);
 
   // Current user's matching staff record
   const currentStaffRecord = useMemo(() => {
@@ -1350,39 +1357,57 @@ export const TeacherDashboard: React.FC<TeacherDashboardProps> = ({
   const myAttendanceToday = useMemo(() => {
     if (!currentUser) return null;
     return attendanceRecords.find(
-      r => r.date === todayDateStr && (
+      r => r.date === effectiveDateStr && (
         r.employeeCode === currentUser.employeeCode ||
         (currentUser.name && r.teacherName.toLowerCase().includes(currentUser.name.toLowerCase()))
       )
     ) || null;
-  }, [attendanceRecords, currentUser, todayDateStr]);
+  }, [attendanceRecords, currentUser, effectiveDateStr]);
 
   // Leave balance for current logged-in teacher
   const myLeaveBalance = useMemo((): LeaveBalance | null => {
     if (!currentStaffRecord) return null;
-    return getLeaveBalance(currentStaffRecord, leaveApplications, todayDateStr);
-  }, [currentStaffRecord, leaveApplications, todayDateStr]);
+    return getLeaveBalance(currentStaffRecord, leaveApplications, effectiveDateStr);
+  }, [currentStaffRecord, leaveApplications, effectiveDateStr]);
 
   // Assigned proxy duties today for current logged-in teacher
   const myAssignedProxiesToday = useMemo(() => {
     if (!currentUser) return [];
     return proxyAssignments.filter(
-      p => p.date === todayDateStr && (
+      p => p.date === effectiveDateStr && (p.status as string) !== 'Cancelled' && (
         p.substituteTeacherCode === currentUser.employeeCode ||
         (currentUser.name && p.substituteTeacherName.toLowerCase().includes(currentUser.name.toLowerCase()))
       )
     );
-  }, [proxyAssignments, currentUser, todayDateStr]);
+  }, [proxyAssignments, currentUser, effectiveDateStr]);
 
   // School-wide Attendance summary for Principal / Admin
   const schoolAttendanceOverview = useMemo(() => {
-    const todayAtt = attendanceRecords.filter(r => r.date === todayDateStr);
-    const present = todayAtt.filter(r => r.status === 'Present').length;
-    const leave = todayAtt.filter(r => r.status === 'Leave').length;
-    const od = todayAtt.filter(r => r.status === 'OD').length;
-    const absent = todayAtt.filter(r => r.status === 'Absent').length;
-    const totalStaff = staffList.length || 23;
-    const proxiesToday = proxyAssignments.filter(p => p.date === todayDateStr).length;
+    const effectiveStaffList = (staffList && staffList.length > 0) ? staffList : DEFAULT_STAFF_DETAILS;
+    const resolved = resolveTeacherAttendance(
+      effectiveStaffList,
+      effectiveDateStr,
+      attendanceRecords,
+      leaveApplications,
+      onDutyRecords
+    );
+
+    let present = 0;
+    let leave = 0;
+    let od = 0;
+    let absent = 0;
+
+    for (const item of resolved) {
+      if (item.status === 'Present') present++;
+      else if (item.status === 'Leave') leave++;
+      else if (item.status === 'OD') od++;
+      else if (item.status === 'Absent') absent++;
+    }
+
+    const totalStaff = resolved.length || effectiveStaffList.length || 23;
+    const proxiesToday = (proxyAssignments || []).filter(
+      p => p.date === effectiveDateStr && (p.status as string) !== 'Cancelled'
+    ).length;
 
     return {
       totalStaff,
@@ -1390,11 +1415,11 @@ export const TeacherDashboard: React.FC<TeacherDashboardProps> = ({
       leave,
       od,
       absent,
-      unmarked: Math.max(0, totalStaff - (present + leave + od + absent)),
+      unmarked: 0,
       attendanceRate: totalStaff > 0 ? Math.round(((present + od) / totalStaff) * 100) : 0,
       proxiesToday
     };
-  }, [attendanceRecords, staffList, proxyAssignments, todayDateStr]);
+  }, [staffList, effectiveDateStr, attendanceRecords, leaveApplications, onDutyRecords, proxyAssignments]);
 
   if (loading) {
     return (

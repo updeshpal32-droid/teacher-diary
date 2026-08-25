@@ -20,7 +20,8 @@ import {
   PortfolioTemplate,
   PortfolioAssignment,
   AcademicResponsibility,
-  SubjectResponsibilityAssignment
+  SubjectResponsibilityAssignment,
+  OnDutyRecord
 } from '../types/academic';
 import {
   db,
@@ -57,6 +58,12 @@ import { DevModeBadge } from './DevModeBadge';
 import { ProfileChangeRequestsModal } from './ProfileChangeRequestsModal';
 import { DutyAndProxyManager } from './DutyAndProxyManager';
 import { AutomaticProxyPlannerModal } from './AutomaticProxyPlannerModal';
+import {
+  getUnifiedTeachingPeriodsForTeacher,
+  convertTeachingPeriodsToTasks,
+  checkTeachingPeriodOverlap,
+  UnifiedTeachingPeriod
+} from '../lib/unifiedTeacherScheduleEngine';
 import {
   LayoutDashboard,
   Clock,
@@ -567,6 +574,7 @@ export const TeacherDashboard: React.FC<TeacherDashboardProps> = ({
   const [attendanceRecords, setAttendanceRecords] = useState<TeacherAttendanceRecord[]>(DEFAULT_TEACHER_ATTENDANCE);
   const [leaveApplications, setLeaveApplications] = useState<LeaveApplication[]>(DEFAULT_LEAVE_APPLICATIONS);
   const [proxyAssignments, setProxyAssignments] = useState<ProxyDutyAssignment[]>(DEFAULT_PROXY_DUTIES);
+  const [onDutyRecords, setOnDutyRecords] = useState<OnDutyRecord[]>([]);
   const [newTaskPriority, setNewTaskPriority] = useState<string>('Do First (Urgent & Important)');
   const [newTaskAssignedBy, setNewTaskAssignedBy] = useState<'Self' | 'Principal' | 'Incharge'>('Self');
   const [newTaskDueTime, setNewTaskDueTime] = useState('15:00');
@@ -656,7 +664,8 @@ export const TeacherDashboard: React.FC<TeacherDashboardProps> = ({
         savedProxies,
         savedTemplates,
         savedAssignments,
-        savedSubAssignments
+        savedSubAssignments,
+        savedOD
       ] = await Promise.all([
         db.get<SchoolDetails>('setup:school'),
         db.get<TeacherProfile>(scopedKey),
@@ -678,7 +687,8 @@ export const TeacherDashboard: React.FC<TeacherDashboardProps> = ({
         db.get<ProxyDutyAssignment[]>('setup:proxy_duty_assignments'),
         db.get<PortfolioTemplate[]>('setup:portfolio_templates'),
         db.get<PortfolioAssignment[]>('setup:portfolio_assignments'),
-        getSubjectResponsibilities()
+        getSubjectResponsibilities(),
+        db.get<OnDutyRecord[]>('setup:on_duty_records')
       ]);
       setProfileRequests(savedProfileReqs || []);
       if (savedStaff && savedStaff.length > 0) setStaffList(savedStaff);
@@ -687,6 +697,7 @@ export const TeacherDashboard: React.FC<TeacherDashboardProps> = ({
       setSubjectAssignments(savedSubAssignments || DEFAULT_SUBJECT_RESPONSIBILITIES);
       if (savedLeaves && savedLeaves.length > 0) setLeaveApplications(savedLeaves);
       if (savedProxies !== null && Array.isArray(savedProxies)) setProxyAssignments(savedProxies);
+      if (savedOD && savedOD.length > 0) setOnDutyRecords(savedOD);
 
       if (s) setSchool(s);
 
@@ -917,11 +928,14 @@ export const TeacherDashboard: React.FC<TeacherDashboardProps> = ({
   };
 
   const handleToggleTask = async (taskId: string) => {
-    const updated = tasks.map(t =>
+    const target = allDashboardTasks.find(t => t.id === taskId);
+    if (!target) return;
+    const newStatus = target.status === 'Completed' ? 'Pending' : 'Completed';
+    const updated = allDashboardTasks.map(t =>
       t.id === taskId
         ? {
             ...t,
-            status: (t.status === 'Completed' ? 'Pending' : 'Completed') as 'Pending' | 'Completed',
+            status: newStatus as any,
             updatedAt: new Date().toISOString()
           }
         : t
@@ -1007,135 +1021,48 @@ export const TeacherDashboard: React.FC<TeacherDashboardProps> = ({
     });
   }, [subjectAssignments, currentUser?.employeeCode, teacher.employeeCode, teacher.name, currentUser?.name, activeWorkingDate]);
 
-  // Teacher's own scheduled classes for the selected day (Guaranteed single class per period)
+  // Unified Teaching Periods (Canonical 40-minute periods, single class per period, support re-labeling & proxy inclusion)
+  const unifiedTeachingPeriods = useMemo((): UnifiedTeachingPeriod[] => {
+    return getUnifiedTeachingPeriodsForTeacher({
+      staff: currentUser || (teacher.employeeCode ? teacher : null),
+      targetDate: activeWorkingDate,
+      timetable,
+      proxyAssignments: proxyAssignments,
+      subjectResponsibilities: subjectAssignments,
+      attendanceRecords,
+      leaveApplications,
+      onDutyRecords,
+      periodTimings
+    });
+  }, [currentUser, teacher, activeWorkingDate, timetable, proxyAssignments, subjectAssignments, attendanceRecords, leaveApplications, onDutyRecords, periodTimings]);
+
+  // Teacher's own scheduled classes for the selected day
   const myTodayClasses = useMemo(() => {
-    const daySlots = timetable.filter(t => (t.dayOfWeek || t.day) === selectedDay);
-    const teacherNameLower = (currentTeacherName || '').trim().toLowerCase();
-    const teacherSubjectLower = (teacher.primarySubject || teacher.classesAndSubjectsTaught || '').toLowerCase();
-    const empCode = currentUser?.employeeCode || teacher.employeeCode;
-
-    const nameTokens = teacherNameLower
-      .replace(/^(mr|mrs|ms|dr|smt|shri)\.?\s+/i, '')
-      .split(/[^a-z0-9]+/)
-      .filter(t => t.length > 2);
-
-    const cleanTeacherName = teacherNameLower.replace(/^(mr|mrs|ms|dr|smt|shri)\.?\s+/i, '').replace(/[^a-z0-9]/g, '');
-
-    // 1. Filter slots belonging to this teacher
-    const matchingSlots = daySlots.filter(slot => {
-      const slotTeacher = (slot.teacherName || '').toLowerCase();
-      const arrangementTeacher = (slot.arrangementTeacherName || '').toLowerCase();
-      const slotSubject = (slot.subjectName || '').toLowerCase();
-      const slotClass = (slot.className || '').trim();
-
-      // Priority 0: Direct Employee Code match
-      if (empCode && (slot.teacherId === empCode || (slot as any).teacherEmployeeCode === empCode)) {
-        return true;
-      }
-
-      // Priority A: Direct or Substring match
-      if (slotTeacher && teacherNameLower && (slotTeacher.includes(teacherNameLower) || teacherNameLower.includes(slotTeacher))) {
-        return true;
-      }
-
-      // Priority B: Clean normalized match & token overlap (e.g., "Dhuma" in both "J.K. Dhuma" and "Jyoti Kumari Dhuma")
-      const cleanSlotTeacher = slotTeacher.replace(/^(mr|mrs|ms|dr|smt|shri)\.?\s+/i, '').replace(/[^a-z0-9]/g, '');
-      if (cleanTeacherName && cleanSlotTeacher && (cleanTeacherName === cleanSlotTeacher || cleanSlotTeacher.includes(cleanTeacherName) || cleanTeacherName.includes(cleanSlotTeacher))) {
-        return true;
-      }
-
-      const slotTokens = slotTeacher.replace(/^(mr|mrs|ms|dr|smt|shri)\.?\s+/i, '').split(/[^a-z0-9]+/).filter(t => t.length > 2);
-      const hasSignificantTokenMatch = nameTokens.some(tok => slotTokens.includes(tok));
-      if (hasSignificantTokenMatch) {
-        return true;
-      }
-
-      // Priority C: Proxy arrangement assigned to this teacher
-      if (slot.isArrangement && arrangementTeacher) {
-        if (empCode && (slot as any).arrangementTeacherCode === empCode) return true;
-        if (teacherNameLower && (arrangementTeacher.includes(teacherNameLower) || teacherNameLower.includes(arrangementTeacher))) return true;
-        const cleanArr = arrangementTeacher.replace(/^(mr|mrs|ms|dr|smt|shri)\.?\s+/i, '').replace(/[^a-z0-9]/g, '');
-        if (cleanTeacherName && cleanArr && (cleanTeacherName === cleanArr || cleanArr.includes(cleanTeacherName) || cleanTeacherName.includes(cleanArr))) return true;
-      }
-
-      // Priority D: If slot has no specific teacher or generic name, match only if BOTH class AND subject match
-      const isClassAssigned = assignedClassesList.some(c => c.toLowerCase() === slotClass.toLowerCase());
-      const isSubjectMatched = teacherSubjectLower && (slotSubject.includes(teacherSubjectLower) || teacherSubjectLower.includes(slotSubject));
-
-      if (isClassAssigned && isSubjectMatched && (!slotTeacher || slotTeacher.includes('assigned staff'))) {
-        return true;
-      }
-
-      // Priority E: Primary Teacher / In-Charge Subject Responsibility ONLY (e.g. Sipika Patel for Odia)
-      // Note: Academic Support / Co-Teaching does NOT own or steal the primary teacher's slots
-      const matchingPrimarySubject = myActiveSubjectResponsibilities.find(sra => {
-        if (sra.supportType !== 'Primary Teacher / In-Charge') return false;
-        const slotCleanClass = slotClass.toLowerCase().replace('class ', '').trim();
-        const sraCleanClass = sra.className.toLowerCase().replace('class ', '').trim();
-        const classMatch = slotCleanClass === sraCleanClass || slotCleanClass.includes(sraCleanClass) || sraCleanClass.includes(slotCleanClass) || sraCleanClass.includes('to');
-        const subjMatch = sra.subjectName && (
-          slotSubject.includes(sra.subjectName.toLowerCase()) ||
-          sra.subjectName.toLowerCase().includes(slotSubject)
-        );
-        return classMatch && subjMatch && (!slotTeacher || slotTeacher.includes('assigned staff') || slotTeacher.includes('odia'));
-      });
-
-      if (matchingPrimarySubject) {
-        return true;
-      }
-
-      return false;
+    const sorted = [...unifiedTeachingPeriods].sort((a, b) => {
+      return sortOrder === 'asc' ? a.periodNumber - b.periodNumber : b.periodNumber - a.periodNumber;
     });
 
-    // 2. Strict Deduplication & Support Re-Labeling:
-    // Support teachers teach their assigned support subject during THEIR OWN existing period in that class
-    const singleClassPerPeriodMap = new Map<number, TimetableSlot>();
-
-    for (const slot of matchingSlots) {
-      const pNum = slot.period || slot.periodNumber || 1;
-      const slotTeacher = (slot.teacherName || '').toLowerCase();
-      const isDirectMatch =
-        (empCode && slot.teacherId === empCode) ||
-        slotTeacher.includes(teacherNameLower) ||
-        (slot.isArrangement && (slot.arrangementTeacherName || '').toLowerCase().includes(teacherNameLower));
-
-      let effectiveSlot = { ...slot };
-
-      // Check if this teacher has an active Support / Co-Teaching assignment for this class
-      const supportAssignment = myActiveSubjectResponsibilities.find(sra => {
-        if (sra.supportType !== 'Academic Support / Co-Teaching') return false;
-        const slotCleanClass = (slot.className || '').toLowerCase().replace('class ', '').trim();
-        const sraCleanClass = sra.className.toLowerCase().replace('class ', '').trim();
-        return slotCleanClass === sraCleanClass || slotCleanClass.includes(sraCleanClass) || sraCleanClass.includes(slotCleanClass);
-      });
-
-      if (supportAssignment) {
-        effectiveSlot = {
-          ...effectiveSlot,
-          originalSubject: slot.subjectName,
-          subjectName: supportAssignment.subjectName,
-          isSupportSubject: true,
-          supportType: supportAssignment.supportType,
-          supportRoleNote: supportAssignment.roleNote
-        } as any;
-      }
-
-      if (!singleClassPerPeriodMap.has(pNum)) {
-        singleClassPerPeriodMap.set(pNum, effectiveSlot);
-      } else if (isDirectMatch) {
-        singleClassPerPeriodMap.set(pNum, effectiveSlot);
-      }
-    }
-
-    // 3. Convert map to sorted array by period
-    const uniqueSlots = Array.from(singleClassPerPeriodMap.values());
-
-    return uniqueSlots.sort((a, b) => {
-      const periodA = a.period || a.periodNumber || 1;
-      const periodB = b.period || b.periodNumber || 1;
-      return sortOrder === 'asc' ? periodA - periodB : periodB - periodA;
-    });
-  }, [timetable, selectedDay, currentTeacherName, teacher.primarySubject, teacher.classesAndSubjectsTaught, teacher.employeeCode, currentUser?.employeeCode, assignedClassesList, sortOrder, myActiveSubjectResponsibilities]);
+    return sorted.map(p => ({
+      id: p.id,
+      day: selectedDay,
+      dayOfWeek: selectedDay,
+      period: p.periodNumber,
+      periodNumber: p.periodNumber,
+      className: p.className,
+      section: p.section,
+      subjectName: p.subjectName,
+      roomNo: p.roomNo,
+      isArrangement: p.isProxy || p.isArrangement,
+      isProxy: p.isProxy,
+      originalTeacherName: p.absentTeacherName,
+      absentTeacherCode: p.absentTeacherCode,
+      arrangementReason: p.arrangementReason,
+      isSupportSubject: p.isSupportSubject,
+      originalSubject: p.originalSubject,
+      supportType: p.supportType,
+      supportRoleNote: p.supportRoleNote
+    } as TimetableSlot));
+  }, [unifiedTeachingPeriods, selectedDay, sortOrder]);
 
   // Determine active persona context:
   // If activePersona is explicitly set, use it. Otherwise, if role is data_entry_manager, default to 'teacher' workspace unless selected.
@@ -1252,20 +1179,32 @@ export const TeacherDashboard: React.FC<TeacherDashboardProps> = ({
   const approvedInspections = inspections.filter(i => i.status === 'Approved' || i.status === 'Inspected & Stamped');
   const pendingInspectionsCount = inspections.filter(i => i.status === 'Pending').length;
 
+  // Unified Teaching Tasks for Action Center
+  const unifiedTeachingTasks = useMemo(() => {
+    return convertTeachingPeriodsToTasks(unifiedTeachingPeriods, activeWorkingDate, tasks);
+  }, [unifiedTeachingPeriods, activeWorkingDate, tasks]);
+
+  // Merged Tasks: Priority Teaching Tasks on Top!
+  const allDashboardTasks = useMemo(() => {
+    const teachingIds = new Set(unifiedTeachingTasks.map(t => t.id));
+    const nonTeaching = tasks.filter(t => !teachingIds.has(t.id));
+    return [...unifiedTeachingTasks, ...nonTeaching];
+  }, [unifiedTeachingTasks, tasks]);
+
   // Filter Tasks by Tab
   const filteredTasks = useMemo(() => {
     if (taskTab === 'assigned_by_superiors') {
-      return tasks.filter(t => t.assignedByRole === 'Principal' || t.assignedByRole === 'Incharge' || t.assignedByRole === 'Committee' || (t.assignedBy && t.assignedBy !== 'Self'));
+      return allDashboardTasks.filter(t => t.assignedByRole === 'Principal' || t.assignedByRole === 'Incharge' || t.assignedByRole === 'Committee' || (t.assignedBy && t.assignedBy !== 'Self'));
     }
     if (taskTab === 'self') {
-      return tasks.filter(t => !t.assignedByRole || t.assignedByRole === 'Self' || t.assignedBy === 'Self');
+      return allDashboardTasks.filter(t => !t.assignedByRole || t.assignedByRole === 'Self' || t.assignedBy === 'Self' || t.category === 'Teaching');
     }
-    return tasks;
-  }, [tasks, taskTab]);
+    return allDashboardTasks;
+  }, [allDashboardTasks, taskTab]);
 
-  const superiorTasksCount = tasks.filter(t => t.assignedByRole === 'Principal' || t.assignedByRole === 'Incharge' || t.assignedByRole === 'Committee').length;
-  const selfTasksCount = tasks.filter(t => !t.assignedByRole || t.assignedByRole === 'Self' || t.assignedBy === 'Self').length;
-  const completedTasksCount = tasks.filter(t => t.status === 'Completed').length;
+  const superiorTasksCount = allDashboardTasks.filter(t => t.assignedByRole === 'Principal' || t.assignedByRole === 'Incharge' || t.assignedByRole === 'Committee').length;
+  const selfTasksCount = allDashboardTasks.filter(t => !t.assignedByRole || t.assignedByRole === 'Self' || t.assignedBy === 'Self' || t.category === 'Teaching').length;
+  const completedTasksCount = allDashboardTasks.filter(t => t.status === 'Completed').length;
 
   // All day slots for Admin stats
   const allTodaySlots = useMemo(() => {

@@ -24,10 +24,21 @@ import {
   ResponsibilityDelegation,
   TimetableSlot,
   CampusDutyAssignment,
-  ProxyDutyAssignment
+  ProxyDutyAssignment,
+  SubjectResponsibilityAssignment,
+  TeacherAttendanceRecord,
+  LeaveApplication,
+  OnDutyRecord
 } from '../types/academic';
 import { UserAccount } from '../types/auth';
 import { getTeacherScopedStorageKey } from '../lib/teacherContext';
+import {
+  getUnifiedTeachingPeriodsForTeacher,
+  convertTeachingPeriodsToHourlyActivities,
+  checkTeachingPeriodOverlap,
+  UnifiedTeachingPeriod
+} from '../lib/unifiedTeacherScheduleEngine';
+import { DEFAULT_SUBJECT_RESPONSIBILITIES } from '../lib/storage';
 import {
   Clock,
   Plus,
@@ -84,7 +95,11 @@ export function generateTeacherDailyWorkload(
   portfolioTemplates: PortfolioTemplate[],
   delegations: ResponsibilityDelegation[],
   campusDuties: any[],
-  proxyDuties: ProxyDutyAssignment[]
+  proxyDuties: ProxyDutyAssignment[],
+  subjectResponsibilities: SubjectResponsibilityAssignment[] = DEFAULT_SUBJECT_RESPONSIBILITIES,
+  attendanceRecords: TeacherAttendanceRecord[] = [],
+  leaveApplications: LeaveApplication[] = [],
+  onDutyRecords: OnDutyRecord[] = []
 ): HourlyActivity[] {
   const d = new Date(targetDate);
   const days = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
@@ -94,10 +109,6 @@ export function generateTeacherDailyWorkload(
   const teacherName = user?.name || teacher?.name || 'Teacher';
   const teacherNameLower = teacherName.toLowerCase();
   const cleanTeacherName = teacherNameLower.replace(/^(mr|mrs|ms|dr|smt|shri)\.?\s+/i, '').replace(/[^a-z0-9]/g, '');
-  const nameTokens = teacherNameLower.replace(/^(mr|mrs|ms|dr|smt|shri)\.?\s+/i, '').split(/[^a-z0-9]+/).filter(t => t.length > 2);
-
-  const assignedClasses = user?.assignedClasses || (teacher?.classesAndSubjectsTaught ? [teacher.classesAndSubjectsTaught] : ['VI-A', 'VII-A', 'VIII-A', 'IX-A', 'X-A']);
-  const primarySubj = user?.assignedSubjects?.[0] || teacher?.primarySubject || '';
 
   const results: HourlyActivity[] = [];
 
@@ -106,7 +117,25 @@ export function generateTeacherDailyWorkload(
     return `${targetDate}T${h.padStart(2, '0')}:${m.padStart(2, '0')}:00.000Z`;
   };
 
-  // 1. Morning School Gate & Assembly Duty (07:15 - 07:50 AM)
+  // 1. Compute Unified Teaching Periods for this Teacher on targetDate
+  const staffObj = user || teacher || { employeeCode: empCode, name: teacherName };
+  const unifiedTeachingPeriods = getUnifiedTeachingPeriodsForTeacher({
+    staff: staffObj,
+    targetDate,
+    timetable: timetable && timetable.length > 0 ? timetable : [],
+    proxyAssignments: proxyDuties || [],
+    subjectResponsibilities: subjectResponsibilities || [],
+    attendanceRecords: attendanceRecords || [],
+    leaveApplications: leaveApplications || [],
+    onDutyRecords: onDutyRecords || [],
+    periodTimings
+  });
+
+  // 2. Generate canonical 40-minute teaching activities from unifiedTeachingPeriods
+  const teachingActivities = convertTeachingPeriodsToHourlyActivities(unifiedTeachingPeriods, targetDate, staffObj);
+  results.push(...teachingActivities);
+
+  // 3. Morning School Gate & Assembly Duty (07:15 - 07:50 AM)
   const isMorningGateAssigned = campusDuties?.some(d => {
     const isDay = (d.dayOfWeek || d.day) === dayName;
     const isType = d.dutyType === 'Morning Gate & Assembly';
@@ -117,6 +146,7 @@ export function generateTeacherDailyWorkload(
   const isPhysEdOrAssemblyLead = teacherNameLower.includes('updesh') || teacherNameLower.includes('hemananda') || isMorningGateAssigned;
 
   if (isPhysEdOrAssemblyLead || isMorningGateAssigned) {
+    const gateOverlap = checkTeachingPeriodOverlap('07:20', '07:50', unifiedTeachingPeriods);
     results.push({
       id: `act-gate-${targetDate}-${empCode || '01'}`,
       date: targetDate,
@@ -129,7 +159,8 @@ export function generateTeacherDailyWorkload(
       priority: 'Do First (Urgent & Important)',
       className: 'School Wide',
       subjectName: 'Assembly & Gate',
-      isOverlappingDuty: false,
+      isOverlappingDuty: gateOverlap.hasOverlap,
+      overloadReason: gateOverlap.hasOverlap && gateOverlap.overlappingPeriod ? `Duty scheduled during protected Period ${gateOverlap.overlappingPeriod.periodNumber} (${gateOverlap.overlappingPeriod.className} ${gateOverlap.overlappingPeriod.subjectName}).` : undefined,
       evidenceIds: [],
       kanbanColumn: 'Completed',
       createdAt: makeIso('07:20'),
@@ -137,80 +168,7 @@ export function generateTeacherDailyWorkload(
     });
   }
 
-  // 2. Timetable Periods for this Day
-  const daySlots = (timetable && timetable.length > 0 ? timetable : DEFAULT_TIMETABLE).filter(s => (s.dayOfWeek || s.day) === dayName);
-
-  const mySlots = daySlots.filter(slot => {
-    const slotTeacher = (slot.teacherName || '').toLowerCase();
-    const slotClass = (slot.className || '').trim();
-    const slotSubject = (slot.subjectName || '').toLowerCase();
-
-    // Priority 0: Direct emp code match
-    if (empCode && (slot.teacherId === empCode || (slot as any).teacherEmployeeCode === empCode)) return true;
-    // Priority 1: Substring match
-    if (slotTeacher && teacherNameLower && (slotTeacher.includes(teacherNameLower) || teacherNameLower.includes(slotTeacher))) return true;
-    // Priority 2: Clean token match
-    const cleanSlotTeacher = slotTeacher.replace(/^(mr|mrs|ms|dr|smt|shri)\.?\s+/i, '').replace(/[^a-z0-9]/g, '');
-    if (cleanTeacherName && cleanSlotTeacher && (cleanTeacherName === cleanSlotTeacher || cleanSlotTeacher.includes(cleanTeacherName) || cleanTeacherName.includes(cleanSlotTeacher))) return true;
-    // Priority 3: Token overlap (e.g. "raha", "dhuma", "padhan", "mandal", "kujur", "sharma", "pal", "barik")
-    const slotTokens = slotTeacher.replace(/^(mr|mrs|ms|dr|smt|shri)\.?\s+/i, '').split(/[^a-z0-9]+/).filter(t => t.length > 2);
-    if (nameTokens.some(tok => slotTokens.includes(tok))) return true;
-    // Priority 4: Class & Subject match if generic
-    const isClassMatch = assignedClasses.some(c => c.toLowerCase() === slotClass.toLowerCase());
-    const isSubjMatch = primarySubj && (slotSubject.includes(primarySubj.toLowerCase()) || primarySubj.toLowerCase().includes(slotSubject));
-    if (isClassMatch && isSubjMatch && (!slotTeacher || slotTeacher.includes('assigned'))) return true;
-
-    return false;
-  });
-
-  // Deduplicate single class per period
-  const periodMap = new Map<number, TimetableSlot>();
-  mySlots.forEach(slot => {
-    const pNum = slot.period || slot.periodNumber || 1;
-    if (!periodMap.has(pNum)) {
-      periodMap.set(pNum, slot);
-    }
-  });
-
-  const sortedSlots = Array.from(periodMap.values()).sort((a, b) => (a.period || 1) - (b.period || 1));
-
-  const defaultTimes: Record<number, { start: string; end: string }> = {
-    1: { start: '07:50', end: '08:30' },
-    2: { start: '08:30', end: '09:10' },
-    3: { start: '09:10', end: '09:50' },
-    4: { start: '09:50', end: '10:30' },
-    5: { start: '11:00', end: '11:40' },
-    6: { start: '11:40', end: '12:20' },
-    7: { start: '12:20', end: '13:00' },
-    8: { start: '13:00', end: '13:40' },
-    9: { start: '13:40', end: '14:20' }
-  };
-
-  sortedSlots.forEach(slot => {
-    const pNum = slot.period || slot.periodNumber || 1;
-    const timeInfo = defaultTimes[pNum] || { start: '09:00', end: '09:40' };
-
-    results.push({
-      id: `act-tt-${targetDate}-${empCode || 'tch'}-p${pNum}`,
-      date: targetDate,
-      startTime: timeInfo.start,
-      endTime: timeInfo.end,
-      title: `Class ${slot.className} ${slot.subjectName} Period ${pNum}`,
-      description: `Conducted textbook curriculum transaction, classroom board demonstration, interactive concept drill, and student notebook verification in ${slot.roomNo || `Class ${slot.className}`}.`,
-      category: 'Teaching',
-      status: 'Done',
-      priority: 'Do First (Urgent & Important)',
-      className: slot.className,
-      subjectName: slot.subjectName,
-      isOverlappingDuty: false,
-      evidenceIds: [],
-      kanbanColumn: 'Completed',
-      createdAt: makeIso(timeInfo.start),
-      updatedAt: makeIso(timeInfo.end)
-    });
-  });
-
-  // 3. Recess Duty (10:30 - 11:00 AM)
+  // 4. Recess Duty (10:30 - 11:00 AM)
   const isRecessDutyAssigned = campusDuties?.some(d => {
     const isDay = (d.dayOfWeek || d.day) === dayName;
     const isType = d.dutyType === 'Recess & Playground';
@@ -219,6 +177,7 @@ export function generateTeacherDailyWorkload(
   });
 
   if (isRecessDutyAssigned || dayName === 'Monday' || dayName === 'Friday') {
+    const recessOverlap = checkTeachingPeriodOverlap('10:30', '11:00', unifiedTeachingPeriods);
     results.push({
       id: `act-recess-${targetDate}-${empCode || '01'}`,
       date: targetDate,
@@ -229,43 +188,14 @@ export function generateTeacherDailyWorkload(
       category: 'Assembly & Duty',
       status: 'Done',
       priority: 'Schedule (Important & Not Urgent)',
-      isOverlappingDuty: false,
+      isOverlappingDuty: recessOverlap.hasOverlap,
+      overloadReason: recessOverlap.hasOverlap && recessOverlap.overlappingPeriod ? `Duty scheduled during protected Period ${recessOverlap.overlappingPeriod.periodNumber} (${recessOverlap.overlappingPeriod.className} ${recessOverlap.overlappingPeriod.subjectName}).` : undefined,
       evidenceIds: [],
       kanbanColumn: 'Completed',
       createdAt: makeIso('10:30'),
       updatedAt: makeIso('11:00')
     });
   }
-
-  // 4. Proxy / Substitution Duties
-  const myProxies = (proxyDuties || []).filter(p => {
-    const matchDate = p.date === targetDate;
-    const matchTeacher = (empCode && p.substituteTeacherCode === empCode) || (p.substituteTeacherName && p.substituteTeacherName.toLowerCase().includes(teacherNameLower));
-    return matchDate && matchTeacher;
-  });
-
-  myProxies.forEach((p, idx) => {
-    const timeInfo = defaultTimes[p.periodNumber] || { start: '11:00', end: '11:40' };
-    results.push({
-      id: `act-proxy-${targetDate}-${p.id || idx}`,
-      date: targetDate,
-      startTime: timeInfo.start,
-      endTime: timeInfo.end,
-      title: `Substitution Proxy Duty: Class ${p.className} (Period ${p.periodNumber})`,
-      description: `Engaged class in quiet study, revision reading, and maintained classroom discipline in place of regular teacher (${p.absentTeacherName || 'Regular Teacher'}) on leave.`,
-      category: 'Arrangement / Proxy Duty',
-      status: 'Done',
-      priority: 'Do First (Urgent & Important)',
-      className: p.className,
-      subjectName: p.subjectName || 'Substitution Period',
-      isOverlappingDuty: true,
-      overloadReason: `Assigned substitution proxy duty for ${p.absentTeacherName || 'absent faculty'} by Timetable Committee during free slot.`,
-      evidenceIds: [],
-      kanbanColumn: 'Completed',
-      createdAt: makeIso(timeInfo.start),
-      updatedAt: makeIso(timeInfo.end)
-    });
-  });
 
   // 5. Active Committee / Portfolio Assigned Work (Phase 4 Integration)
   const myAssignments = (portfolios || []).filter(a => {
@@ -422,6 +352,10 @@ export function WorkloadTracker({ devMode = true, currentUser }: WorkloadTracker
   const [periodTimings, setPeriodTimings] = useState<Record<number, { time: string; label: string }>>(DEFAULT_PERIOD_TIMINGS);
   const [campusDuties, setCampusDuties] = useState<CampusDutyAssignment[]>([]);
   const [proxyDuties, setProxyDuties] = useState<ProxyDutyAssignment[]>([]);
+  const [subjectResponsibilities, setSubjectResponsibilities] = useState<SubjectResponsibilityAssignment[]>(DEFAULT_SUBJECT_RESPONSIBILITIES);
+  const [attendanceRecords, setAttendanceRecords] = useState<TeacherAttendanceRecord[]>([]);
+  const [leaveApplications, setLeaveApplications] = useState<LeaveApplication[]>([]);
+  const [onDutyRecords, setOnDutyRecords] = useState<OnDutyRecord[]>([]);
 
   // Portfolio states for Role & Responsibility linking (Phase 4)
   const [portfolioTemplates, setPortfolioTemplates] = useState<PortfolioTemplate[]>([]);
@@ -497,7 +431,11 @@ export function WorkloadTracker({ devMode = true, currentUser }: WorkloadTracker
         savedTimetable,
         savedTimings,
         savedCampusDuties,
-        savedProxies
+        savedProxies,
+        savedSubjectResponsibilities,
+        savedAttendance,
+        savedLeaves,
+        savedOD
       ] = await Promise.all([
         db.get<HourlyActivity[]>(scopedActivityKey),
         db.get<HourlyActivity[]>('setup:hourly_activities'),
@@ -513,7 +451,11 @@ export function WorkloadTracker({ devMode = true, currentUser }: WorkloadTracker
         db.get<TimetableSlot[]>('setup:timetable'),
         db.get<Record<number, { time: string; label: string }>>('setup:period_timings'),
         db.get<CampusDutyAssignment[]>('setup:campus_duty_assignments'),
-        db.get<ProxyDutyAssignment[]>('setup:proxy_duty_assignments')
+        db.get<ProxyDutyAssignment[]>('setup:proxy_duty_assignments'),
+        db.get<SubjectResponsibilityAssignment[]>('setup:subject_responsibilities'),
+        db.get<TeacherAttendanceRecord[]>('setup:teacher_attendance'),
+        db.get<LeaveApplication[]>('setup:leave_applications'),
+        db.get<OnDutyRecord[]>('setup:on_duty_records')
       ]);
 
       const effectiveProfile: Partial<TeacherProfile> = {
@@ -537,6 +479,10 @@ export function WorkloadTracker({ devMode = true, currentUser }: WorkloadTracker
       const activeTimings = savedTimings || DEFAULT_PERIOD_TIMINGS;
       const activeCampusDuties = savedCampusDuties || [];
       const activeProxies = savedProxies || [];
+      const activeSR = savedSubjectResponsibilities && savedSubjectResponsibilities.length > 0 ? savedSubjectResponsibilities : DEFAULT_SUBJECT_RESPONSIBILITIES;
+      const activeAtt = savedAttendance || [];
+      const activeLeaves = savedLeaves || [];
+      const activeOD = savedOD || [];
 
       setPortfolioTemplates(activeTemplates);
       setPortfolioAssignments(activeAssignments);
@@ -545,6 +491,10 @@ export function WorkloadTracker({ devMode = true, currentUser }: WorkloadTracker
       setPeriodTimings(activeTimings);
       setCampusDuties(activeCampusDuties);
       setProxyDuties(activeProxies);
+      setSubjectResponsibilities(activeSR);
+      setAttendanceRecords(activeAtt);
+      setLeaveApplications(activeLeaves);
+      setOnDutyRecords(activeOD);
 
       let currentActivities = savedActivities;
 
@@ -567,7 +517,11 @@ export function WorkloadTracker({ devMode = true, currentUser }: WorkloadTracker
           activeTemplates,
           activeDelegations,
           activeCampusDuties,
-          activeProxies
+          activeProxies,
+          activeSR,
+          activeAtt,
+          activeLeaves,
+          activeOD
         );
         currentActivities = generated;
         await db.set(scopedActivityKey, generated);
@@ -606,7 +560,11 @@ export function WorkloadTracker({ devMode = true, currentUser }: WorkloadTracker
       portfolioTemplates,
       responsibilityDelegations,
       campusDuties,
-      proxyDuties
+      proxyDuties,
+      subjectResponsibilities,
+      attendanceRecords,
+      leaveApplications,
+      onDutyRecords
     );
 
     // Keep activities from other dates, replace/merge activities for targetDateStr

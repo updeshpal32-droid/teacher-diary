@@ -23,12 +23,26 @@ import {
   StaffDetailRecord,
   TeacherAttendanceRecord,
   LeaveApplication,
-  OnDutyRecord
+  OnDutyRecord,
+  ProxyDutyAssignment,
+  SubjectResponsibilityAssignment
 } from '../types/academic';
 import { UserAccount } from '../types/auth';
 import { isTeacherAvailableForDeadline, checkTeacherAbsenceOnDate } from '../lib/attendanceAbsenceEngine';
 import { parseSmartDate, ParsedDateResult } from '../lib/smartDateParser';
 import { getTeacherScopedStorageKey, getActiveInspectedTeacher } from '../lib/teacherContext';
+import { useActiveWorkingDate } from '../lib/activeDateContext';
+import {
+  getUnifiedTeachingPeriodsForTeacher,
+  convertTeachingPeriodsToTasks,
+  checkTeachingPeriodOverlap,
+  UnifiedTeachingPeriod
+} from '../lib/unifiedTeacherScheduleEngine';
+import {
+  DEFAULT_PROXY_DUTIES,
+  DEFAULT_SUBJECT_RESPONSIBILITIES,
+  DEFAULT_TIMETABLE
+} from '../lib/storage';
 import {
   CheckSquare,
   Plus,
@@ -84,7 +98,9 @@ interface TaskManagerProps {
 }
 
 export const TaskManager: React.FC<TaskManagerProps> = ({ devMode, currentUser, onSyncToWorkload }) => {
+  const { activeDate: activeWorkingDate, activeDayName } = useActiveWorkingDate();
   const [tasks, setTasks] = useState<TeacherTask[]>([]);
+  const [unifiedTeachingPeriods, setUnifiedTeachingPeriods] = useState<UnifiedTeachingPeriod[]>([]);
   const [activeView, setActiveView] = useState<'matrix' | 'list' | 'recurring' | 'ai'>('list');
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedCategory, setSelectedCategory] = useState<string>('All');
@@ -158,6 +174,25 @@ export const TaskManager: React.FC<TaskManagerProps> = ({ devMode, currentUser, 
   const [quickDueTime, setQuickDueTime] = useState('12:00');
   const [quickPriority, setQuickPriority] = useState<EisenhowerPriority>('Do First (Urgent & Important)');
   const [quickCategory, setQuickCategory] = useState<HourlyCategory>('Teaching');
+  const [quickEstimatedMinutes, setQuickEstimatedMinutes] = useState(45);
+  const [quickAssignedTo, setQuickAssignedTo] = useState('Self');
+
+  const formEndMinutes = React.useMemo(() => {
+    if (!formDueTime) return '12:40';
+    const [h, m] = formDueTime.split(':').map(Number);
+    const totalM = (h || 0) * 60 + (m || 0) + (formEstimatedMinutes || 40);
+    const endH = String(Math.floor(totalM / 60) % 24).padStart(2, '0');
+    const endM = String(totalM % 60).padStart(2, '0');
+    return `${endH}:${endM}`;
+  }, [formDueTime, formEstimatedMinutes]);
+
+  const modalOverlapInfo = React.useMemo(() => {
+    if (formCategory === 'Teaching' || formDueDate !== activeWorkingDate) {
+      return { hasOverlap: false };
+    }
+    return checkTeachingPeriodOverlap(formDueTime, formEndMinutes, unifiedTeachingPeriods);
+  }, [formDueTime, formEndMinutes, unifiedTeachingPeriods, formCategory, formDueDate, activeWorkingDate]);
+
   const [quickListId, setQuickListId] = useState<string>('inbox');
   const [showDatePicker, setShowDatePicker] = useState(false);
   const [showPriorityPicker, setShowPriorityPicker] = useState(false);
@@ -666,12 +701,28 @@ export const TaskManager: React.FC<TaskManagerProps> = ({ devMode, currentUser, 
       const currentEmpCode = targetEmpCode || inspected?.employeeCode || currentUser?.employeeCode || '108894';
       const scopedTaskKey = getTeacherScopedStorageKey('setup:tasks', currentEmpCode);
 
-      const [storedScoped, globalStored, timetable, teacherProfile, defaultTimetable] = await Promise.all([
+      const [
+        storedScoped,
+        globalStored,
+        timetable,
+        teacherProfile,
+        defaultTimetable,
+        proxyAssignments,
+        subjectResponsibilities,
+        attendanceRecords,
+        leaveApplications,
+        onDutyRecords
+      ] = await Promise.all([
         db.get<TeacherTask[]>(scopedTaskKey),
         db.get<TeacherTask[]>('setup:tasks'),
         db.get<TimetableSlot[]>('setup:timetable'),
         db.get<TeacherProfile>(currentEmpCode ? `setup:teacher_${currentEmpCode}` : 'setup:teacher'),
-        db.get<TeacherProfile>('setup:teacher')
+        db.get<TeacherProfile>('setup:teacher'),
+        db.get<ProxyDutyAssignment[]>('setup:proxy_duty_assignments'),
+        db.get<SubjectResponsibilityAssignment[]>('setup:subject_responsibilities'),
+        db.get<TeacherAttendanceRecord[]>('setup:teacher_attendance'),
+        db.get<LeaveApplication[]>('setup:leave_applications'),
+        db.get<OnDutyRecord[]>('setup:on_duty_records')
       ]);
 
       let baseTasks: TeacherTask[] = [];
@@ -688,178 +739,28 @@ export const TaskManager: React.FC<TaskManagerProps> = ({ devMode, currentUser, 
         await db.set(scopedTaskKey, []);
       }
 
-      // Determine today's day of week & date
-      const days = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
-      const todayObj = new Date();
-      const currentDayName = days[todayObj.getDay()];
-      const todayDateStr = todayObj.toISOString().split('T')[0];
-
-      // Current teacher's identity matchers
-      const currentTeacherName = (
-        inspected?.name ||
-        currentUser?.name ||
-        teacherProfile?.name ||
-        defaultTimetable?.name ||
-        ''
-      ).trim().toLowerCase();
-
-      const assignedClassesList = (
-        currentUser?.assignedClasses ||
-        ['VI-A', 'VII-A', 'VIII-A', 'IX-A', 'X-A', 'XI-A', 'XII-A']
-      ).map(c => c.toLowerCase());
-
-      const teacherSubjectLower = (
-        teacherProfile?.primarySubject ||
-        teacherProfile?.classesAndSubjectsTaught ||
-        inspected?.designation ||
-        currentUser?.department ||
-        'Physical & Health Education'
-      ).toLowerCase();
-
-      const allSlots = timetable || [];
-      const daySlots = allSlots.filter(t => (t.dayOfWeek || t.day) === (currentDayName !== 'Sunday' ? currentDayName : 'Monday'));
-
-      // 1. Identify Regular Teaching Periods scheduled for this teacher
-      const matchingTeachingSlots = daySlots.filter(slot => {
-        const slotTeacher = (slot.teacherName || '').toLowerCase();
-        const slotSubject = (slot.subjectName || '').toLowerCase();
-        const slotClass = (slot.className || '').trim().toLowerCase();
-
-        // If it's explicitly an arrangement where someone else takes over, don't generate regular task
-        if (slot.isArrangement && slot.originalTeacherName && slot.originalTeacherName.toLowerCase().includes(currentTeacherName)) {
-          return false;
-        }
-
-        // Direct name match or code match
-        if (slotTeacher && currentTeacherName && (slotTeacher.includes(currentTeacherName) || currentTeacherName.includes(slotTeacher))) {
-          return true;
-        }
-        if (slot.teacherId && currentEmpCode && slot.teacherId === currentEmpCode) {
-          return true;
-        }
-
-        return false;
+      // Compute Unified Teaching Periods for target date
+      const staffObj = inspected || currentUser || teacherProfile || defaultTimetable || { employeeCode: currentEmpCode };
+      const periods = getUnifiedTeachingPeriodsForTeacher({
+        staff: staffObj,
+        targetDate: activeWorkingDate,
+        timetable: timetable || DEFAULT_TIMETABLE,
+        proxyAssignments: proxyAssignments || DEFAULT_PROXY_DUTIES,
+        subjectResponsibilities: subjectResponsibilities || DEFAULT_SUBJECT_RESPONSIBILITIES,
+        attendanceRecords: attendanceRecords || [],
+        leaveApplications: leaveApplications || [],
+        onDutyRecords: onDutyRecords || []
       });
 
-      // Strict single-class-per-period deduplication
-      const singleClassMap = new Map<number, TimetableSlot>();
-      for (const slot of matchingTeachingSlots) {
-        const pNum = slot.period || slot.periodNumber || 1;
-        const slotTeacher = (slot.teacherName || '').toLowerCase();
-        const isDirect = slotTeacher && currentTeacherName && slotTeacher.includes(currentTeacherName);
-        if (!singleClassMap.has(pNum)) {
-          singleClassMap.set(pNum, slot);
-        } else if (isDirect) {
-          singleClassMap.set(pNum, slot);
-        }
-      }
-      const myTeachingSlots = Array.from(singleClassMap.values()).sort((a, b) => (a.period || 1) - (b.period || 1));
+      setUnifiedTeachingPeriods(periods);
 
-      // 2. Identify Proxy Duty / Arrangement Slots assigned to this teacher
-      const myProxySlots = daySlots.filter(slot => {
-        if (!slot.isArrangement) return false;
-        const arrTeacher = (slot.arrangementTeacherName || '').toLowerCase();
-        if (arrTeacher && currentTeacherName && (arrTeacher.includes(currentTeacherName) || currentTeacherName.includes(arrTeacher))) {
-          return true;
-        }
-        return false;
-      });
+      // Generate canonical tasks for today's periods
+      const generatedTeachingTasks = convertTeachingPeriodsToTasks(periods, activeWorkingDate, baseTasks);
 
-      // Period Timing Lookup
-      const periodTimings: Record<number, string> = {
-        1: '07:50',
-        2: '08:30',
-        3: '09:10',
-        4: '09:50',
-        5: '11:00',
-        6: '11:40',
-        7: '12:20',
-        8: '13:00',
-        9: '13:40'
-      };
-
-      // Map to deterministic Tasks
-      const generatedTimetableTasks: TeacherTask[] = [];
-
-      // Add Regular Teaching Periods
-      for (const slot of myTeachingSlots) {
-        const pNum = slot.period || slot.periodNumber || 1;
-        const deterministicId = `tt-period-${slot.id || `p${pNum}-${slot.className}`}-${todayDateStr}`;
-        const existing = baseTasks.find(t => t.id === deterministicId);
-
-        if (existing) {
-          generatedTimetableTasks.push(existing);
-        } else {
-          generatedTimetableTasks.push({
-            id: deterministicId,
-            title: `Period ${pNum} Class ${slot.className}${slot.section ? `-${slot.section}` : ''}: ${slot.subjectName}`,
-            description: `Scheduled daily teaching period in Room ${slot.roomNo || 'Classroom'}. Deliver curriculum lesson objectives.`,
-            category: 'Teaching',
-            priority: 'Do First (Urgent & Important)',
-            status: 'Pending',
-            dueDate: todayDateStr,
-            dueTime: periodTimings[pNum] || '08:00',
-            listId: 'inbox',
-            estimatedMinutes: 40,
-            subtasks: [
-              { id: `st-tt-1-${deterministicId}`, title: 'Conduct roll-call & student attendance', completed: false },
-              { id: `st-tt-2-${deterministicId}`, title: 'Deliver lesson activities & concept practice', completed: false },
-              { id: `st-tt-3-${deterministicId}`, title: 'Assign homework & log teacher diary entry', completed: false }
-            ],
-            tags: ['Timetable Period', `Class ${slot.className}`, `Period ${pNum}`],
-            assignedBy: 'Master Timetable',
-            assignedByRole: 'Self',
-            isTopPriority: false,
-            overloadImpact: false,
-            linkedClass: slot.className ? `Class ${slot.className}` : undefined,
-            linkedSubject: slot.subjectName,
-            createdAt: new Date().toISOString(),
-            updatedAt: new Date().toISOString()
-          });
-        }
-      }
-
-      // Add Proxy Duties / Arrangements
-      for (const slot of myProxySlots) {
-        const pNum = slot.period || slot.periodNumber || 1;
-        const deterministicId = `proxy-duty-${slot.id || `proxy-p${pNum}-${slot.className}`}-${todayDateStr}`;
-        const existing = baseTasks.find(t => t.id === deterministicId);
-
-        if (existing) {
-          generatedTimetableTasks.push(existing);
-        } else {
-          generatedTimetableTasks.push({
-            id: deterministicId,
-            title: `🚨 Proxy Duty: Period ${pNum} Class ${slot.className}${slot.section ? `-${slot.section}` : ''} (${slot.subjectName})`,
-            description: `⚠️ Substitution arrangement assigned by Principal/Incharge for absent teacher ${slot.originalTeacherName || 'Staff on Leave'}. Reason: ${slot.arrangementReason || 'Leave Coverage'}.`,
-            category: 'Assembly & Duty',
-            priority: 'Do First (Urgent & Important)',
-            status: 'Pending',
-            dueDate: todayDateStr,
-            dueTime: periodTimings[pNum] || '08:00',
-            listId: 'inbox',
-            estimatedMinutes: 40,
-            subtasks: [
-              { id: `st-pr-1-${deterministicId}`, title: 'Report to assigned classroom & maintain discipline', completed: false },
-              { id: `st-pr-2-${deterministicId}`, title: 'Engage students in revision / reading activity', completed: false },
-              { id: `st-pr-3-${deterministicId}`, title: 'Sign substitution register in Principal office', completed: false }
-            ],
-            tags: ['Proxy Duty', 'Arrangement', `Class ${slot.className}`, 'Priority Duty'],
-            assignedBy: 'Principal / Academic Incharge',
-            assignedByRole: 'Principal',
-            isTopPriority: true,
-            overloadImpact: true,
-            linkedClass: slot.className ? `Class ${slot.className}` : undefined,
-            linkedSubject: slot.subjectName,
-            createdAt: new Date().toISOString(),
-            updatedAt: new Date().toISOString()
-          });
-        }
-      }
-
-      // Merge: non-timetable tasks + generated tasks
-      const nonTimetableTasks = baseTasks.filter(t => !t.id.startsWith('tt-period-') && !t.id.startsWith('proxy-duty-'));
-      const mergedAllTasks = [...generatedTimetableTasks, ...nonTimetableTasks];
+      // Merge non-teaching tasks + generated teaching tasks
+      const teachingTaskIds = new Set(generatedTeachingTasks.map(t => t.id));
+      const nonTeachingTasks = baseTasks.filter(t => !teachingTaskIds.has(t.id) && !t.id.startsWith('tt-period-') && !t.id.startsWith('proxy-duty-') && !t.id.startsWith('task-teaching-'));
+      const mergedAllTasks = [...generatedTeachingTasks, ...nonTeachingTasks];
 
       setTasks(mergedAllTasks);
       await db.set(scopedTaskKey, mergedAllTasks);
@@ -2987,6 +2888,19 @@ export const TaskManager: React.FC<TaskManagerProps> = ({ devMode, currentUser, 
                   />
                 </div>
               </div>
+
+              {/* Protected Teaching Period Overlap Warning (Requirement 3 & 4) */}
+              {modalOverlapInfo.hasOverlap && modalOverlapInfo.overlappingPeriod && (
+                <div className="p-3 rounded-xl bg-amber-950/40 border border-amber-500/50 text-amber-200 text-xs flex items-start gap-2.5 shadow-sm">
+                  <AlertTriangle className="w-4 h-4 text-amber-400 shrink-0 mt-0.5" />
+                  <div>
+                    <p className="font-bold text-amber-300">Protected Teaching Period Conflict</p>
+                    <p className="text-[11px] text-amber-200/90 mt-0.5">
+                      Period {modalOverlapInfo.overlappingPeriod.periodNumber} ({modalOverlapInfo.overlappingPeriod.className} {modalOverlapInfo.overlappingPeriod.subjectName}, {modalOverlapInfo.overlappingPeriod.startTime}–{modalOverlapInfo.overlappingPeriod.endTime}) is scheduled at this time. Non-teaching tasks must not be scheduled during teaching periods unless proxy coverage exists.
+                    </p>
+                  </div>
+                </div>
+              )}
 
               {/* Faculty Assignment with Leave & Availability Checking (Rule i & i.a) */}
               <div className="p-3 rounded-xl bg-slate-950 border border-slate-800 space-y-2">

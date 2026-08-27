@@ -616,7 +616,7 @@ export const TeacherDashboard: React.FC<TeacherDashboardProps> = ({
   const { activeDate: activeWorkingDate, activeDayName, formattedDate: formattedActiveDate, isWeekend } = useActiveWorkingDate();
 
   // Selected Day for Timetable
-  const [selectedDay, setSelectedDay] = useState<string>('Tuesday'); // default current day context
+  const [selectedDay, setSelectedDay] = useState<string>(() => activeDayName || 'Thursday');
   const [scheduleScope, setScheduleScope] = useState<'my_classes' | 'all' | 'arrangements'>('my_classes');
   const [scheduleSearch, setScheduleSearch] = useState('');
   const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('asc');
@@ -673,7 +673,9 @@ export const TeacherDashboard: React.FC<TeacherDashboardProps> = ({
 
   useEffect(() => {
     loadData();
-    setSelectedDay(activeDayName === 'Sunday' ? 'Tuesday' : activeDayName);
+    if (activeDayName) {
+      setSelectedDay(activeDayName);
+    }
 
     const handleSchoolUpdate = (e: any) => {
       if (e.detail) setSchool(e.detail);
@@ -710,6 +712,12 @@ export const TeacherDashboard: React.FC<TeacherDashboardProps> = ({
       window.removeEventListener('kvs-tasks-updated', handleAuthChange);
     };
   }, [propUser]);
+
+  useEffect(() => {
+    if (activeDayName) {
+      setSelectedDay(activeDayName);
+    }
+  }, [activeDayName]);
 
   // Live clock ticker (separate from data loading)
   useEffect(() => {

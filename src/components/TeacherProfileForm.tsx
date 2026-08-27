@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import {
   TeacherProfile,
   AcademicTarget,
@@ -43,10 +43,12 @@ import {
   GraduationCap,
   Medal,
   ChevronRight,
+  ChevronDown,
   Filter,
   ClipboardList,
   Users,
   ArrowLeft,
+  ArrowRight,
   Crown,
   ShieldCheck
 } from 'lucide-react';
@@ -103,7 +105,7 @@ export const TeacherProfileForm: React.FC<TeacherProfileFormProps> = ({ devMode,
   const [selectedInitialRequestId, setSelectedInitialRequestId] = useState<string | null>(null);
   const [pendingRequestsCount, setPendingRequestsCount] = useState(0);
   const [currentUser, setCurrentUser] = useState<UserAccount | null>(null);
-  const [adminViewTab, setAdminViewTab] = useState<'staff_directory' | 'teacher_biodata'>('staff_directory');
+  const [adminViewTab, setAdminViewTab] = useState<'staff_directory' | 'teacher_biodata'>('teacher_biodata');
   const [inspectingTeacher, setInspectingTeacher] = useState<StaffDetailRecord | null>(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -114,6 +116,15 @@ export const TeacherProfileForm: React.FC<TeacherProfileFormProps> = ({ devMode,
   // KVS Samagam Role Assignment Modal State (Admin Only)
   const [isAssignRolesModalOpen, setIsAssignRolesModalOpen] = useState(false);
   const [assignRoleAction, setAssignRoleAction] = useState<RoleAssignmentAction>('class_teacher');
+  const [isClassesExpanded, setIsClassesExpanded] = useState(false);
+
+  const classList = useMemo(() => {
+    if (!profile.classesAndSubjectsTaught) return [];
+    return profile.classesAndSubjectsTaught
+      .split(',')
+      .map(c => c.trim())
+      .filter(Boolean);
+  }, [profile.classesAndSubjectsTaught]);
 
   useEffect(() => {
     loadData();
@@ -413,14 +424,14 @@ export const TeacherProfileForm: React.FC<TeacherProfileFormProps> = ({ devMode,
     check('classTeacherRole', 'Class Teacher Assignment (Head CT) (Item 17)');
     check('coClassTeacherRole', 'Co-Class Teacher Assignment (Associate CT) (Item 17b)');
     check('bloodGroup', 'Blood Group');
-    check('teachingPhilosophy', 'Teaching Philosophy (P-15)');
-    check('scholasticAchievementsText', 'Scholastic Achievements (P-15)');
-    check('coScholasticAchievementsText', 'Co-Scholastic Achievements (P-15)');
+    check('teachingPhilosophy', 'Teaching Philosophy');
+    check('scholasticAchievementsText', 'Scholastic Achievements');
+    check('coScholasticAchievementsText', 'Co-Scholastic Achievements');
 
     if (JSON.stringify(current.academicTargets || []) !== JSON.stringify(proposed.academicTargets || [])) {
       diffs.push({
         fieldKey: 'academicTargets',
-        fieldLabel: 'Academic Targets (P-12)',
+        fieldLabel: 'Academic Targets',
         currentValue: `${(current.academicTargets || []).length} target(s)`,
         proposedValue: `${(proposed.academicTargets || []).length} target(s)`
       });
@@ -429,7 +440,7 @@ export const TeacherProfileForm: React.FC<TeacherProfileFormProps> = ({ devMode,
     if (JSON.stringify(current.achievementsList || []) !== JSON.stringify(proposed.achievementsList || [])) {
       diffs.push({
         fieldKey: 'achievementsList',
-        fieldLabel: 'Achievements List (P-15)',
+        fieldLabel: 'Achievements List',
         currentValue: `${(current.achievementsList || []).length} item(s)`,
         proposedValue: `${(proposed.achievementsList || []).length} item(s)`
       });
@@ -438,7 +449,7 @@ export const TeacherProfileForm: React.FC<TeacherProfileFormProps> = ({ devMode,
     if (JSON.stringify(current.academicResponsibilities || []) !== JSON.stringify(proposed.academicResponsibilities || [])) {
       diffs.push({
         fieldKey: 'academicResponsibilities',
-        fieldLabel: 'Academic Responsibilities (P-16)',
+        fieldLabel: 'Academic Responsibilities',
         currentValue: `${(current.academicResponsibilities || []).length} duty/duties`,
         proposedValue: `${(proposed.academicResponsibilities || []).length} duty/duties`
       });
@@ -571,10 +582,10 @@ export const TeacherProfileForm: React.FC<TeacherProfileFormProps> = ({ devMode,
   };
 
   const handleReset = async () => {
-    if (window.confirm('Reset Teacher Profile to standard Kendriya Vidyalaya template values (including P-15 & P-16 defaults)?')) {
+    if (window.confirm('Reset Teacher Profile to standard Kendriya Vidyalaya template values?')) {
       setProfile(DEFAULT_TEACHER);
       await db.set('setup:teacher', DEFAULT_TEACHER);
-      setMsg({ type: 'success', text: 'Reset to standard KVS teacher profile (P-12, P-15, P-16).' });
+      setMsg({ type: 'success', text: 'Reset to standard KVS teacher profile.' });
       setTimeout(() => setMsg(null), 3000);
     }
   };
@@ -812,46 +823,22 @@ export const TeacherProfileForm: React.FC<TeacherProfileFormProps> = ({ devMode,
       {/* Top View Switcher (Admin vs Teacher Mode) */}
       {isAdmin ? (
         <div className="bg-slate-900 border border-slate-800 p-2.5 rounded-2xl flex items-center justify-between gap-2 flex-wrap shadow-sm">
-          <div className="flex items-center gap-2">
-            <button
-              type="button"
-              onClick={() => {
-                setAdminViewTab('staff_directory');
-                setInspectingTeacher(null);
-              }}
-              className={`px-4 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer flex items-center gap-2 ${
-                adminViewTab === 'staff_directory'
-                  ? 'bg-amber-600 text-white shadow-md'
-                  : 'bg-slate-950 text-slate-400 hover:text-white border border-slate-800'
-              }`}
-            >
-              <Users className="w-4 h-4" />
-              <span>📋 All Staff Details & Directory (20 Columns)</span>
-            </button>
-
-            <button
-              type="button"
-              onClick={() => setAdminViewTab('teacher_biodata')}
-              className={`px-4 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer flex items-center gap-2 ${
-                adminViewTab === 'teacher_biodata'
-                  ? 'bg-purple-600 text-white shadow-md'
-                  : 'bg-slate-950 text-slate-400 hover:text-white border border-slate-800'
-              }`}
-            >
-              <User className="w-4 h-4" />
-              <span>👤 {inspectingTeacher ? `Inspecting: ${inspectingTeacher.name}` : "Teacher Bio-Data & Diary Profile Form"}</span>
-            </button>
+          <div className="flex items-center gap-2 flex-wrap">
+            <div className="px-3.5 py-1.5 rounded-xl bg-purple-600 text-white text-xs font-bold shadow-md flex items-center gap-2">
+              <User className="w-3.5 h-3.5" />
+              <span>{inspectingTeacher ? `Inspecting: ${inspectingTeacher.name}` : "Teacher Bio-Data"}</span>
+            </div>
           </div>
 
           <div className="flex items-center gap-2 flex-wrap">
             <button
               type="button"
               onClick={() => setIsProfileChangeModalOpen(true)}
-              className="px-3 py-1 bg-amber-600 hover:bg-amber-500 text-white rounded-xl text-xs font-bold transition-all shadow-md flex items-center gap-1.5 cursor-pointer relative"
+              className="px-3 py-1.5 bg-amber-600 hover:bg-amber-500 text-white rounded-xl text-xs font-bold transition-all shadow-md flex items-center gap-1.5 cursor-pointer relative"
               title="Review & Approve Faculty Profile Change Requests"
             >
               <Sparkles className="w-3.5 h-3.5 text-amber-200" />
-              <span>Review Profile Updates</span>
+              <span>Review Updates</span>
               {pendingRequestsCount > 0 && (
                 <span className="px-1.5 py-0.2 rounded-full bg-rose-500 text-white text-[10px] font-black animate-pulse">
                   {pendingRequestsCount}
@@ -865,51 +852,25 @@ export const TeacherProfileForm: React.FC<TeacherProfileFormProps> = ({ devMode,
                 setAssignRoleAction('class_teacher');
                 setIsAssignRolesModalOpen(true);
               }}
-              className="px-3 py-1 bg-teal-700 hover:bg-teal-600 text-white rounded-xl text-xs font-bold transition-all shadow-md flex items-center gap-1.5 cursor-pointer"
+              className="px-3 py-1.5 bg-teal-700 hover:bg-teal-600 text-white rounded-xl text-xs font-bold transition-all shadow-md flex items-center gap-1.5 cursor-pointer"
               title="Assign Class Teacher, Subject Teachers & Institutional Incharges"
             >
               <Award className="w-3.5 h-3.5 text-amber-300" />
               <span>👑 Assign Roles</span>
             </button>
-
-            <div className="text-xs text-amber-300 font-bold px-3 py-1 bg-amber-950/60 rounded-xl border border-amber-500/30 flex items-center gap-1.5">
-              <Crown className="w-3.5 h-3.5 text-amber-400" />
-              <span>Admin Checking Authority Mode</span>
-            </div>
           </div>
         </div>
       ) : (
         /* Teacher Mode Top Switcher */
-        <div className="bg-slate-900 border border-slate-800 p-2.5 rounded-2xl flex items-center justify-between gap-2 flex-wrap shadow-sm">
-          <div className="flex items-center gap-2">
-            <button
-              type="button"
-              onClick={() => setAdminViewTab('teacher_biodata')}
-              className={`px-4 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer flex items-center gap-2 ${
-                adminViewTab === 'teacher_biodata'
-                  ? 'bg-purple-600 text-white shadow-md'
-                  : 'bg-slate-950 text-slate-400 hover:text-white border border-slate-800'
-              }`}
-            >
-              <User className="w-4 h-4 text-purple-300" />
-              <span>👤 My Bio-Data &amp; Diary Profile Form</span>
-            </button>
-
-            <button
-              type="button"
-              onClick={() => setAdminViewTab('staff_directory')}
-              className={`px-4 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer flex items-center gap-2 ${
-                adminViewTab === 'staff_directory'
-                  ? 'bg-amber-600 text-white shadow-md'
-                  : 'bg-slate-950 text-slate-400 hover:text-white border border-slate-800'
-              }`}
-            >
-              <Users className="w-4 h-4 text-amber-300" />
-              <span>📋 Vidyalaya Staff Directory (View-Only)</span>
-            </button>
+        <div className="bg-slate-900 border border-slate-800 p-2 rounded-xl flex items-center justify-between gap-2 flex-wrap shadow-sm">
+          <div className="flex items-center gap-2 flex-wrap">
+            <div className="px-2.5 py-1 rounded-lg bg-purple-600 text-white text-xs font-bold shadow-sm flex items-center gap-1.5">
+              <User className="w-3.5 h-3.5 text-purple-200" />
+              <span>My Bio-Data</span>
+            </div>
           </div>
 
-          <div className="text-xs text-purple-300 font-bold px-3 py-1 bg-purple-950/60 rounded-xl border border-purple-500/30 flex items-center gap-1.5">
+          <div className="text-[11px] text-purple-300 font-bold px-2.5 py-1 bg-purple-950/60 rounded-lg border border-purple-500/30 flex items-center gap-1.5">
             <ShieldCheck className="w-3.5 h-3.5 text-emerald-400" />
             <span>Faculty Member: {profile.name} (#{profile.employeeCode})</span>
           </div>
@@ -931,23 +892,23 @@ export const TeacherProfileForm: React.FC<TeacherProfileFormProps> = ({ devMode,
         />
       ) : (
         /* Regular Teacher Profile Bio-Data Form (or Admin inspecting selected teacher) */
-        <div className="space-y-8">
+        <div className="space-y-6 sm:space-y-8">
           {/* Back button and Assign Role action if inspecting teacher */}
           {isAdmin && inspectingTeacher && (
-            <div className="p-3.5 rounded-2xl bg-gradient-to-r from-purple-950/60 via-slate-900 to-amber-950/40 border border-purple-500/40 flex flex-col sm:flex-row sm:items-center justify-between gap-3 shadow-md">
+            <div className="p-3 sm:p-3.5 rounded-2xl bg-gradient-to-r from-purple-950/60 via-slate-900 to-amber-950/40 border border-purple-500/40 flex flex-col sm:flex-row sm:items-center justify-between gap-3 shadow-md">
               <div className="flex items-center gap-2.5">
                 <div className="w-8 h-8 rounded-xl bg-purple-600/30 border border-purple-500/40 flex items-center justify-center text-purple-300 font-bold">
                   🔍
                 </div>
                 <div>
                   <div className="text-xs font-bold text-white flex items-center gap-2">
-                    <span>Inspecting Bio-Data & Diary of: <strong className="text-purple-300">{inspectingTeacher.name}</strong></span>
+                    <span>Inspecting: <strong className="text-purple-300">{inspectingTeacher.name}</strong></span>
                     <span className="px-1.5 py-0.2 rounded text-[9px] font-bold bg-amber-500 text-black">
                       {inspectingTeacher.designation}
                     </span>
                   </div>
                   <p className="text-[10px] text-slate-300">
-                    Emp Code: <strong className="text-white">{inspectingTeacher.employeeCode}</strong> · Seniority No: <strong className="text-amber-300">{inspectingTeacher.seniorityNumber}</strong>
+                    Emp Code: <strong className="text-white">{inspectingTeacher.employeeCode}</strong> · Seniority: <strong className="text-amber-300">{inspectingTeacher.seniorityNumber}</strong>
                   </p>
                 </div>
               </div>
@@ -959,10 +920,10 @@ export const TeacherProfileForm: React.FC<TeacherProfileFormProps> = ({ devMode,
                     setAssignRoleAction('class_teacher');
                     setIsAssignRolesModalOpen(true);
                   }}
-                  className="px-3.5 py-1.5 rounded-xl bg-teal-600 hover:bg-teal-500 text-white text-xs font-bold flex items-center gap-1.5 transition-all cursor-pointer shadow-md"
+                  className="px-3 py-1.5 rounded-xl bg-teal-600 hover:bg-teal-500 text-white text-xs font-bold flex items-center gap-1.5 transition-all cursor-pointer shadow-md"
                 >
                   <Award className="w-3.5 h-3.5 text-amber-300" />
-                  <span>Assign Role to {inspectingTeacher.name.split(' ')[0]}</span>
+                  <span>Assign Role</span>
                 </button>
 
                 <button
@@ -971,59 +932,82 @@ export const TeacherProfileForm: React.FC<TeacherProfileFormProps> = ({ devMode,
                     setAdminViewTab('staff_directory');
                     setInspectingTeacher(null);
                   }}
-                  className="px-3.5 py-1.5 rounded-xl bg-slate-950 hover:bg-slate-800 text-purple-300 hover:text-white border border-purple-500/30 text-xs font-bold flex items-center gap-1.5 transition-all cursor-pointer"
+                  className="px-3 py-1.5 rounded-xl bg-slate-950 hover:bg-slate-800 text-purple-300 hover:text-white border border-purple-500/30 text-xs font-bold flex items-center gap-1.5 transition-all cursor-pointer"
                 >
                   <ArrowLeft className="w-3.5 h-3.5" />
-                  <span>Return to Staff Directory</span>
+                  <span>Back to Directory</span>
                 </button>
               </div>
             </div>
           )}
 
-          {devMode && (
-            <DevModeBadge
-              pages={[1, 3, 12, 13, 15, 16]}
-              title="Digitizes Template Page 12 (Bio-Data & Targets), Page 15 (Philosophy & Achievements) & Page 16 (Academic Duties & KVS Flagship)"
-              fieldCount={32}
-            />
-          )}
+          {/* Compact Teacher Bio-Data Header */}
+          <div className="p-3.5 sm:p-4 rounded-2xl bg-slate-900 border border-slate-800 shadow-md space-y-3">
+            <div className="flex items-center justify-between gap-3">
+              <div className="flex items-center gap-3 min-w-0">
+                <div className="relative w-14 h-14 sm:w-16 sm:h-16 rounded-xl bg-purple-950 border border-purple-500/40 overflow-hidden flex items-center justify-center shrink-0 shadow-md">
+                  {profile.photoUrl ? (
+                    <img src={profile.photoUrl} alt="Teacher Avatar" className="w-full h-full object-cover" />
+                  ) : (
+                    <User className="w-7 h-7 text-purple-300/50" />
+                  )}
+                </div>
+                <div className="min-w-0">
+                  <div className="text-[10px] font-bold uppercase tracking-wider text-purple-400">
+                    Teacher Bio-Data
+                  </div>
+                  <h3 className="text-base sm:text-lg font-bold text-white m-0 truncate">
+                    {profile.name || 'Teacher Name'}
+                  </h3>
+                  <p className="text-xs text-slate-400 m-0 font-mono truncate">
+                    {profile.designation} · {profile.employeeCode}
+                  </p>
+                </div>
+              </div>
 
-          {/* Header & Section Navigation Bar */}
-          <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 bg-[var(--glass-bg)] border border-[var(--glass-border)] p-4 rounded-2xl">
-            <div>
-              <h2 className="text-xl font-serif font-bold text-[var(--text-main)] m-0 flex items-center gap-2.5">
-                <GraduationCap className="w-6 h-6 text-[var(--accent)]" />
-                <span>Teacher&apos;s Profile & Service Portfolio</span>
-              </h2>
-              <p className="text-xs text-[var(--text-dim)] m-0 mt-0.5">
-                Module: <strong>Teacher&apos;s Profile</strong> • Official KVS Teacher&apos;s Diary (Pages 12, 15, 16, 26, 31)
-              </p>
+              <div className="flex items-center gap-1.5 shrink-0">
+                <button
+                  type="button"
+                  onClick={() => handleSave()}
+                  disabled={saving}
+                  className="px-3 py-1.5 rounded-xl bg-purple-600 hover:bg-purple-500 text-white text-xs font-bold flex items-center gap-1.5 shadow-sm cursor-pointer disabled:opacity-50"
+                >
+                  <Save className="w-3.5 h-3.5" />
+                  <span className="hidden sm:inline">{saving ? 'Saving...' : 'Save'}</span>
+                </button>
+              </div>
             </div>
 
-            <div className="flex items-center gap-2 flex-wrap">
-              <button
-                type="button"
-                onClick={handleReset}
-                className="td-btn-ghost text-xs py-2"
-                title="Reset to default KVS Profile with P-15 & P-16 templates"
-              >
-                <RotateCcw className="w-3.5 h-3.5" />
-                <span>Auto-Fill Demo Profile</span>
-              </button>
-              <button
-                type="button"
-                onClick={() => handleSave()}
-                disabled={saving}
-                className="td-add-btn text-xs py-2 cursor-pointer shadow-md"
-              >
-                <Save className="w-3.5 h-3.5" />
-                <span>{saving ? 'Saving...' : 'Save All Changes'}</span>
-              </button>
-            </div>
+            {/* Assigned Classes — Expandable */}
+            {classList.length > 0 && (
+              <div className="pt-2 border-t border-slate-800/80">
+                <button
+                  type="button"
+                  onClick={() => setIsClassesExpanded(!isClassesExpanded)}
+                  className="flex items-center gap-1.5 text-xs text-purple-300 hover:text-white font-medium py-1 px-2.5 rounded-lg bg-slate-950 border border-slate-800 cursor-pointer transition-all"
+                >
+                  <span>Assigned classes · {classList.length}</span>
+                  <ChevronDown className={`w-3.5 h-3.5 text-purple-400 transition-transform ${isClassesExpanded ? 'rotate-180' : ''}`} />
+                </button>
+
+                {isClassesExpanded && (
+                  <div className="flex flex-wrap gap-1.5 pt-2 animate-fadeIn">
+                    {classList.map((cls, idx) => (
+                      <span
+                        key={idx}
+                        className="text-[10px] px-2 py-0.5 rounded-md bg-purple-950/80 border border-purple-500/30 text-purple-200 font-mono font-semibold"
+                      >
+                        {cls}
+                      </span>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
           </div>
 
       {/* Quick Sub-Section Navigation Tabs */}
-      <div className="flex items-center gap-2 overflow-x-auto pb-1">
+      <div className="flex items-center gap-1.5 overflow-x-auto pb-1 scrollbar-none">
         <button
           type="button"
           onClick={() => setActiveSubTab('all')}
@@ -1033,7 +1017,7 @@ export const TeacherProfileForm: React.FC<TeacherProfileFormProps> = ({ devMode,
               : 'bg-purple-950/40 text-purple-200 hover:bg-purple-900/60 border border-purple-500/20'
           }`}
         >
-          📄 Complete Overview
+          📄 Overview
         </button>
         <button
           type="button"
@@ -1044,7 +1028,7 @@ export const TeacherProfileForm: React.FC<TeacherProfileFormProps> = ({ devMode,
               : 'bg-purple-950/40 text-purple-200 hover:bg-purple-900/60 border border-purple-500/20'
           }`}
         >
-          📋 {devMode ? 'P-12: 7(a) Bio-Data' : 'Bio-Data'}
+          📋 Bio-Data
         </button>
         <button
           type="button"
@@ -1055,7 +1039,7 @@ export const TeacherProfileForm: React.FC<TeacherProfileFormProps> = ({ devMode,
               : 'bg-purple-950/40 text-purple-200 hover:bg-purple-900/60 border border-purple-500/20'
           }`}
         >
-          🎯 {devMode ? 'P-12: Item 19 Targets' : 'Academic Targets'}
+          🎯 Academic Targets
         </button>
         <button
           type="button"
@@ -1066,7 +1050,7 @@ export const TeacherProfileForm: React.FC<TeacherProfileFormProps> = ({ devMode,
               : 'bg-purple-950/40 text-purple-200 hover:bg-purple-900/60 border border-purple-500/20'
           }`}
         >
-          🌟 {devMode ? 'P-15: 9(a) Philosophy & 9(b) Achievements' : 'Philosophy & Achievements'}
+          🌟 Philosophy &amp; Achievements
         </button>
         <button
           type="button"
@@ -1077,7 +1061,7 @@ export const TeacherProfileForm: React.FC<TeacherProfileFormProps> = ({ devMode,
               : 'bg-purple-950/40 text-purple-200 hover:bg-purple-900/60 border border-purple-500/20'
           }`}
         >
-          🏛️ {devMode ? 'P-16: Academic Duties & Flagship' : 'Academic Duties & Flagship'}
+          🏛️ Academic Duties
         </button>
         <button
           type="button"
@@ -1088,7 +1072,7 @@ export const TeacherProfileForm: React.FC<TeacherProfileFormProps> = ({ devMode,
               : 'bg-purple-950/40 text-purple-200 hover:bg-purple-900/60 border border-purple-500/20'
           }`}
         >
-          📌 {devMode ? '26. Work Done Other than Teaching' : 'Work Done Other than Teaching'}
+          📌 Work Other than Teaching
         </button>
         <button
           type="button"
@@ -1099,7 +1083,7 @@ export const TeacherProfileForm: React.FC<TeacherProfileFormProps> = ({ devMode,
               : 'bg-purple-950/40 text-purple-200 hover:bg-purple-900/60 border border-purple-500/20'
           }`}
         >
-          💡 {devMode ? '31. Innovation & Best Practices' : 'Innovation & Best Practices'}
+          💡 Innovation &amp; Best Practices
         </button>
       </div>
 
@@ -1213,83 +1197,25 @@ export const TeacherProfileForm: React.FC<TeacherProfileFormProps> = ({ devMode,
         </div>
       )}
 
-      <form onSubmit={handleSave} className="space-y-8">
+      <form onSubmit={handleSave} className="space-y-6 sm:space-y-8 pb-24">
         {/* ================================================================= */}
-        {/* SECTION 1: 7(a) BIO-DATA (Page 12)                                 */}
+        {/* SECTION 1: BIO-DATA                                               */}
         {/* ================================================================= */}
         {(activeSubTab === 'all' || activeSubTab === 'biodata') && (
-          <div className="td-card">
-            <div className="td-card-head">
-              <div className="flex items-center gap-3">
-                <div className="p-2.5 rounded-xl bg-purple-500/10 border border-purple-500/20 text-purple-300">
-                  <User className="w-6 h-6" />
+          <div className="td-card p-3.5 sm:p-5">
+            <div className="td-card-head pb-3 border-b border-white/10 mb-4">
+              <div className="flex items-center gap-2.5">
+                <div className="p-2 rounded-xl bg-purple-500/10 border border-purple-500/20 text-purple-300">
+                  <User className="w-5 h-5" />
                 </div>
                 <div>
-                  <div className="flex items-center gap-2">
-                    <span className="px-2 py-0.5 rounded text-[10px] font-mono font-bold bg-purple-950 text-purple-300 border border-purple-500/30">
-                      P-12
-                    </span>
-                    <h3 className="m-0">Section 7(a) Teacher Bio-Data</h3>
-                  </div>
-                  <p className="text-xs text-[var(--text-dim)] m-0 mt-0.5">
-                    Digitizes Page 12 (Items 1 - 18) of Kendriya Vidyalaya Teacher's Diary • Module: Teacher Profile Setup
-                  </p>
+                  <h3 className="text-base font-bold text-white m-0">Teacher Bio-Data</h3>
                 </div>
               </div>
             </div>
 
             <div className="td-form">
-              {/* Photo Avatar Preview */}
-              <div className="flex flex-col sm:flex-row items-center gap-6 p-4 rounded-2xl bg-white/5 border border-[var(--glass-border)] mb-4">
-                <div className="relative w-24 h-24 rounded-2xl bg-purple-950 border-2 border-purple-500/40 overflow-hidden flex items-center justify-center shrink-0 shadow-lg">
-                  {profile.photoUrl ? (
-                    <img src={profile.photoUrl} alt="Teacher Avatar" className="w-full h-full object-cover" />
-                  ) : (
-                    <User className="w-12 h-12 text-purple-300/50" />
-                  )}
-                  <div className="absolute inset-0 bg-black/40 flex items-center justify-center opacity-0 hover:opacity-100 transition-opacity cursor-pointer">
-                    <Camera className="w-6 h-6 text-white" />
-                  </div>
-                </div>
-                <div className="flex-1 space-y-2 text-center sm:text-left">
-                  <h4 className="font-serif text-lg font-bold text-[var(--text-main)] m-0">
-                    {profile.name || 'Teacher Name'}
-                  </h4>
-                  <p className="text-xs text-[var(--text-dim)] m-0 font-mono">
-                    {profile.designation} • {profile.employeeCode}
-                  </p>
-                  <div className="flex flex-wrap items-center gap-1.5 pt-1">
-                    <span className="text-[11px] font-semibold text-purple-300">Assigned Classes:</span>
-                    {profile.classesAndSubjectsTaught ? (
-                      profile.classesAndSubjectsTaught.split(',').map((cls, idx) => (
-                        <span
-                          key={idx}
-                          className="text-[10px] px-2 py-0.5 rounded-md bg-purple-900/60 border border-purple-500/30 text-purple-200 font-mono font-semibold"
-                        >
-                          {cls.trim()}
-                        </span>
-                      ))
-                    ) : (
-                      <span className="text-[10px] text-purple-400/60 italic">No classes listed</span>
-                    )}
-                  </div>
-                  <div className="pt-1">
-                    <input
-                      type="text"
-                      value={profile.photoUrl || ''}
-                      onChange={e => {
-                        const updated = { ...profile, photoUrl: e.target.value };
-                        setProfile(updated);
-                        db.set(getActiveStorageKey(), updated);
-                      }}
-                      placeholder="Enter Photo Image URL (e.g. https://...)"
-                      className="text-xs p-2.5 w-full max-w-md"
-                    />
-                  </div>
-                </div>
-              </div>
-
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-5">
                 {/* 1. Name */}
                 <div>
                   <label>
@@ -1301,6 +1227,7 @@ export const TeacherProfileForm: React.FC<TeacherProfileFormProps> = ({ devMode,
                     onChange={e => setProfile({ ...profile, name: e.target.value })}
                     placeholder="Mrs. Ananya Patnaik"
                     required
+                    className="w-full"
                   />
                 </div>
 
@@ -1332,6 +1259,7 @@ export const TeacherProfileForm: React.FC<TeacherProfileFormProps> = ({ devMode,
                     value={profile.qualifications}
                     onChange={e => setProfile({ ...profile, qualifications: e.target.value })}
                     placeholder="M.Sc. (Maths), B.Ed., CTET"
+                    className="w-full"
                   />
                 </div>
 
@@ -1343,6 +1271,7 @@ export const TeacherProfileForm: React.FC<TeacherProfileFormProps> = ({ devMode,
                     value={profile.seniorityNo}
                     onChange={e => setProfile({ ...profile, seniorityNo: e.target.value })}
                     placeholder="KVS-PGT-MATH-2018-042"
+                    className="w-full"
                   />
                 </div>
 
@@ -1357,6 +1286,7 @@ export const TeacherProfileForm: React.FC<TeacherProfileFormProps> = ({ devMode,
                     onChange={e => setProfile({ ...profile, employeeCode: e.target.value })}
                     placeholder="EMP849201"
                     required
+                    className="w-full"
                   />
                 </div>
 
@@ -1367,6 +1297,7 @@ export const TeacherProfileForm: React.FC<TeacherProfileFormProps> = ({ devMode,
                     type="date"
                     value={parseDateToISO(profile.dob)}
                     onChange={e => setProfile({ ...profile, dob: e.target.value })}
+                    className="w-full"
                   />
                 </div>
 
@@ -1377,6 +1308,7 @@ export const TeacherProfileForm: React.FC<TeacherProfileFormProps> = ({ devMode,
                     type="date"
                     value={parseDateToISO(profile.joiningDateKVS)}
                     onChange={e => setProfile({ ...profile, joiningDateKVS: e.target.value })}
+                    className="w-full"
                   />
                 </div>
 
@@ -1387,17 +1319,19 @@ export const TeacherProfileForm: React.FC<TeacherProfileFormProps> = ({ devMode,
                     type="date"
                     value={parseDateToISO(profile.joiningDatePresentKV)}
                     onChange={e => setProfile({ ...profile, joiningDatePresentKV: e.target.value })}
+                    className="w-full"
                   />
                 </div>
 
                 {/* 9. NCC / Scouting */}
                 <div>
-                  <label>9. NCC / Scouting & Guiding</label>
+                  <label>9. NCC / Scouting &amp; Guiding</label>
                   <input
                     type="text"
                     value={profile.nccScoutingQualification}
                     onChange={e => setProfile({ ...profile, nccScoutingQualification: e.target.value })}
                     placeholder="e.g. HWB Guide Captain / ANO"
+                    className="w-full"
                   />
                 </div>
 
@@ -1409,6 +1343,7 @@ export const TeacherProfileForm: React.FC<TeacherProfileFormProps> = ({ devMode,
                     value={profile.gpfCpfPranNo}
                     onChange={e => setProfile({ ...profile, gpfCpfPranNo: e.target.value })}
                     placeholder="110049283741 (PRAN)"
+                    className="w-full"
                   />
                 </div>
 
@@ -1420,6 +1355,7 @@ export const TeacherProfileForm: React.FC<TeacherProfileFormProps> = ({ devMode,
                     value={profile.panNo}
                     onChange={e => setProfile({ ...profile, panNo: e.target.value })}
                     placeholder="ABCDE1234F"
+                    className="w-full"
                   />
                 </div>
 
@@ -1431,6 +1367,7 @@ export const TeacherProfileForm: React.FC<TeacherProfileFormProps> = ({ devMode,
                     value={profile.aadharNo}
                     onChange={e => setProfile({ ...profile, aadharNo: e.target.value })}
                     placeholder="9876-5432-1098"
+                    className="w-full"
                   />
                 </div>
 
@@ -1442,6 +1379,7 @@ export const TeacherProfileForm: React.FC<TeacherProfileFormProps> = ({ devMode,
                     value={profile.residentialAddress}
                     onChange={e => setProfile({ ...profile, residentialAddress: e.target.value })}
                     placeholder="Quarter No. Type IV/12, KV Campus, Bhubaneswar"
+                    className="w-full"
                   />
                 </div>
 
@@ -1453,6 +1391,7 @@ export const TeacherProfileForm: React.FC<TeacherProfileFormProps> = ({ devMode,
                     value={profile.phoneNo}
                     onChange={e => setProfile({ ...profile, phoneNo: e.target.value })}
                     placeholder="+91 94370 12345"
+                    className="w-full"
                   />
                 </div>
 
@@ -1463,6 +1402,7 @@ export const TeacherProfileForm: React.FC<TeacherProfileFormProps> = ({ devMode,
                     value={profile.email}
                     onChange={e => setProfile({ ...profile, email: e.target.value })}
                     placeholder="ananya.patnaik@kvs.gov.in"
+                    className="w-full"
                   />
                 </div>
 
@@ -1474,17 +1414,19 @@ export const TeacherProfileForm: React.FC<TeacherProfileFormProps> = ({ devMode,
                     value={profile.awardsWon}
                     onChange={e => setProfile({ ...profile, awardsWon: e.target.value })}
                     placeholder="KVS Regional Incentive Award for Academic Excellence (2023)"
+                    className="w-full"
                   />
                 </div>
 
                 {/* 16. Classes & Subjects */}
                 <div>
-                  <label>16. Classes & Subjects Taught</label>
+                  <label>16. Classes &amp; Subjects Taught</label>
                   <input
                     type="text"
                     value={profile.classesAndSubjectsTaught}
                     onChange={e => setProfile({ ...profile, classesAndSubjectsTaught: e.target.value })}
                     placeholder="Class VI-A (P&HE), Class IX-A (P&HE), Class X-A (P&HE), Class XI-A (Physical Education)"
+                    className="w-full"
                   />
                 </div>
 
@@ -1496,6 +1438,7 @@ export const TeacherProfileForm: React.FC<TeacherProfileFormProps> = ({ devMode,
                     value={profile.classTeacherRole}
                     onChange={e => setProfile({ ...profile, classTeacherRole: e.target.value })}
                     placeholder="Class Teacher of Class X-A"
+                    className="w-full"
                   />
                 </div>
 
@@ -1507,6 +1450,7 @@ export const TeacherProfileForm: React.FC<TeacherProfileFormProps> = ({ devMode,
                     value={profile.coClassTeacherRole || ''}
                     onChange={e => setProfile({ ...profile, coClassTeacherRole: e.target.value })}
                     placeholder="Co-Class Teacher of Class II-A"
+                    className="w-full"
                   />
                 </div>
 
@@ -1518,6 +1462,23 @@ export const TeacherProfileForm: React.FC<TeacherProfileFormProps> = ({ devMode,
                     value={profile.bloodGroup}
                     onChange={e => setProfile({ ...profile, bloodGroup: e.target.value })}
                     placeholder="O +ve"
+                    className="w-full"
+                  />
+                </div>
+
+                {/* Profile Photo URL */}
+                <div className="md:col-span-2">
+                  <label>Profile Photo URL (optional)</label>
+                  <input
+                    type="text"
+                    value={profile.photoUrl || ''}
+                    onChange={e => {
+                      const updated = { ...profile, photoUrl: e.target.value };
+                      setProfile(updated);
+                      db.set(getActiveStorageKey(), updated);
+                    }}
+                    placeholder="Enter image URL (e.g. https://...)"
+                    className="w-full"
                   />
                 </div>
               </div>
@@ -1526,25 +1487,17 @@ export const TeacherProfileForm: React.FC<TeacherProfileFormProps> = ({ devMode,
         )}
 
         {/* ================================================================= */}
-        {/* SECTION 2: ITEM 19 ACADEMIC TARGETS (Page 12)                     */}
+        {/* SECTION 2: ACADEMIC TARGETS                                     */}
         {/* ================================================================= */}
         {(activeSubTab === 'all' || activeSubTab === 'targets') && (
-          <div className="td-card">
-            <div className="td-card-head flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
-              <div className="flex items-center gap-3">
-                <div className="p-2.5 rounded-xl bg-purple-500/10 border border-purple-500/20 text-purple-300">
-                  <Target className="w-6 h-6" />
+          <div className="td-card p-3.5 sm:p-5">
+            <div className="td-card-head pb-3 border-b border-white/10 mb-4 flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
+              <div className="flex items-center gap-2.5">
+                <div className="p-2 rounded-xl bg-purple-500/10 border border-purple-500/20 text-purple-300">
+                  <Target className="w-5 h-5" />
                 </div>
                 <div>
-                  <div className="flex items-center gap-2">
-                    <span className="px-2 py-0.5 rounded text-[10px] font-mono font-bold bg-purple-950 text-purple-300 border border-purple-500/30">
-                      P-12 (Item 19)
-                    </span>
-                    <h3 className="m-0">Item 19: Academic Targets for Session</h3>
-                  </div>
-                  <p className="text-xs text-[var(--text-dim)] m-0 mt-0.5">
-                    Specify target pass percentage and A1 grades for each assigned subject & class • Module: Teacher Profile Setup
-                  </p>
+                  <h3 className="text-base font-bold text-white m-0">Academic Targets for Session</h3>
                 </div>
               </div>
               <div className="flex items-center gap-2 flex-wrap">
@@ -1652,20 +1605,12 @@ export const TeacherProfileForm: React.FC<TeacherProfileFormProps> = ({ devMode,
             {/* P-15 9(a) Teaching Philosophy */}
             <div className="td-card">
               <div className="td-card-head flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
-                <div className="flex items-center gap-3">
-                  <div className="p-2.5 rounded-xl bg-amber-500/10 border border-amber-500/20 text-amber-300">
-                    <Lightbulb className="w-6 h-6" />
+                <div className="flex items-center gap-2.5">
+                  <div className="p-2 rounded-xl bg-amber-500/10 border border-amber-500/20 text-amber-300">
+                    <Lightbulb className="w-5 h-5" />
                   </div>
                   <div>
-                    <div className="flex items-center gap-2">
-                      <span className="px-2 py-0.5 rounded text-[10px] font-mono font-bold bg-amber-950 text-amber-300 border border-amber-500/30">
-                        P-15
-                      </span>
-                      <h3 className="m-0">9(a) Statement of Teaching Philosophy</h3>
-                    </div>
-                    <p className="text-xs text-[var(--text-dim)] m-0 mt-0.5">
-                      Teaching philosophy statement • Pedagogical beliefs & NEP-2020 alignment • Module: Teacher Profile Setup
-                    </p>
+                    <h3 className="text-base font-bold text-white m-0">Statement of Teaching Philosophy</h3>
                   </div>
                 </div>
 
@@ -1690,10 +1635,10 @@ export const TeacherProfileForm: React.FC<TeacherProfileFormProps> = ({ devMode,
               <div className="p-4 rounded-xl bg-amber-950/20 border border-amber-500/20 text-xs text-amber-200/90 mb-4 space-y-1">
                 <div className="font-bold text-amber-300 flex items-center gap-1.5">
                   <BookOpen className="w-4 h-4 shrink-0" />
-                  <span>NEP-2020 & KVS Pedagogical Focus Areas:</span>
+                  <span>NEP-2020 &amp; KVS Pedagogical Focus Areas:</span>
                 </div>
                 <p className="m-0 text-slate-300 leading-relaxed">
-                  Articulate your core pedagogical beliefs: <em>Competency-Based Education</em>, <em>Experiential & Joyful Learning</em>, <em>Panchakosha Vikas</em>, <em>Inclusivity & Differentiated Instruction</em>, and <em>21st Century Skills Development (Critical Thinking, Creativity, Collaboration)</em>.
+                  Articulate your core pedagogical beliefs: <em>Competency-Based Education</em>, <em>Experiential &amp; Joyful Learning</em>, <em>Panchakosha Vikas</em>, <em>Inclusivity &amp; Differentiated Instruction</em>, and <em>21st Century Skills Development (Critical Thinking, Creativity, Collaboration)</em>.
                 </p>
               </div>
 
@@ -1710,29 +1655,21 @@ export const TeacherProfileForm: React.FC<TeacherProfileFormProps> = ({ devMode,
                   className="w-full text-xs font-sans leading-relaxed p-3 bg-purple-950/40 border border-purple-500/30 rounded-xl text-purple-100 placeholder-purple-300/40 focus:border-amber-400 focus:outline-none"
                 />
                 <div className="flex justify-between items-center text-[10px] text-[var(--text-dim)] px-1">
-                  <span>Digitizes Page 15 Section 9(a) of KVS Teacher's Diary</span>
+                  <span>Pedagogical Beliefs</span>
                   <span>{(profile.teachingPhilosophy || '').length} characters</span>
                 </div>
               </div>
             </div>
 
-            {/* P-15 9(b) Achievements (Scholastic & Co-Scholastic) */}
-            <div className="td-card">
-              <div className="td-card-head flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
-                <div className="flex items-center gap-3">
-                  <div className="p-2.5 rounded-xl bg-purple-500/10 border border-purple-500/20 text-purple-300">
-                    <Award className="w-6 h-6 text-purple-300" />
+            {/* Achievements (Scholastic & Co-Scholastic) */}
+            <div className="td-card p-3.5 sm:p-5">
+              <div className="td-card-head pb-3 border-b border-white/10 mb-4 flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
+                <div className="flex items-center gap-2.5">
+                  <div className="p-2 rounded-xl bg-purple-500/10 border border-purple-500/20 text-purple-300">
+                    <Award className="w-5 h-5 text-purple-300" />
                   </div>
                   <div>
-                    <div className="flex items-center gap-2">
-                      <span className="px-2 py-0.5 rounded text-[10px] font-mono font-bold bg-purple-950 text-purple-300 border border-purple-500/30">
-                        P-15
-                      </span>
-                      <h3 className="m-0">9(b) Notable Achievements (Scholastic & Co-Scholastic)</h3>
-                    </div>
-                    <p className="text-xs text-[var(--text-dim)] m-0 mt-0.5">
-                      Scholastic results, sports coaching, Olympiads, Scouting, and National awards • Module: Teacher Profile Setup
-                    </p>
+                    <h3 className="text-base font-bold text-white m-0">Notable Achievements (Scholastic &amp; Co-Scholastic)</h3>
                   </div>
                 </div>
 
@@ -1922,23 +1859,15 @@ export const TeacherProfileForm: React.FC<TeacherProfileFormProps> = ({ devMode,
         {/* ================================================================= */}
         {(activeSubTab === 'all' || activeSubTab === 'responsibilities') && (
           <div className="space-y-6">
-            {/* P-16 10(a) Academic Responsibilities */}
-            <div className="td-card">
-              <div className="td-card-head flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
-                <div className="flex items-center gap-3">
-                  <div className="p-2.5 rounded-xl bg-indigo-500/10 border border-indigo-500/20 text-indigo-300">
-                    <Briefcase className="w-6 h-6" />
+            {/* Academic Responsibilities */}
+            <div className="td-card p-3.5 sm:p-5">
+              <div className="td-card-head pb-3 border-b border-white/10 mb-4 flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
+                <div className="flex items-center gap-2.5">
+                  <div className="p-2 rounded-xl bg-indigo-500/10 border border-indigo-500/20 text-indigo-300">
+                    <Briefcase className="w-5 h-5" />
                   </div>
                   <div>
-                    <div className="flex items-center gap-2">
-                      <span className="px-2 py-0.5 rounded text-[10px] font-mono font-bold bg-indigo-950 text-indigo-300 border border-indigo-500/30">
-                        P-16
-                      </span>
-                      <h3 className="m-0">10(a) Academic & Administrative Responsibilities</h3>
-                    </div>
-                    <p className="text-xs text-[var(--text-dim)] m-0 mt-0.5">
-                      Institutional duties, committees, convenorships & portfolios held • Module: Teacher Profile Setup
-                    </p>
+                    <h3 className="text-base font-bold text-white m-0">Academic &amp; Administrative Responsibilities</h3>
                   </div>
                 </div>
 
@@ -2081,23 +2010,15 @@ export const TeacherProfileForm: React.FC<TeacherProfileFormProps> = ({ devMode,
               </div>
             </div>
 
-            {/* P-16 10(b) Contributions to KVS Flagship Programs */}
-            <div className="td-card">
-              <div className="td-card-head flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
-                <div className="flex items-center gap-3">
-                  <div className="p-2.5 rounded-xl bg-teal-500/10 border border-teal-500/20 text-teal-300">
-                    <Flag className="w-6 h-6" />
+            {/* Contributions to KVS Flagship Programs */}
+            <div className="td-card p-3.5 sm:p-5">
+              <div className="td-card-head pb-3 border-b border-white/10 mb-4 flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
+                <div className="flex items-center gap-2.5">
+                  <div className="p-2 rounded-xl bg-teal-500/10 border border-teal-500/20 text-teal-300">
+                    <Flag className="w-5 h-5" />
                   </div>
                   <div>
-                    <div className="flex items-center gap-2">
-                      <span className="px-2 py-0.5 rounded text-[10px] font-mono font-bold bg-teal-950 text-teal-300 border border-teal-500/30">
-                        P-16
-                      </span>
-                      <h3 className="m-0">10(b) Contributions to KVS Flagship Programs</h3>
-                    </div>
-                    <p className="text-xs text-[var(--text-dim)] m-0 mt-0.5">
-                      PM SHRI, NIPUN Bharat, EBSB, FIT India, Jadui Pitara, PPC & Vidyanjali • Module: Teacher Profile Setup
-                    </p>
+                    <h3 className="text-base font-bold text-white m-0">Contributions to KVS Flagship Programs</h3>
                   </div>
                 </div>
 
@@ -2258,29 +2179,24 @@ export const TeacherProfileForm: React.FC<TeacherProfileFormProps> = ({ devMode,
         )}
 
         {/* Global Save Footer Button */}
-        <div className="flex items-center justify-between p-4 rounded-2xl bg-[var(--glass-bg)] border border-[var(--glass-border)]">
-          <div className="text-xs text-[var(--text-dim)] flex items-center gap-2">
-            <CheckCircle className="w-4 h-4 text-emerald-400" />
-            <span>All entries are securely persisted to local database and linked with PDF Report Generator</span>
-          </div>
-
+        <div className="p-3 sm:p-4 rounded-2xl bg-slate-900/90 border border-slate-800 flex flex-col sm:flex-row items-stretch sm:items-center justify-end gap-3 shadow-lg">
           {!isAdmin ? (
             <button
               type="submit"
               disabled={saving}
-              className="px-6 py-2.5 rounded-xl bg-gradient-to-r from-amber-600 via-amber-500 to-amber-600 hover:from-amber-500 hover:to-amber-400 text-slate-950 text-xs font-black shadow-xl transition-all flex items-center gap-2 cursor-pointer disabled:opacity-50"
+              className="w-full sm:w-auto px-6 py-3 rounded-xl bg-gradient-to-r from-amber-600 via-amber-500 to-amber-600 hover:from-amber-500 hover:to-amber-400 text-slate-950 text-xs font-black shadow-lg transition-all flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50"
             >
               <Send className="w-4 h-4 text-slate-950" />
-              <span>{saving ? 'Submitting Request...' : '🚀 Submit Changes for Principal Approval'}</span>
+              <span>{saving ? 'Submitting Request...' : 'Submit Changes for Principal Approval'}</span>
             </button>
           ) : (
             <button
               type="submit"
               disabled={saving}
-              className="td-add-btn cursor-pointer shadow-lg"
+              className="w-full sm:w-auto px-6 py-3 rounded-xl bg-purple-600 hover:bg-purple-500 text-white text-xs font-bold shadow-lg transition-all flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50"
             >
               <Save className="w-4 h-4" />
-              <span>{saving ? 'Saving Complete Profile...' : '💾 Save & Update Profile Directly'}</span>
+              <span>{saving ? 'Saving Profile...' : 'Save & Update Profile Directly'}</span>
             </button>
           )}
         </div>

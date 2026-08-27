@@ -373,22 +373,22 @@ export default function App() {
           devMode={devMode}
           onToggleDevMode={handleToggleDevMode}
           onNavigateTab={handleLegacyNavigation}
+          adminContextBar={
+            currentUser?.role === 'admin' ? (
+              <AdminTeacherContextBar
+                activeTeacher={activeInspectedTeacher}
+                onSelectTeacher={setActiveInspectedTeacherState}
+                onNavigateTab={handleLegacyNavigation}
+                activeTab={activeModule}
+                onOpenRoleAssignment={(action, roleId) => {
+                  setAssignRoleInitialAction(action);
+                  setAssignRoleTargetRoleId(roleId);
+                  setIsAssignRolesModalOpen(true);
+                }}
+              />
+            ) : null
+          }
         />
-
-        {/* Admin Inspecting Teacher Context Bar */}
-        {currentUser?.role === 'admin' && (
-          <AdminTeacherContextBar
-            activeTeacher={activeInspectedTeacher}
-            onSelectTeacher={setActiveInspectedTeacherState}
-            onNavigateTab={handleLegacyNavigation}
-            activeTab={activeModule}
-            onOpenRoleAssignment={(action, roleId) => {
-              setAssignRoleInitialAction(action);
-              setAssignRoleTargetRoleId(roleId);
-              setIsAssignRolesModalOpen(true);
-            }}
-          />
-        )}
 
         {/* Main Workspace Container */}
         <main className="flex-1 w-full max-w-[1720px] mx-auto px-3 sm:px-6 py-4 min-w-0">

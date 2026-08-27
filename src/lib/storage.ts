@@ -1883,10 +1883,11 @@ export async function initializeDatabaseIfEmpty() {
     await db.set('setup:calendar', DEFAULT_CALENDAR);
   }
 
+  const dt = new Date();
+  const localToday = `${dt.getFullYear()}-${String(dt.getMonth() + 1).padStart(2, '0')}-${String(dt.getDate()).padStart(2, '0')}`;
   const existingActiveDate = await db.get<string>('setup:active_working_date');
-  if (!existingActiveDate) {
-    const today = new Date().toISOString().split('T')[0];
-    await db.set('setup:active_working_date', today);
+  if (!existingActiveDate || existingActiveDate < localToday) {
+    await db.set('setup:active_working_date', localToday);
   }
 
   const existingExams = await db.get<ExamSchedule[]>('setup:exams');

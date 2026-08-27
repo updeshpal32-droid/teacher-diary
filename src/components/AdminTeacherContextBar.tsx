@@ -138,97 +138,70 @@ export const AdminTeacherContextBar: React.FC<AdminTeacherContextBarProps> = ({
   const isEffectiveOversightOn = isOversightOn || !!activeTeacher;
 
   return (
-    <div className="bg-gradient-to-r from-slate-950 via-purple-950/70 to-slate-950 border-y border-purple-500/40 px-4 py-2.5 shadow-lg relative z-30 animate-fadeIn">
-      <div className="max-w-7xl mx-auto flex flex-col md:flex-row md:items-center justify-between gap-3">
-        {/* Left Section: Interactive Oversight ON/OFF Button & Conditional Faculty Selector & Assign Roles */}
-        <div className="flex items-center gap-2.5 flex-wrap">
-          {/* Interactive Principal Oversight Mode ON/OFF Button */}
+    <div className="flex items-center gap-1.5 sm:gap-2 flex-wrap">
+      {/* Interactive Oversight ON/OFF Button */}
+      <button
+        type="button"
+        onClick={handleToggleOversight}
+        className={`h-8 flex items-center gap-1.5 px-2.5 py-1 rounded-lg border text-xs font-bold transition-all cursor-pointer select-none shrink-0 ${
+          isEffectiveOversightOn
+            ? 'bg-emerald-500/20 hover:bg-emerald-500/30 border-emerald-500/60 text-emerald-300'
+            : 'bg-slate-900/90 hover:bg-slate-800 border-slate-700 text-slate-300 hover:text-white'
+        }`}
+        title={isEffectiveOversightOn ? "Click to turn Oversight OFF" : "Click to turn Oversight ON and select a faculty member"}
+      >
+        <Crown className={`w-3.5 h-3.5 ${isEffectiveOversightOn ? 'text-emerald-400' : 'text-slate-400'}`} />
+        <span>Oversight</span>
+        <span className={`px-1.5 py-0.2 rounded text-[10px] font-black uppercase tracking-wider ${
+          isEffectiveOversightOn
+            ? 'bg-emerald-500 text-slate-950 shadow-xs'
+            : 'bg-slate-800 text-slate-400 border border-slate-700'
+        }`}>
+          {isEffectiveOversightOn ? 'ON' : 'OFF'}
+        </span>
+      </button>
+
+      {/* Conditional Teacher Selector Pill & Dropdown (Only appears when Oversight is ON) */}
+      {isEffectiveOversightOn && (
+        <div className="relative" ref={dropdownRef}>
           <button
             type="button"
-            onClick={handleToggleOversight}
-            className={`flex items-center gap-2 px-3 py-1.5 rounded-xl border text-xs font-bold transition-all cursor-pointer shadow-md select-none ${
-              isEffectiveOversightOn
-                ? 'bg-emerald-500/20 hover:bg-emerald-500/30 border-emerald-500/60 text-emerald-300 ring-2 ring-emerald-500/30 shadow-emerald-950/60'
-                : 'bg-slate-900/90 hover:bg-slate-800 border-slate-700/80 hover:border-purple-500/50 text-slate-300 hover:text-white'
+            onClick={() => setIsDropdownOpen(!isDropdownOpen)}
+            className={`h-8 flex items-center gap-1.5 px-2.5 py-1 rounded-lg border text-xs font-semibold shadow-xs transition-all cursor-pointer shrink-0 ${
+              activeTeacher
+                ? 'bg-slate-900/90 hover:bg-slate-800 border-purple-500/50 hover:border-purple-400 text-white'
+                : 'bg-purple-900/80 hover:bg-purple-800 border-purple-400 text-purple-100'
             }`}
-            title={isEffectiveOversightOn ? "Click to turn Oversight OFF" : "Click to turn Oversight ON and select a faculty member"}
+            title={activeTeacher ? "Click to switch active inspected teacher" : "Click to select a teacher"}
           >
-            <Crown className={`w-3.5 h-3.5 ${isEffectiveOversightOn ? 'text-emerald-400 animate-pulse' : 'text-slate-500'}`} />
-            <span>Principal Oversight Mode:</span>
-            <span className={`px-2 py-0.5 rounded-md text-[10px] font-black uppercase tracking-wider ${
-              isEffectiveOversightOn
-                ? 'bg-emerald-500 text-slate-950 shadow-sm'
-                : 'bg-slate-800 text-slate-400 border border-slate-700'
+            <div className={`w-4 h-4 rounded flex items-center justify-center text-[9px] font-bold text-white shrink-0 ${
+              activeTeacher ? 'bg-purple-600' : 'bg-emerald-600'
             }`}>
-              {isEffectiveOversightOn ? 'ON' : 'OFF'}
-            </span>
+              {activeTeacher ? activeTeacher.name.charAt(0) : '🔍'}
+            </div>
+
+            {activeTeacher ? (
+              <span className="font-bold max-w-[110px] sm:max-w-[160px] truncate text-sky-200">
+                {activeTeacher.name}
+              </span>
+            ) : (
+              <span className="font-bold text-purple-200">Select Faculty</span>
+            )}
+            <ChevronDown className="w-3 h-3 text-purple-300 opacity-70 ml-0.5 shrink-0" />
           </button>
 
-          {/* Conditional Teacher Selector Pill & Dropdown (Only appears when Oversight is ON) */}
-          {isEffectiveOversightOn && (
-            <>
-              <div className="h-4 w-[1px] bg-slate-700 hidden sm:block animate-fadeIn" />
-
-              <div className="relative animate-fadeIn" ref={dropdownRef}>
-                <button
-                  onClick={() => setIsDropdownOpen(!isDropdownOpen)}
-                  className={`flex items-center gap-2 px-3 py-1.5 rounded-xl border text-white text-xs font-semibold shadow-md transition-all cursor-pointer group ${
-                    activeTeacher
-                      ? 'bg-slate-900/90 hover:bg-slate-800 border-purple-500/50 hover:border-purple-400'
-                      : 'bg-gradient-to-r from-purple-900/80 to-indigo-900/80 hover:from-purple-800 hover:to-indigo-800 border-purple-400 ring-2 ring-purple-500/30'
-                  }`}
-                  title={activeTeacher ? "Click to switch active inspected teacher" : "Click to select a teacher and turn Oversight ON"}
-                >
-                  <div className={`w-5 h-5 rounded-md flex items-center justify-center text-[10px] font-bold text-white ${
-                    activeTeacher ? 'bg-purple-600' : 'bg-emerald-600'
-                  }`}>
-                    {activeTeacher ? activeTeacher.name.charAt(0) : '🔍'}
-                  </div>
-
-                  {activeTeacher ? (
-                    <div className="text-left flex items-center gap-1.5 flex-wrap">
-                      <span className={`font-bold ${isContractual ? 'text-amber-300' : 'text-sky-200'} group-hover:text-white`}>
-                        {activeTeacher.name}
-                      </span>
-                      <span className="text-slate-400 text-[11px]">
-                        ({activeTeacher.designation || 'Faculty'})
-                      </span>
-                      {isContractual ? (
-                        <span className="px-1.5 py-0.2 rounded text-[8px] font-black bg-amber-500/20 text-amber-300 border border-amber-500/40">
-                          ⚡ Contractual
-                        </span>
-                      ) : (
-                        <span className="px-1.5 py-0.2 rounded text-[8px] font-black bg-sky-500/20 text-sky-300 border border-sky-500/40">
-                          🛡️ Regular
-                        </span>
-                      )}
-                      <span className="text-[10px] text-purple-300 font-mono bg-purple-950 px-1 rounded">
-                        #{activeTeacher.employeeCode}
-                      </span>
-                    </div>
-                  ) : (
-                    <div className="text-left flex items-center gap-2 font-bold text-purple-200">
-                      <span>👉 Select Faculty Member to Turn ON Oversight</span>
-                      <span className="text-[10px] text-purple-300 font-normal px-2 py-0.5 rounded-full bg-purple-950/80 border border-purple-500/30">
-                        {allStaff.length} Teachers Available
-                      </span>
-                    </div>
-                  )}
-                  <ChevronDown className="w-3.5 h-3.5 text-purple-300 opacity-70 group-hover:opacity-100 ml-1" />
-                </button>
-
-            {/* Switcher Dropdown Menu */}
-            {isDropdownOpen && (
-              <div className="absolute left-0 mt-2 w-80 sm:w-96 bg-slate-900 border border-purple-500/50 rounded-2xl shadow-2xl p-3 z-50 animate-fadeIn space-y-2.5 max-h-[75vh] flex flex-col backdrop-blur-xl">
-                <div className="flex items-center justify-between border-b border-slate-800 pb-2">
-                  <div className="text-xs font-bold text-white flex items-center gap-1.5">
-                    <User className="w-3.5 h-3.5 text-purple-400" />
-                    <span>Select Faculty Member ({allStaff.length} Staff)</span>
-                  </div>
-                  <span className="text-[10px] text-emerald-400 font-bold uppercase tracking-wider">
-                    KV Kutra (2026-27)
-                  </span>
+          {/* Switcher Dropdown Menu */}
+          {isDropdownOpen && (
+            <div className="absolute left-0 top-full mt-1.5 w-80 sm:w-96 bg-slate-900 border border-purple-500/50 rounded-2xl shadow-2xl p-3 z-50 animate-fadeIn space-y-2.5 max-h-[75vh] flex flex-col backdrop-blur-xl">
+              <div className="flex items-center justify-between border-b border-slate-800 pb-2">
+                <div className="text-xs font-bold text-white flex items-center gap-1.5">
+                  <User className="w-3.5 h-3.5 text-purple-400" />
+                  <span>Select Faculty Member ({allStaff.length} Staff)</span>
                 </div>
+                <span className="text-[10px] text-emerald-400 font-bold uppercase tracking-wider">
+                  KV Kutra (2026-27)
+                </span>
+              </div>
 
                 {/* Search Box */}
                 <div className="relative">
@@ -259,7 +232,7 @@ export const AdminTeacherContextBar: React.FC<AdminTeacherContextBarProps> = ({
                   >
                     <span className="flex items-center gap-1.5">
                       <X className="w-3.5 h-3.5 text-rose-400" />
-                      <span>Turn Off Oversight Mode</span>
+                      <span>Turn Off Oversight</span>
                     </span>
                     <span className="text-[10px] text-rose-400/80 uppercase tracking-wider font-bold">Turn OFF</span>
                   </button>
@@ -313,25 +286,24 @@ export const AdminTeacherContextBar: React.FC<AdminTeacherContextBarProps> = ({
               </div>
             )}
           </div>
-        </>
-      )}
+        )}
 
-          {/* KVS SAMAGAM: Assign Roles ▾ Dropdown Trigger in Oversight Bar */}
-          <div className="relative" ref={assignRolesRef}>
-            <button
-              type="button"
-              onClick={() => setIsAssignRolesOpen(!isAssignRolesOpen)}
-              className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold transition-all border cursor-pointer shrink-0 bg-gradient-to-r from-teal-700 to-emerald-700 hover:from-teal-600 hover:to-emerald-600 text-white border-teal-400/50 shadow-md shadow-teal-950/40"
-              title="Official KVS Samagam: Assign Class Teachers, Subject Teachers & Institutional Incharges"
-            >
-              <Award className="w-3.5 h-3.5 text-amber-300" />
-              <span>Assign Roles</span>
-              <ChevronDown className="w-3.5 h-3.5 opacity-80" />
-            </button>
+      {/* KVS SAMAGAM: Assign Roles ▾ Dropdown Trigger in Oversight Bar */}
+      <div className="relative" ref={assignRolesRef}>
+        <button
+          type="button"
+          onClick={() => setIsAssignRolesOpen(!isAssignRolesOpen)}
+          className="h-8 flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-bold transition-all border cursor-pointer shrink-0 bg-gradient-to-r from-teal-700 to-emerald-700 hover:from-teal-600 hover:to-emerald-600 text-white border-teal-500/50 shadow-xs"
+          title="Official KVS Samagam: Assign Class Teachers, Subject Teachers & Institutional Incharges"
+        >
+          <Award className="w-3.5 h-3.5 text-amber-300 shrink-0" />
+          <span>Assign Roles</span>
+          <ChevronDown className="w-3 h-3 opacity-80 shrink-0" />
+        </button>
 
-            {/* Dropdown Menu */}
-            {isAssignRolesOpen && (
-              <div className="absolute left-0 mt-2 w-80 bg-slate-950 border border-emerald-500/50 rounded-2xl shadow-2xl p-2.5 z-50 animate-fadeIn space-y-1.5 backdrop-blur-xl max-h-[80vh] overflow-y-auto">
+        {/* Dropdown Menu */}
+        {isAssignRolesOpen && (
+          <div className="absolute left-0 top-full mt-1.5 w-80 bg-slate-950 border border-emerald-500/50 rounded-2xl shadow-2xl p-2.5 z-50 animate-fadeIn space-y-1.5 backdrop-blur-xl max-h-[80vh] overflow-y-auto">
                 <div className="px-2 py-1 text-[10px] font-black uppercase tracking-wider text-emerald-400 border-b border-slate-800 flex items-center justify-between">
                   <span>KVS Samagam Roles</span>
                   <span className="text-[9px] text-slate-400 font-mono">2026-27</span>
@@ -426,11 +398,10 @@ export const AdminTeacherContextBar: React.FC<AdminTeacherContextBarProps> = ({
                   </button>
                 </div>
               </div>
-            )}
-          </div>
-        </div>
+        )}
+      </div>
 
-        {/* Right Section: Module Quick Jump Shortcuts & Exit Button (Appears ONLY when Oversight is ON) */}
+      {/* Right Section: Module Quick Jump Shortcuts & Exit Button (Appears ONLY when Oversight is ON) */}
         {activeTeacher && (
           <div className="flex items-center gap-1.5 flex-wrap animate-fadeIn">
             <button
@@ -514,15 +485,14 @@ export const AdminTeacherContextBar: React.FC<AdminTeacherContextBarProps> = ({
             {/* Exit Oversight Button */}
             <button
               onClick={handleExitOversight}
-              className="px-2.5 py-1 rounded-lg bg-rose-950/80 hover:bg-rose-900 text-rose-200 hover:text-white border border-rose-500/40 text-xs font-bold transition-all cursor-pointer flex items-center gap-1 ml-1 shadow-sm"
-              title="Turn off Oversight Mode"
+              className="h-8 px-2.5 py-1 rounded-lg bg-rose-950/80 hover:bg-rose-900 text-rose-200 hover:text-white border border-rose-500/40 text-xs font-bold transition-all cursor-pointer flex items-center gap-1 ml-1 shadow-xs"
+              title="Turn off Oversight"
             >
               <X className="w-3.5 h-3.5" />
               <span className="hidden sm:inline">Turn OFF</span>
             </button>
           </div>
         )}
-      </div>
     </div>
   );
 };

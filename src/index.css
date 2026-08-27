@@ -316,7 +316,7 @@
   @apply flex flex-col gap-1.5 text-[11px] font-bold text-[var(--accent)] uppercase tracking-widest;
 }
 .td-form input, .td-form select, .td-form textarea {
-  @apply px-4 py-3 border border-[var(--glass-border)] bg-[rgba(255,255,255,0.03)] rounded-[12px] font-[inherit] text-sm text-[var(--text-main)] font-normal normal-case tracking-normal transition-all focus:bg-[rgba(255,255,255,0.06)];
+  @apply w-full px-4 py-3 border border-[var(--glass-border)] bg-[rgba(255,255,255,0.03)] rounded-[12px] font-[inherit] text-sm text-[var(--text-main)] font-normal normal-case tracking-normal transition-all focus:bg-[rgba(255,255,255,0.06)];
 }
 .td-form input:focus, .td-form select:focus, .td-form textarea:focus {
   @apply outline-none border-[var(--accent)] ring-2 ring-[rgba(165,148,249,0.2)];

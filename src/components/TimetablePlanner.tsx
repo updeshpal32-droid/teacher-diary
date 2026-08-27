@@ -658,7 +658,7 @@ export const TimetablePlanner: React.FC<TimetablePlannerProps> = ({ devMode, onS
       {devMode && (
         <DevModeBadge
           pages={14}
-          title="Digitizes Template Page 14: Section 8(a) Class Timetable & 8(b) Teacher's Timetable (9 Periods x 6 Days with Timings)"
+          title="Class Timetable & Teacher's Timetable (9 Periods x 6 Days with Timings)"
           fieldCount={54}
         />
       )}
@@ -681,44 +681,41 @@ export const TimetablePlanner: React.FC<TimetablePlannerProps> = ({ devMode, onS
       )}
 
       <div className="td-card">
-        <div className="td-card-head flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
-          <div className="flex items-center gap-3">
-            <div className="p-2.5 rounded-xl bg-purple-500/10 border border-purple-500/20 text-purple-300">
-              <Clock className="w-6 h-6" />
+        <div className="td-card-head flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
+          <div className="flex items-center gap-2.5">
+            <div className="p-2 rounded-xl bg-purple-500/10 border border-purple-500/20 text-purple-300">
+              <Clock className="w-5 h-5" />
             </div>
             <div>
-              <h3>Weekly Timetable Planner</h3>
-              <p className="text-xs text-[var(--text-dim)] m-0">
-                9 Periods Matrix (Mon-Sat) with Period Timings in 1st Row & Period 9 Remedial/Extra Class
-              </p>
+              <h3 className="text-base sm:text-lg font-bold text-white m-0">Weekly Timetable</h3>
             </div>
           </div>
 
-          <div className="flex items-center gap-2 flex-wrap">
-            <div className="td-seg">
+          <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2 w-full sm:w-auto">
+            <div className="td-seg w-full sm:w-auto justify-center">
               <button
                 className={viewMode === 'teacher' ? 'active' : ''}
                 onClick={() => setViewMode('teacher')}
               >
-                8(b) Teacher's Timetable
+                Teacher timetable
               </button>
               <button
                 className={viewMode === 'class' ? 'active' : ''}
                 onClick={() => setViewMode('class')}
               >
-                8(a) Class Timetable
+                Class timetable
               </button>
             </div>
 
             {canEdit ? (
-              <>
+              <div className="grid grid-cols-2 sm:flex items-center gap-1.5 w-full sm:w-auto">
                 <button
                   onClick={() => setIsExcelImporterOpen(true)}
-                  className="px-3.5 py-1.5 rounded-xl bg-emerald-50 text-emerald-900 border border-emerald-300 hover:bg-emerald-100 text-xs font-extrabold flex items-center gap-1.5 transition-all cursor-pointer shadow-xs"
+                  className="px-2.5 py-1.5 rounded-xl bg-emerald-50 text-emerald-900 border border-emerald-300 hover:bg-emerald-100 text-xs font-extrabold flex items-center justify-center gap-1.5 transition-all cursor-pointer shadow-xs"
                   title="Import timetable Excel sheet (.xlsx, .xls, .csv) for all classes"
                 >
-                  <FileSpreadsheet className="w-4 h-4 text-emerald-600" />
-                  <span>Import Excel Timetable</span>
+                  <FileSpreadsheet className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
+                  <span className="truncate">Import Excel</span>
                 </button>
 
                 <button
@@ -726,22 +723,22 @@ export const TimetablePlanner: React.FC<TimetablePlannerProps> = ({ devMode, onS
                     setIsGridSelectMode(!isGridSelectMode);
                     if (isGridSelectMode) setSelectedSlotKeys([]);
                   }}
-                  className={`px-3 py-1.5 rounded-xl border text-xs font-bold flex items-center gap-1.5 transition-all cursor-pointer ${
+                  className={`px-2.5 py-1.5 rounded-xl border text-xs font-bold flex items-center justify-center gap-1.5 transition-all cursor-pointer ${
                     isGridSelectMode
                       ? 'bg-rose-600 text-white border-rose-500 shadow-md animate-pulse'
                       : 'bg-purple-50 text-purple-900 border-purple-300 hover:bg-purple-100 shadow-xs'
                   }`}
                 >
-                  <CheckSquare className="w-3.5 h-3.5 text-purple-700" />
-                  <span>{isGridSelectMode ? 'Exit Selection Mode' : 'Multi-Select Mode'}</span>
+                  <CheckSquare className="w-3.5 h-3.5 text-purple-700 shrink-0" />
+                  <span className="truncate">{isGridSelectMode ? 'Exit Select' : 'Multi-Select'}</span>
                 </button>
 
                 <button
                   onClick={() => setIsBulkDeleteOpen(true)}
-                  className="px-3.5 py-1.5 rounded-xl bg-rose-50 text-rose-900 border border-rose-300 hover:bg-rose-100 text-xs font-bold flex items-center gap-1.5 transition-all cursor-pointer shadow-xs"
+                  className="px-2.5 py-1.5 rounded-xl bg-rose-50 text-rose-900 border border-rose-300 hover:bg-rose-100 text-xs font-bold flex items-center justify-center gap-1.5 transition-all cursor-pointer shadow-xs"
                 >
-                  <Eraser className="w-3.5 h-3.5 text-rose-600" />
-                  <span>Quick Bulk Clear</span>
+                  <Eraser className="w-3.5 h-3.5 text-rose-600 shrink-0" />
+                  <span className="truncate">Bulk Clear</span>
                 </button>
 
                 <button
@@ -749,21 +746,24 @@ export const TimetablePlanner: React.FC<TimetablePlannerProps> = ({ devMode, onS
                     setTempTimings(periodTimings);
                     setIsEditingTimings(true);
                   }}
-                  className="px-3.5 py-1.5 rounded-xl bg-purple-50 text-purple-900 border border-purple-300 hover:bg-purple-100 text-xs font-bold flex items-center gap-1.5 transition-all cursor-pointer shadow-xs"
+                  className="px-2.5 py-1.5 rounded-xl bg-purple-50 text-purple-900 border border-purple-300 hover:bg-purple-100 text-xs font-bold flex items-center justify-center gap-1.5 transition-all cursor-pointer shadow-xs"
                 >
-                  <Edit2 className="w-3.5 h-3.5 text-purple-700" />
-                  <span>Edit Period Timings</span>
+                  <Edit2 className="w-3.5 h-3.5 text-purple-700 shrink-0" />
+                  <span className="truncate">Timings</span>
                 </button>
 
-                <button onClick={handleReset} className="td-btn-ghost text-xs py-1.5 cursor-pointer">
-                  <RotateCcw className="w-3.5 h-3.5" />
-                  <span>Auto-Fill KVS Schedule</span>
+                <button
+                  onClick={handleReset}
+                  className="col-span-2 sm:col-span-1 px-2.5 py-1.5 rounded-xl bg-white/5 hover:bg-white/10 text-slate-300 text-xs font-medium flex items-center justify-center gap-1.5 border border-white/10 cursor-pointer"
+                >
+                  <RotateCcw className="w-3.5 h-3.5 shrink-0" />
+                  <span>Auto-Fill</span>
                 </button>
-              </>
+              </div>
             ) : (
-              <span className="px-3 py-1.5 rounded-xl bg-purple-950/40 border border-purple-500/30 text-purple-300 text-xs font-bold flex items-center gap-1.5">
+              <span className="px-3 py-1.5 rounded-xl bg-purple-950/40 border border-purple-500/30 text-purple-300 text-xs font-bold flex items-center justify-center gap-1.5">
                 <Clock className="w-3.5 h-3.5 text-purple-400" />
-                <span>View-Only Timetable Matrix</span>
+                <span>View-Only</span>
               </span>
             )}
           </div>
@@ -864,33 +864,28 @@ export const TimetablePlanner: React.FC<TimetablePlannerProps> = ({ devMode, onS
           </div>
         )}
 
-        {/* Class Selection Toolbar for Section 8(a) Class Timetable */}
+        {/* Class Selection Toolbar */}
         {viewMode === 'class' && (
-          <div className="p-4 mb-6 rounded-2xl bg-purple-950/40 border border-[var(--glass-border)] space-y-3.5 shadow-md animate-fadeIn">
-            <div className="flex flex-wrap items-center justify-between gap-3 border-b border-[var(--glass-border)] pb-3">
-              <div className="flex items-center gap-3">
-                <div className="p-2 rounded-xl bg-purple-500/20 border border-purple-500/30 text-purple-300">
-                  <BookOpen className="w-5 h-5" />
+          <div className="p-3 sm:p-4 mb-4 sm:mb-6 rounded-2xl bg-purple-950/40 border border-[var(--glass-border)] space-y-2.5 shadow-md animate-fadeIn">
+            <div className="flex items-center justify-between gap-2.5 border-b border-[var(--glass-border)] pb-2.5">
+              <div className="flex items-center gap-2">
+                <div className="p-1.5 rounded-xl bg-purple-500/20 border border-purple-500/30 text-purple-300 shrink-0">
+                  <BookOpen className="w-4 h-4" />
                 </div>
-                <div>
-                  <div className="text-sm font-bold text-white flex items-center gap-2">
-                    <span>8(a) Class Timetable Schedule</span>
-                    <span className="text-xs px-2.5 py-0.5 rounded-full bg-amber-500/20 text-amber-300 border border-amber-500/30 font-bold">
-                      Active: Class {selectedClass}
-                    </span>
-                  </div>
-                  <p className="text-xs text-[var(--text-dim)] m-0">
-                    Select any Class from I to XII to view or configure its weekly period schedule.
-                  </p>
+                <div className="text-xs sm:text-sm font-bold text-white flex items-center gap-1.5 flex-wrap">
+                  <span>Class schedule</span>
+                  <span className="text-[10px] px-2 py-0.5 rounded-full bg-amber-500/20 text-amber-300 border border-amber-500/30 font-bold">
+                    Class {selectedClass}
+                  </span>
                 </div>
               </div>
 
-              <div className="flex items-center gap-2">
-                <label className="text-xs font-medium text-purple-200">Select Class:</label>
+              <div className="flex items-center gap-1.5 shrink-0">
+                <label className="text-xs font-medium text-purple-200">Class:</label>
                 <select
                   value={selectedClass}
                   onChange={(e) => setSelectedClass(e.target.value)}
-                  className="px-3 py-1.5 rounded-xl bg-purple-950/60 border border-[var(--glass-border)] text-white text-xs cursor-pointer focus:outline-none focus:border-purple-500"
+                  className="px-2.5 py-1 rounded-xl bg-purple-950/60 border border-[var(--glass-border)] text-white text-xs cursor-pointer focus:outline-none focus:border-purple-500 max-w-[140px]"
                 >
                   {allClassPills.map(c => (
                     <option key={c.val} value={c.val}>
@@ -902,148 +897,116 @@ export const TimetablePlanner: React.FC<TimetablePlannerProps> = ({ devMode, onS
             </div>
 
             {/* Class Pill Selector */}
-            <div className="space-y-1.5">
-              <div className="text-[11px] font-bold uppercase tracking-wider text-purple-200 flex items-center justify-between">
-                <div className="flex items-center gap-1.5">
-                  <Users className="w-3.5 h-3.5 text-purple-400" />
-                  <span>Select Class ({allClassPills.length} Classes Available):</span>
-                </div>
-                {dynamicClassesInSchedule.length > 0 && (
-                  <span className="text-[10px] text-emerald-300 bg-emerald-500/20 px-2 py-0.5 rounded-full border border-emerald-500/30">
-                    ✓ {dynamicClassesInSchedule.length} active class schedule(s)
-                  </span>
-                )}
-              </div>
-              <div className="flex items-center gap-2 overflow-x-auto pb-1 scrollbar-thin">
-                {allClassPills.map(opt => {
-                  const isActive = canonicalizeClassName(selectedClass) === canonicalizeClassName(opt.val);
-                  const hasData = dynamicClassesInSchedule.includes(canonicalizeClassName(opt.val));
-                  return (
-                    <button
-                      key={opt.val}
-                      onClick={() => setSelectedClass(opt.val)}
-                      className={`px-3 py-1.5 rounded-xl text-xs font-medium transition-all whitespace-nowrap cursor-pointer flex items-center gap-1.5 ${
-                        isActive
-                          ? 'bg-purple-600 text-white shadow-md shadow-purple-600/30 ring-1 ring-white/20 scale-105'
-                          : hasData
-                          ? 'bg-white/5 hover:bg-white/10 text-purple-200 border border-purple-500/30'
-                          : 'bg-white/5 hover:bg-white/10 text-[var(--text-dim)] border border-[var(--glass-border)]'
-                      }`}
-                    >
-                      <span>{opt.label}</span>
-                      {hasData && (
-                        <span className="w-2 h-2 rounded-full bg-emerald-400 shadow-xs" title="Schedule available" />
-                      )}
-                    </button>
-                  );
-                })}
-              </div>
+            <div className="flex flex-wrap gap-1.5">
+              {allClassPills.map(opt => {
+                const isActive = canonicalizeClassName(selectedClass) === canonicalizeClassName(opt.val);
+                const hasData = dynamicClassesInSchedule.includes(canonicalizeClassName(opt.val));
+                return (
+                  <button
+                    key={opt.val}
+                    onClick={() => setSelectedClass(opt.val)}
+                    className={`px-2.5 py-1 rounded-lg text-xs font-medium transition-all whitespace-nowrap cursor-pointer flex items-center gap-1 shrink-0 ${
+                      isActive
+                        ? 'bg-purple-600 text-white shadow-sm ring-1 ring-white/20 font-bold'
+                        : hasData
+                        ? 'bg-white/5 hover:bg-white/10 text-purple-200 border border-purple-500/30'
+                        : 'bg-white/5 hover:bg-white/10 text-[var(--text-dim)] border border-[var(--glass-border)]'
+                    }`}
+                  >
+                    <span>{opt.label}</span>
+                    {hasData && (
+                      <span className="w-1.5 h-1.5 rounded-full bg-emerald-400" title="Schedule available" />
+                    )}
+                  </button>
+                );
+              })}
             </div>
           </div>
         )}
 
-        {/* Teacher Selection Toolbar for Teacher's Timetable */}
+        {/* Teacher Selection Toolbar */}
         {viewMode === 'teacher' && (
-          <div className="p-4 mb-6 rounded-2xl bg-purple-950/40 border border-[var(--glass-border)] space-y-3.5 shadow-md animate-fadeIn">
-            <div className="flex flex-wrap items-center justify-between gap-3 border-b border-[var(--glass-border)] pb-3">
-              <div className="flex items-center gap-3">
-                <div className="p-2 rounded-xl bg-indigo-500/20 border border-indigo-500/30 text-indigo-300">
-                  <UserCheck className="w-5 h-5" />
+          <div className="p-3 sm:p-4 mb-4 sm:mb-6 rounded-2xl bg-purple-950/40 border border-[var(--glass-border)] space-y-2.5 shadow-md animate-fadeIn">
+            <div className="flex items-center justify-between gap-2.5 border-b border-[var(--glass-border)] pb-2.5">
+              <div className="flex items-center gap-2 min-w-0">
+                <div className="p-1.5 rounded-xl bg-indigo-500/20 border border-indigo-500/30 text-indigo-300 shrink-0">
+                  <UserCheck className="w-4 h-4" />
                 </div>
-                <div>
-                  <div className="text-sm font-bold text-white flex items-center gap-2">
-                    <span>8(b) Teacher's Timetable Schedule</span>
-                    {selectedTeacher && (
-                      <span className="text-xs px-2.5 py-0.5 rounded-full bg-cyan-500/20 text-cyan-300 border border-cyan-500/30 font-bold">
-                        Active: {selectedTeacher}
-                      </span>
-                    )}
-                  </div>
-                  <p className="text-xs text-[var(--text-dim)] m-0">
-                    Select any faculty member to view or edit their assigned weekly class schedule and teaching workload.
-                  </p>
+                <div className="text-xs sm:text-sm font-bold text-white flex items-center gap-1.5 truncate">
+                  <span>Teacher schedule</span>
+                  {selectedTeacher && (
+                    <span className="text-[10px] px-2 py-0.5 rounded-full bg-cyan-500/20 text-cyan-300 border border-cyan-500/30 font-bold truncate max-w-[130px] sm:max-w-none">
+                      {selectedTeacher}
+                    </span>
+                  )}
                 </div>
               </div>
 
-              <div className="flex items-center gap-2">
-                <label className="text-xs font-medium text-purple-200">Select Teacher:</label>
+              <div className="flex items-center gap-1.5 shrink-0">
+                <label className="text-xs font-medium text-purple-200">Teacher:</label>
                 <select
                   value={selectedTeacher}
                   onChange={(e) => setSelectedTeacher(e.target.value)}
-                  className="px-3 py-1.5 rounded-xl bg-purple-950/60 border border-[var(--glass-border)] text-white text-xs cursor-pointer focus:outline-none focus:border-purple-500"
+                  className="px-2.5 py-1 rounded-xl bg-purple-950/60 border border-[var(--glass-border)] text-white text-xs cursor-pointer focus:outline-none focus:border-purple-500 max-w-[150px] sm:max-w-[200px]"
                 >
                   {allTeachers.map(t => (
                     <option key={t} value={t}>
-                      {t} {teacherPeriodCounts[t] ? `(${teacherPeriodCounts[t]} periods)` : ''}
+                      {t} {teacherPeriodCounts[t] ? `(${teacherPeriodCounts[t]}p)` : ''}
                     </option>
                   ))}
                 </select>
               </div>
             </div>
 
-            {/* Teacher Pill Selector */}
-            <div className="space-y-1.5">
-              <div className="text-[11px] font-bold uppercase tracking-wider text-purple-200 flex items-center justify-between">
-                <div className="flex items-center gap-1.5">
-                  <Users className="w-3.5 h-3.5 text-purple-400" />
-                  <span>Select Faculty Member ({allTeachers.length} Teachers Registered):</span>
-                </div>
-                {activeTeachersCount > 0 && (
-                  <span className="text-[10px] text-emerald-300 bg-emerald-500/20 px-2 py-0.5 rounded-full border border-emerald-500/30">
-                    ✓ {activeTeachersCount} teacher(s) with active schedule
-                  </span>
-                )}
-              </div>
+            {/* Teacher Chips (wrap, smaller padding) */}
+            <div className="flex flex-wrap gap-1.5 max-h-32 sm:max-h-none overflow-y-auto sm:overflow-visible">
+              {allTeachers.map(teacherName => {
+                const isActive = selectedTeacher.trim().toLowerCase() === teacherName.trim().toLowerCase();
+                const periodCount = teacherPeriodCounts[teacherName] || 0;
+                const hasData = periodCount > 0;
 
-              <div className="flex items-center gap-2 overflow-x-auto pb-1.5 scrollbar-thin">
-                {allTeachers.map(teacherName => {
-                  const isActive = selectedTeacher.trim().toLowerCase() === teacherName.trim().toLowerCase();
-                  const periodCount = teacherPeriodCounts[teacherName] || 0;
-                  const hasData = periodCount > 0;
-
-                  return (
-                    <button
-                      key={teacherName}
-                      onClick={() => setSelectedTeacher(teacherName)}
-                      className={`px-3 py-1.5 rounded-xl text-xs font-medium transition-all whitespace-nowrap cursor-pointer flex items-center gap-1.5 ${
-                        isActive
-                          ? 'bg-purple-600 text-white shadow-md shadow-purple-600/30 ring-1 ring-white/20 scale-105'
-                          : hasData
-                          ? 'bg-white/5 hover:bg-white/10 text-purple-200 border border-purple-500/30'
-                          : 'bg-white/5 hover:bg-white/10 text-[var(--text-dim)] border border-[var(--glass-border)]'
-                      }`}
-                    >
-                      <span>👨‍🏫 {teacherName}</span>
-                      {hasData ? (
-                        <span className="px-1.5 py-0.2 rounded-full bg-emerald-500/20 text-emerald-300 text-[10px] border border-emerald-500/30 font-mono">
-                          {periodCount}p
-                        </span>
-                      ) : (
-                        <span className="text-[10px] text-[var(--text-dim)]">0p</span>
-                      )}
-                    </button>
-                  );
-                })}
-              </div>
+                return (
+                  <button
+                    key={teacherName}
+                    onClick={() => setSelectedTeacher(teacherName)}
+                    className={`px-2 py-1 rounded-lg text-xs font-medium transition-all cursor-pointer flex items-center gap-1 shrink-0 ${
+                      isActive
+                        ? 'bg-purple-600 text-white shadow-sm ring-1 ring-white/20 font-bold'
+                        : hasData
+                        ? 'bg-white/5 hover:bg-white/10 text-purple-200 border border-purple-500/30'
+                        : 'bg-white/5 hover:bg-white/10 text-[var(--text-dim)] border border-[var(--glass-border)]'
+                    }`}
+                  >
+                    <span className="truncate max-w-[110px]">{teacherName}</span>
+                    {hasData ? (
+                      <span className="px-1 py-0.2 rounded bg-emerald-500/20 text-emerald-300 text-[10px] font-mono">
+                        {periodCount}p
+                      </span>
+                    ) : (
+                      <span className="text-[10px] text-[var(--text-dim)]">0p</span>
+                    )}
+                  </button>
+                );
+              })}
             </div>
           </div>
         )}
 
         {/* Total Periods Metric */}
-        <div className="flex items-center justify-between p-4 rounded-2xl bg-purple-950/40 border border-purple-500/20 mb-6">
-          <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-xl bg-purple-600 text-white flex items-center justify-center font-bold font-mono text-base shadow-lg shadow-purple-600/30">
+        <div className="flex items-center justify-between p-3 sm:p-4 rounded-xl sm:rounded-2xl bg-purple-950/40 border border-purple-500/20 mb-4 sm:mb-6">
+          <div className="flex items-center gap-2.5 sm:gap-3">
+            <div className="w-8 h-8 sm:w-10 sm:h-10 rounded-xl bg-purple-600 text-white flex items-center justify-center font-bold font-mono text-sm sm:text-base shadow-md shadow-purple-600/30">
               {totalTeachingPeriods}
             </div>
             <div>
-              <div className="text-xs uppercase tracking-wider text-purple-300 font-bold flex items-center gap-2">
-                <span>Total Weekly Teaching & Extra Load</span>
-                <span className="text-[10px] px-2 py-0.5 rounded-full bg-amber-500/20 text-amber-300 border border-amber-500/30 font-bold">
-                  + Period 9 Extra/Remedial Included
+              <div className="text-[11px] sm:text-xs uppercase tracking-wider text-purple-300 font-bold flex items-center gap-1.5 flex-wrap">
+                <span>Weekly Teaching Load</span>
+                <span className="text-[10px] px-1.5 py-0.2 rounded-full bg-amber-500/20 text-amber-300 border border-amber-500/30 font-bold">
+                  + Period 9
                 </span>
               </div>
-              <div className="text-sm font-bold text-white">
-                {totalTeachingPeriods} Periods / Week (Periods 1 to 9, Mon - Sat)
+              <div className="text-xs sm:text-sm font-bold text-white">
+                {totalTeachingPeriods} Periods / Week (Mon - Sat)
               </div>
             </div>
           </div>

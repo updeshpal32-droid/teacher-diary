@@ -27,7 +27,7 @@ export const TimetableModule: React.FC<TimetableModuleProps> = ({ devMode, curre
           }`}
         >
           <Clock className="w-3.5 h-3.5" />
-          <span>Weekly Timetable Matrix (P-6 & 7)</span>
+          <span>Weekly Timetable</span>
         </button>
 
         <button
@@ -39,7 +39,7 @@ export const TimetableModule: React.FC<TimetableModuleProps> = ({ devMode, curre
           }`}
         >
           <Users className="w-3.5 h-3.5" />
-          <span>Daily Duty & Proxy Arrangement</span>
+          <span>Duty &amp; Proxy</span>
         </button>
       </div>
 

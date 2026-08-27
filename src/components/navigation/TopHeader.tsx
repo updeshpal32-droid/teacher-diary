@@ -24,6 +24,7 @@ export interface TopHeaderProps {
   devMode: boolean;
   onToggleDevMode: () => void;
   onNavigateTab?: (target: string) => void;
+  adminContextBar?: React.ReactNode;
 }
 
 export const TopHeader: React.FC<TopHeaderProps> = ({
@@ -36,7 +37,8 @@ export const TopHeader: React.FC<TopHeaderProps> = ({
   onOpenInspector,
   devMode,
   onToggleDevMode,
-  onNavigateTab
+  onNavigateTab,
+  adminContextBar
 }) => {
   const isDark = theme !== 'light';
   const currentDef = ALL_MODULE_DEFINITIONS[activeModule] || {
@@ -45,17 +47,17 @@ export const TopHeader: React.FC<TopHeaderProps> = ({
   };
 
   return (
-    <header className={`sticky top-0 z-20 w-full backdrop-blur-xl border-b transition-colors px-3 sm:px-6 py-2.5 flex items-center justify-between gap-3 select-none ${
+    <header className={`sticky top-0 z-20 w-full backdrop-blur-xl border-b transition-colors px-3 sm:px-6 py-2 sm:py-2.5 flex items-center justify-between gap-2 sm:gap-3 select-none ${
       isDark
         ? 'bg-[#0B0D14]/90 border-slate-800 text-white'
         : 'bg-white/95 border-slate-200 text-slate-900 shadow-xs'
     }`}>
-      {/* Left: Mobile Drawer Trigger + Active Module Breadcrumb */}
-      <div className="flex items-center gap-3 min-w-0">
+      {/* Left: Mobile Drawer Trigger + Active Module Breadcrumb + Inline Controls */}
+      <div className="flex items-center gap-2 sm:gap-3 flex-wrap min-w-0">
         <button
           type="button"
           onClick={onOpenMobileMenu}
-          className={`lg:hidden p-2 rounded-xl border transition-all cursor-pointer shrink-0 ${
+          className={`lg:hidden p-1.5 sm:p-2 rounded-xl border transition-all cursor-pointer shrink-0 ${
             isDark
               ? 'text-slate-300 hover:text-white bg-slate-900 hover:bg-slate-800 border-slate-700'
               : 'text-slate-700 hover:text-slate-900 bg-slate-100 hover:bg-slate-200 border-slate-300'
@@ -65,24 +67,12 @@ export const TopHeader: React.FC<TopHeaderProps> = ({
           <Menu className="w-5 h-5" />
         </button>
 
-        <div className="min-w-0 flex items-center gap-2">
-          <div className="space-y-0.5">
-            <div className="flex items-center gap-2 flex-wrap">
-              <h1 className="text-sm sm:text-base font-black tracking-tight truncate m-0 flex items-center gap-1.5">
-                <span>{currentDef.label}</span>
-              </h1>
-              <span className={`hidden sm:inline-flex px-2 py-0.5 rounded-full text-[10px] font-bold border ${
-                isDark
-                  ? 'bg-purple-950/60 text-purple-300 border-purple-500/40'
-                  : 'bg-purple-100 text-purple-800 border-purple-300'
-              }`}>
-                KVS Personal Portal
-              </span>
-            </div>
-            <p className="text-[11px] text-slate-400 truncate hidden md:block m-0">
-              {currentDef.description}
-            </p>
-          </div>
+        <div className="flex items-center gap-2 sm:gap-3 flex-wrap min-w-0">
+          <h1 className="text-sm sm:text-base font-black tracking-tight truncate m-0 flex items-center gap-1.5 shrink-0">
+            <span>{currentDef.label}</span>
+          </h1>
+
+          {adminContextBar}
         </div>
       </div>
 

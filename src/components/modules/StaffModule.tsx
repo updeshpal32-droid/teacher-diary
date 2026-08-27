@@ -74,7 +74,7 @@ export const StaffModule: React.FC<StaffModuleProps> = ({ devMode, currentUser }
           }`}
         >
           <FileText className="w-3.5 h-3.5" />
-          <span>My Profile (P-3 & 4)</span>
+          <span>My Profile</span>
         </button>
 
         <button
@@ -158,7 +158,13 @@ export const StaffModule: React.FC<StaffModuleProps> = ({ devMode, currentUser }
       {activeTab === 'directory' && <StaffDetailsManager devMode={devMode} currentUser={currentUser} />}
 
       {/* 2. My Profile */}
-      {activeTab === 'profile' && <TeacherProfileForm devMode={devMode} />}
+      {activeTab === 'profile' && (
+        <TeacherProfileForm
+          devMode={devMode}
+          currentUser={currentUser}
+          onNavigateTab={(tab) => setActiveTab(tab as any)}
+        />
+      )}
 
       {/* 3. Teacher Attendance & Leave */}
       {activeTab === 'attendance' && <TeacherAttendanceManager devMode={devMode} currentUser={currentUser} />}

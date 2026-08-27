@@ -777,9 +777,9 @@ export const DutyAndProxyManager: React.FC<DutyAndProxyManagerProps> = ({
           return (
             <div
               key={day}
-              className="bg-slate-900 border border-slate-800 hover:border-slate-700 rounded-3xl p-4 space-y-3 shadow-lg flex flex-col justify-between"
+              className="bg-slate-900 border border-slate-800 hover:border-slate-700 rounded-2xl sm:rounded-3xl p-3 sm:p-4 space-y-2.5 sm:space-y-3 shadow-lg flex flex-col justify-between"
             >
-              <div className="space-y-3">
+              <div className="space-y-2.5 sm:space-y-3">
                 {/* Day Header */}
                 <div className="flex items-center justify-between pb-2 border-b border-slate-800">
                   <div className="flex items-center gap-2">
@@ -794,9 +794,9 @@ export const DutyAndProxyManager: React.FC<DutyAndProxyManagerProps> = ({
                 </div>
 
                 {/* Multiple Assigned Teachers List */}
-                <div className="space-y-2">
+                <div className="space-y-1.5 sm:space-y-2">
                   {dayDuties.length === 0 ? (
-                    <div className="text-xs text-slate-500 italic py-5 text-center bg-slate-950/40 rounded-2xl border border-dashed border-slate-800">
+                    <div className="text-xs text-slate-500 italic py-4 sm:py-5 text-center bg-slate-950/40 rounded-xl sm:rounded-2xl border border-dashed border-slate-800">
                       No teachers scheduled. Click below to add.
                     </div>
                   ) : (
@@ -806,7 +806,7 @@ export const DutyAndProxyManager: React.FC<DutyAndProxyManagerProps> = ({
                       return (
                         <div
                           key={d.id}
-                          className="p-3 rounded-2xl bg-slate-950 border border-slate-800 hover:border-slate-700 space-y-2 text-xs transition-all"
+                          className="p-2.5 sm:p-3 rounded-xl sm:rounded-2xl bg-slate-950 border border-slate-800 hover:border-slate-700 space-y-1.5 sm:space-y-2 text-xs transition-all"
                         >
                           <div className="flex items-start justify-between gap-2">
                             <div className="space-y-0.5">
@@ -815,7 +815,7 @@ export const DutyAndProxyManager: React.FC<DutyAndProxyManagerProps> = ({
                                 <span>{d.teacherName}</span>
                               </span>
                               <div className="text-[10px] text-slate-400 font-mono">
-                                {d.teacherDesignation || 'Faculty'} &bull; Code: {d.teacherEmployeeCode}
+                                {d.teacherDesignation || 'Faculty'} · Code: {d.teacherEmployeeCode}
                               </div>
                             </div>
 
@@ -978,28 +978,24 @@ export const DutyAndProxyManager: React.FC<DutyAndProxyManagerProps> = ({
   return (
     <div className={`space-y-6 animate-fadeIn ${isModal ? 'p-2' : 'pb-16'}`}>
       {/* Header Banner */}
-      <div className="bg-gradient-to-r from-amber-950 via-slate-900 to-purple-950 border border-amber-500/30 p-5 rounded-3xl shadow-xl flex flex-col lg:flex-row lg:items-center justify-between gap-4">
-        <div className="space-y-1">
-          <div className="flex items-center gap-2">
-            <span className="p-2 rounded-xl bg-amber-500/20 border border-amber-500/40 text-amber-300">
-              <Clock className="w-5 h-5" />
-            </span>
-            <h2 className="text-xl font-black text-white tracking-tight flex items-center gap-2 m-0">
-              <span>Timetable, Proxy Period & Campus Duty Desk</span>
-              {devMode && <DevModeBadge pages={[2, 4]} title="Daily Duty & Proxy Engine" />}
+      <div className="bg-slate-900 border border-slate-800 p-3 sm:p-5 rounded-2xl sm:rounded-3xl shadow-lg flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+        <div className="flex items-center gap-2.5">
+          <span className="p-2 rounded-xl bg-amber-500/20 border border-amber-500/40 text-amber-300 shrink-0">
+            <Clock className="w-5 h-5" />
+          </span>
+          <div>
+            <h2 className="text-base sm:text-xl font-bold text-white tracking-tight m-0">
+              Duty &amp; Proxy
             </h2>
           </div>
-          <p className="text-xs text-amber-200/80 m-0">
-            Assign daily proxy substitutions, manage Morning Gate, Recess/Break duty, and Afternoon School-End Dispersal rosters with multiple teachers per slot.
-          </p>
         </div>
 
-        <div className="flex items-center gap-2 flex-wrap">
+        <div className="flex flex-wrap items-center gap-2">
           <button
             onClick={() => setIsProxyModalOpen(true)}
-            className="px-3.5 py-2 rounded-xl bg-amber-600 hover:bg-amber-500 text-white font-bold text-xs flex items-center gap-1.5 transition-all shadow-md shadow-amber-600/30 cursor-pointer"
+            className="px-3 py-1.5 sm:py-2 rounded-xl bg-amber-600 hover:bg-amber-500 text-white font-bold text-xs flex items-center justify-center gap-1.5 transition-all shadow-sm cursor-pointer"
           >
-            <Plus className="w-4 h-4" />
+            <Plus className="w-3.5 h-3.5" />
             <span>Assign Proxy Period</span>
           </button>
 
@@ -1021,28 +1017,28 @@ export const DutyAndProxyManager: React.FC<DutyAndProxyManagerProps> = ({
               setSelectedTeacherCodes([]);
               setIsCampusDutyModalOpen(true);
             }}
-            className="px-3.5 py-2 rounded-xl bg-purple-600 hover:bg-purple-500 text-white font-bold text-xs flex items-center gap-1.5 transition-all shadow-md shadow-purple-600/30 cursor-pointer"
+            className="px-3 py-1.5 sm:py-2 rounded-xl bg-purple-600 hover:bg-purple-500 text-white font-bold text-xs flex items-center justify-center gap-1.5 transition-all shadow-sm cursor-pointer"
           >
-            <UserPlus className="w-4 h-4" />
+            <UserPlus className="w-3.5 h-3.5" />
             <span>+ Multi-Teacher Duty</span>
           </button>
 
           <button
             onClick={handleAutoGenerateWeeklyRoster}
-            className="px-3.5 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 font-bold text-xs flex items-center gap-1.5 transition-all border border-slate-700 cursor-pointer"
+            className="px-3 py-1.5 sm:py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 font-bold text-xs flex items-center justify-center gap-1.5 transition-all border border-slate-700 cursor-pointer"
             title="Auto generate 6-day balanced multi-teacher roster"
           >
-            <Sparkles className="w-4 h-4 text-purple-400" />
+            <Sparkles className="w-3.5 h-3.5 text-purple-400" />
             <span>Auto-Generate Weekly Roster</span>
           </button>
 
           {isModal && onClose && (
             <button
               onClick={onClose}
-              className="px-3.5 py-2 rounded-xl bg-rose-950/80 hover:bg-rose-600 border border-rose-500/40 text-rose-200 hover:text-white font-bold text-xs flex items-center gap-1.5 transition-all cursor-pointer shadow-md"
+              className="px-3 py-1.5 sm:py-2 rounded-xl bg-rose-950/80 hover:bg-rose-600 border border-rose-500/40 text-rose-200 hover:text-white font-bold text-xs flex items-center justify-center gap-1.5 transition-all cursor-pointer shadow-sm"
               title="Close Desk & Return to Dashboard (Esc)"
             >
-              <X className="w-4 h-4" />
+              <X className="w-3.5 h-3.5" />
               <span>Close Desk</span>
             </button>
           )}
@@ -1064,113 +1060,115 @@ export const DutyAndProxyManager: React.FC<DutyAndProxyManagerProps> = ({
       )}
 
       {/* KPI Stats Strip */}
-      <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
-        <div className="p-3.5 rounded-2xl bg-amber-950/30 border border-amber-500/30 space-y-1">
+      <div className="grid grid-cols-2 sm:grid-cols-5 gap-2 sm:gap-3">
+        <div className="p-3 rounded-2xl bg-amber-950/30 border border-amber-500/30 space-y-0.5">
           <div className="text-[10px] font-bold text-amber-300 uppercase tracking-wider flex items-center justify-between">
-            <span>Today's Substitutions</span>
+            <span>Substitutions</span>
             <Clock className="w-3.5 h-3.5 text-amber-400" />
           </div>
-          <div className="text-xl font-black text-amber-300 font-mono">{filteredProxyAssignments.length}</div>
-          <div className="text-[10px] text-amber-300/70">For {selectedDate}</div>
+          <div className="text-lg sm:text-xl font-black text-amber-300 font-mono">{filteredProxyAssignments.length}</div>
+          <div className="text-[10px] text-amber-300/70 truncate">{selectedDate}</div>
         </div>
 
-        <div className="p-3.5 rounded-2xl bg-rose-950/30 border border-rose-500/30 space-y-1">
+        <div className="p-3 rounded-2xl bg-rose-950/30 border border-rose-500/30 space-y-0.5">
           <div className="text-[10px] font-bold text-rose-300 uppercase tracking-wider flex items-center justify-between">
-            <span>Absent Teachers</span>
+            <span>Absent</span>
             <Users className="w-3.5 h-3.5 text-rose-400" />
           </div>
-          <div className="text-xl font-black text-rose-300 font-mono">{absentTeachersToday.length}</div>
+          <div className="text-lg sm:text-xl font-black text-rose-300 font-mono">{absentTeachersToday.length}</div>
           <div className="text-[10px] text-rose-300/70">On Leave / Absent</div>
         </div>
 
-        <div className="p-3.5 rounded-2xl bg-sky-950/30 border border-sky-500/30 space-y-1">
+        <div className="p-3 rounded-2xl bg-sky-950/30 border border-sky-500/30 space-y-0.5">
           <div className="text-[10px] font-bold text-sky-300 uppercase tracking-wider flex items-center justify-between">
             <span>Morning Gate</span>
             <DoorOpen className="w-3.5 h-3.5 text-sky-400" />
           </div>
-          <div className="text-xl font-black text-sky-300 font-mono">{morningGateCount}</div>
+          <div className="text-lg sm:text-xl font-black text-sky-300 font-mono">{morningGateCount}</div>
           <div className="text-[10px] text-sky-300/70">07:15 - 07:45 AM</div>
         </div>
 
-        <div className="p-3.5 rounded-2xl bg-purple-950/30 border border-purple-500/30 space-y-1">
+        <div className="p-3 rounded-2xl bg-purple-950/30 border border-purple-500/30 space-y-0.5">
           <div className="text-[10px] font-bold text-purple-300 uppercase tracking-wider flex items-center justify-between">
-            <span>Recess Supervision</span>
+            <span>Recess</span>
             <Coffee className="w-3.5 h-3.5 text-purple-400" />
           </div>
-          <div className="text-xl font-black text-purple-300 font-mono">{recessCount}</div>
+          <div className="text-lg sm:text-xl font-black text-purple-300 font-mono">{recessCount}</div>
           <div className="text-[10px] text-purple-300/70">10:30 - 11:00 AM</div>
         </div>
 
-        <div className="p-3.5 rounded-2xl bg-emerald-950/30 border border-emerald-500/30 space-y-1">
-          <div className="text-[10px] font-bold text-emerald-300 uppercase tracking-wider flex items-center justify-between">
+        <div className="col-span-2 sm:col-span-1 p-3 rounded-2xl bg-emerald-950/30 border border-emerald-500/30 space-y-0.5 flex sm:flex-col justify-between sm:justify-start items-center sm:items-start">
+          <div className="text-[10px] font-bold text-emerald-300 uppercase tracking-wider flex items-center gap-1.5 sm:justify-between sm:w-full">
             <span>Afternoon Gate</span>
             <Bus className="w-3.5 h-3.5 text-emerald-400" />
           </div>
-          <div className="text-xl font-black text-emerald-300 font-mono">{afternoonGateCount}</div>
-          <div className="text-[10px] text-emerald-300/70">01:40 - 02:10 PM</div>
+          <div className="flex sm:flex-col items-center sm:items-start gap-2 sm:gap-0">
+            <div className="text-lg sm:text-xl font-black text-emerald-300 font-mono">{afternoonGateCount}</div>
+            <div className="text-[10px] text-emerald-300/70">01:40 - 02:10 PM</div>
+          </div>
         </div>
       </div>
 
       {/* Sub Tabs */}
-      <div className="flex items-center gap-2 border-b border-slate-800 pb-2 overflow-x-auto">
+      <div className="flex items-center gap-1.5 sm:gap-2 border-b border-slate-800 pb-2 overflow-x-auto scrollbar-none">
         <button
           onClick={() => setActiveTab('morning_gate')}
-          className={`px-4 py-2 rounded-xl text-xs font-bold transition-all flex items-center gap-2 cursor-pointer whitespace-nowrap ${
+          className={`px-3 sm:px-4 py-2 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer whitespace-nowrap ${
             activeTab === 'morning_gate'
-              ? 'bg-sky-600 text-white shadow-lg shadow-sky-600/30'
+              ? 'bg-sky-600 text-white shadow-md shadow-sky-600/30'
               : 'bg-slate-900 hover:bg-slate-800 text-slate-300 border border-slate-800'
           }`}
         >
-          <DoorOpen className="w-4 h-4 text-sky-300" />
-          <span>Morning Gate & Assembly ({morningGateCount})</span>
+          <DoorOpen className="w-3.5 h-3.5 text-sky-300" />
+          <span>Morning Gate ({morningGateCount})</span>
         </button>
 
         <button
           onClick={() => setActiveTab('recess_duty')}
-          className={`px-4 py-2 rounded-xl text-xs font-bold transition-all flex items-center gap-2 cursor-pointer whitespace-nowrap ${
+          className={`px-3 sm:px-4 py-2 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer whitespace-nowrap ${
             activeTab === 'recess_duty'
-              ? 'bg-purple-600 text-white shadow-lg shadow-purple-600/30'
+              ? 'bg-purple-600 text-white shadow-md shadow-purple-600/30'
               : 'bg-slate-900 hover:bg-slate-800 text-slate-300 border border-slate-800'
           }`}
         >
-          <Coffee className="w-4 h-4 text-purple-300" />
-          <span>Recess / Break Duty ({recessCount})</span>
+          <Coffee className="w-3.5 h-3.5 text-purple-300" />
+          <span>Recess ({recessCount})</span>
         </button>
 
         <button
           onClick={() => setActiveTab('afternoon_gate')}
-          className={`px-4 py-2 rounded-xl text-xs font-bold transition-all flex items-center gap-2 cursor-pointer whitespace-nowrap ${
+          className={`px-3 sm:px-4 py-2 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer whitespace-nowrap ${
             activeTab === 'afternoon_gate'
-              ? 'bg-emerald-600 text-white shadow-lg shadow-emerald-600/30'
+              ? 'bg-emerald-600 text-white shadow-md shadow-emerald-600/30'
               : 'bg-slate-900 hover:bg-slate-800 text-slate-300 border border-slate-800'
           }`}
         >
-          <Bus className="w-4 h-4 text-emerald-300" />
-          <span>Afternoon Gate & Dispersal ({afternoonGateCount})</span>
+          <Bus className="w-3.5 h-3.5 text-emerald-300" />
+          <span>Afternoon Gate ({afternoonGateCount})</span>
         </button>
 
         <button
           onClick={() => setActiveTab('proxy_periods')}
-          className={`px-4 py-2 rounded-xl text-xs font-bold transition-all flex items-center gap-2 cursor-pointer whitespace-nowrap ${
+          className={`px-3 sm:px-4 py-2 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer whitespace-nowrap ${
             activeTab === 'proxy_periods'
-              ? 'bg-amber-600 text-white shadow-lg shadow-amber-600/30'
+              ? 'bg-amber-600 text-white shadow-md shadow-amber-600/30'
               : 'bg-slate-900 hover:bg-slate-800 text-slate-300 border border-slate-800'
           }`}
         >
-          <Clock className="w-4 h-4 text-amber-300" />
-          <span>Daily Proxy Substitutions ({filteredProxyAssignments.length})</span>
+          <Clock className="w-3.5 h-3.5 text-amber-300" />
+          <span>Proxy Substitutions ({filteredProxyAssignments.length})</span>
         </button>
 
         <button
           onClick={() => setActiveTab('duty_master_matrix')}
-          className={`px-4 py-2 rounded-xl text-xs font-bold transition-all flex items-center gap-2 cursor-pointer whitespace-nowrap ${
+          className={`px-3 sm:px-4 py-2 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer whitespace-nowrap ${
             activeTab === 'duty_master_matrix'
-              ? 'bg-purple-600 text-white shadow-lg shadow-purple-600/30'
+              ? 'bg-purple-600 text-white shadow-md shadow-purple-600/30'
               : 'bg-slate-900 hover:bg-slate-800 text-slate-300 border border-slate-800'
           }`}
         >
-          <Layers className="w-4 h-4 text-purple-300" />
-          <span>Master Duty Matrix ({campusDuties.length})</span>
+          <Layers className="w-3.5 h-3.5 text-purple-300" />
+          <span>Master Matrix ({campusDuties.length})</span>
         </button>
       </div>
 
@@ -1178,17 +1176,12 @@ export const DutyAndProxyManager: React.FC<DutyAndProxyManagerProps> = ({
       {/* 1. MORNING GATE & ASSEMBLY SUPERVISION (07:15 - 07:45 AM) */}
       {/* ========================================================================= */}
       {activeTab === 'morning_gate' && (
-        <div className="space-y-4">
-          <div className="p-4 bg-slate-900 border border-slate-800 rounded-3xl flex flex-wrap items-center justify-between gap-3 shadow-md">
-            <div className="space-y-0.5">
-              <h3 className="text-sm font-bold text-white m-0 flex items-center gap-2">
-                <DoorOpen className="w-4 h-4 text-sky-400" />
-                <span>Morning Gate, Punctuality & Assembly Stage Duty (07:15 - 07:45 AM)</span>
-              </h3>
-              <p className="text-xs text-slate-400 m-0">
-                Staff allocated for morning arrival gate supervision, uniform & punctuality check, and assembly sound/stage conduction.
-              </p>
-            </div>
+        <div className="space-y-3 sm:space-y-4">
+          <div className="p-3 sm:p-4 bg-slate-900 border border-slate-800 rounded-2xl sm:rounded-3xl flex items-center justify-between gap-3 shadow-md">
+            <h3 className="text-sm font-bold text-white m-0 flex items-center gap-2">
+              <DoorOpen className="w-4 h-4 text-sky-400" />
+              <span>Morning Gate</span>
+            </h3>
 
             <button
               onClick={() => {
@@ -1198,10 +1191,10 @@ export const DutyAndProxyManager: React.FC<DutyAndProxyManagerProps> = ({
                 setSelectedTeacherCodes([]);
                 setIsCampusDutyModalOpen(true);
               }}
-              className="px-3.5 py-1.5 rounded-xl bg-sky-600 hover:bg-sky-500 text-white font-bold text-xs flex items-center gap-1.5 cursor-pointer shadow-md shadow-sky-600/30"
+              className="px-3 py-1.5 rounded-xl bg-sky-600 hover:bg-sky-500 text-white font-bold text-xs flex items-center gap-1.5 cursor-pointer shadow-sm"
             >
-              <UserPlus className="w-4 h-4" />
-              <span>+ Add Morning Gate Duty</span>
+              <UserPlus className="w-3.5 h-3.5" />
+              <span>+ Add Duty</span>
             </button>
           </div>
 
@@ -1218,17 +1211,12 @@ export const DutyAndProxyManager: React.FC<DutyAndProxyManagerProps> = ({
       {/* 2. RECESS / BREAK SUPERVISION DUTY (10:30 - 11:00 AM) */}
       {/* ========================================================================= */}
       {activeTab === 'recess_duty' && (
-        <div className="space-y-4">
-          <div className="p-4 bg-slate-900 border border-slate-800 rounded-3xl flex flex-wrap items-center justify-between gap-3 shadow-md">
-            <div className="space-y-0.5">
-              <h3 className="text-sm font-bold text-white m-0 flex items-center gap-2">
-                <Coffee className="w-4 h-4 text-purple-400" />
-                <span>Recess & Break Campus Supervision Roster (10:30 AM - 11:00 AM)</span>
-              </h3>
-              <p className="text-xs text-slate-400 m-0">
-                Staff allocated for corridor discipline, playground safety, and drinking water point supervision during interval.
-              </p>
-            </div>
+        <div className="space-y-3 sm:space-y-4">
+          <div className="p-3 sm:p-4 bg-slate-900 border border-slate-800 rounded-2xl sm:rounded-3xl flex items-center justify-between gap-3 shadow-md">
+            <h3 className="text-sm font-bold text-white m-0 flex items-center gap-2">
+              <Coffee className="w-4 h-4 text-purple-400" />
+              <span>Recess</span>
+            </h3>
 
             <button
               onClick={() => {
@@ -1238,10 +1226,10 @@ export const DutyAndProxyManager: React.FC<DutyAndProxyManagerProps> = ({
                 setSelectedTeacherCodes([]);
                 setIsCampusDutyModalOpen(true);
               }}
-              className="px-3.5 py-1.5 rounded-xl bg-purple-600 hover:bg-purple-500 text-white font-bold text-xs flex items-center gap-1.5 cursor-pointer shadow-md shadow-purple-600/30"
+              className="px-3 py-1.5 rounded-xl bg-purple-600 hover:bg-purple-500 text-white font-bold text-xs flex items-center gap-1.5 cursor-pointer shadow-sm"
             >
-              <UserPlus className="w-4 h-4" />
-              <span>+ Add Recess Duty</span>
+              <UserPlus className="w-3.5 h-3.5" />
+              <span>+ Add Duty</span>
             </button>
           </div>
 
@@ -1258,17 +1246,12 @@ export const DutyAndProxyManager: React.FC<DutyAndProxyManagerProps> = ({
       {/* 3. AFTERNOON GATE & DISPERSAL DUTY (01:40 - 02:10 PM) */}
       {/* ========================================================================= */}
       {activeTab === 'afternoon_gate' && (
-        <div className="space-y-4">
-          <div className="p-4 bg-slate-900 border border-slate-800 rounded-3xl flex flex-wrap items-center justify-between gap-3 shadow-md">
-            <div className="space-y-0.5">
-              <h3 className="text-sm font-bold text-white m-0 flex items-center gap-2">
-                <Bus className="w-4 h-4 text-emerald-400" />
-                <span>Afternoon Gate & Dispersal Duty (01:40 PM - 02:10 PM &bull; School End)</span>
-              </h3>
-              <p className="text-xs text-slate-400 m-0">
-                Staff allocated for student dispersal at school exit, bus boarding safety, traffic regulation, and cycle stand order.
-              </p>
-            </div>
+        <div className="space-y-3 sm:space-y-4">
+          <div className="p-3 sm:p-4 bg-slate-900 border border-slate-800 rounded-2xl sm:rounded-3xl flex items-center justify-between gap-3 shadow-md">
+            <h3 className="text-sm font-bold text-white m-0 flex items-center gap-2">
+              <Bus className="w-4 h-4 text-emerald-400" />
+              <span>Afternoon Gate</span>
+            </h3>
 
             <button
               onClick={() => {
@@ -1278,10 +1261,10 @@ export const DutyAndProxyManager: React.FC<DutyAndProxyManagerProps> = ({
                 setSelectedTeacherCodes([]);
                 setIsCampusDutyModalOpen(true);
               }}
-              className="px-3.5 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs flex items-center gap-1.5 cursor-pointer shadow-md shadow-emerald-600/30"
+              className="px-3 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs flex items-center gap-1.5 cursor-pointer shadow-sm"
             >
-              <UserPlus className="w-4 h-4" />
-              <span>+ Add Afternoon Dispersal Duty</span>
+              <UserPlus className="w-3.5 h-3.5" />
+              <span>+ Add Duty</span>
             </button>
           </div>
 
@@ -1299,37 +1282,37 @@ export const DutyAndProxyManager: React.FC<DutyAndProxyManagerProps> = ({
       {/* ========================================================================= */}
       {activeTab === 'proxy_periods' && (
         <div className="space-y-4">
-          <div className="p-4 bg-slate-900 border border-slate-800 rounded-2xl flex flex-wrap items-center justify-between gap-3">
-            <div className="flex items-center gap-3">
+          <div className="p-3 sm:p-4 bg-slate-900 border border-slate-800 rounded-2xl flex flex-wrap items-center justify-between gap-2.5 sm:gap-3">
+            <div className="flex items-center gap-2 sm:gap-3 flex-wrap">
               <span className="text-xs font-bold text-slate-300 flex items-center gap-1.5">
                 <Calendar className="w-4 h-4 text-amber-400" />
-                <span>Select Substitution Date:</span>
+                <span>Date:</span>
               </span>
               <input
                 type="date"
                 value={selectedDate}
                 onChange={e => setSelectedDate(e.target.value)}
-                className="px-3 py-1.5 text-xs bg-slate-950 border border-slate-800 rounded-xl text-white font-mono focus:outline-none focus:border-amber-500 font-bold"
+                className="px-2.5 py-1 text-xs bg-slate-950 border border-slate-800 rounded-xl text-white font-mono focus:outline-none focus:border-amber-500 font-bold"
               />
-              <span className="px-2.5 py-1 rounded-lg bg-amber-950/60 border border-amber-500/30 text-amber-300 text-xs font-bold font-mono">
+              <span className="px-2 py-0.5 rounded-lg bg-amber-950/60 border border-amber-500/30 text-amber-300 text-xs font-bold font-mono">
                 {selectedDayOfWeek}
               </span>
             </div>
 
             <button
               onClick={() => handleOpenProxyPlanner(null)}
-              className="px-3.5 py-1.5 rounded-xl bg-amber-600 hover:bg-amber-500 text-white font-bold text-xs flex items-center gap-1.5 cursor-pointer shadow-md shadow-amber-600/30"
+              className="px-3 py-1.5 rounded-xl bg-amber-600 hover:bg-amber-500 text-white font-bold text-xs flex items-center gap-1.5 cursor-pointer shadow-sm"
             >
-              <Plus className="w-4 h-4" />
-              <span>+ Assign Period Substitution</span>
+              <Plus className="w-3.5 h-3.5" />
+              <span>+ Assign Substitution</span>
             </button>
           </div>
 
           {absentTeachersToday.length > 0 && (
-            <div className="p-4 rounded-2xl bg-rose-950/40 border border-rose-500/40 space-y-2">
+            <div className="p-3 sm:p-4 rounded-2xl bg-rose-950/40 border border-rose-500/40 space-y-2">
               <div className="flex items-center gap-2 text-xs font-bold text-rose-300">
                 <AlertTriangle className="w-4 h-4 text-rose-400" />
-                <span>Teachers On Leave / Absent for {selectedDate} ({selectedDayOfWeek}) &bull; Click to plan proxy:</span>
+                <span>Teachers On Leave / Absent for {selectedDate} ({selectedDayOfWeek}) · Click to plan proxy:</span>
               </div>
               <div className="flex items-center gap-2 flex-wrap">
                 {absentTeachersToday.map(t => (
@@ -1351,15 +1334,15 @@ export const DutyAndProxyManager: React.FC<DutyAndProxyManagerProps> = ({
           )}
 
           <div className="bg-slate-900 border border-slate-800 rounded-2xl overflow-hidden shadow-xl">
-            <div className="p-4 bg-slate-950/80 border-b border-slate-800 flex items-center justify-between">
+            <div className="p-3 sm:p-4 bg-slate-950/80 border-b border-slate-800 flex items-center justify-between">
               <div className="flex items-center gap-2">
                 <Clock className="w-4 h-4 text-amber-400" />
                 <h3 className="text-sm font-bold text-white m-0">
-                  Daily Proxy Substitution Register &bull; {selectedDate} ({selectedDayOfWeek})
+                  Daily Proxy Register · {selectedDate} ({selectedDayOfWeek})
                 </h3>
               </div>
               <span className="text-xs text-amber-300 font-mono font-bold">
-                {filteredProxyAssignments.length} Proxy Slots Active
+                {filteredProxyAssignments.length} Proxy Slots
               </span>
             </div>
 
@@ -1417,7 +1400,7 @@ export const DutyAndProxyManager: React.FC<DutyAndProxyManagerProps> = ({
                             <span>{proxy.substituteTeacherName}</span>
                           </div>
                           <div className="text-[10px] text-slate-500 font-mono">
-                            {proxy.substituteDesignation || 'Faculty'} &bull; Free Period
+                            {proxy.substituteDesignation || 'Faculty'} · Free Period
                           </div>
                         </td>
 

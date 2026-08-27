@@ -464,7 +464,7 @@ export const LeftSidebar: React.FC<LeftSidebarProps> = ({
           }`}
         >
           <Plus className="w-4 h-4 shrink-0 stroke-[2.5]" />
-          {!isCollapsed && <span>+ New Task</span>}
+          {!isCollapsed && <span>New Task</span>}
         </button>
 
         {/* Active User Account Session */}
@@ -705,7 +705,7 @@ export const LeftSidebar: React.FC<LeftSidebarProps> = ({
                 className="w-full min-h-[44px] flex items-center justify-center gap-2 rounded-xl font-bold bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-500 hover:to-indigo-500 text-white text-xs shadow-md shadow-purple-900/40 cursor-pointer active:scale-98 transition-all"
               >
                 <Plus className="w-4 h-4 stroke-[2.5]" />
-                <span>+ New Task</span>
+                <span>New Task</span>
               </button>
 
               {/* User chip with name/initial, not only "U" */}

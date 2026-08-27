@@ -122,9 +122,9 @@ export const MobileNavigation: React.FC<MobileNavigationProps> = ({
       },
       {
         key: 'timetable',
-        title: 'Weekly Timetable Planner',
+        title: 'Weekly Timetable',
         subtitle: 'Teacher & class-wise period schedule',
-        pageRef: 'P-6 & 7',
+        pageRef: '',
         category: 'daily',
         icon: <Clock className="w-4 h-4 text-cyan-400" />
       },

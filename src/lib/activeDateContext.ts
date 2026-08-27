@@ -20,14 +20,26 @@ export const EVENT_ACTIVE_DATE_CHANGED = 'kvs-active-date-changed';
 let cachedActiveDate: string = (() => {
   const today = getLocalTodayDateString();
   try {
-    const fromSession = typeof window !== 'undefined' ? sessionStorage.getItem('session_working_date') : null;
-    if (fromSession && fromSession.includes('-')) {
-      return fromSession;
-    }
-    const fromStorage = typeof window !== 'undefined' ? localStorage.getItem(STORAGE_KEY_ACTIVE_DATE) : null;
-    if (fromStorage && fromStorage.includes('-')) {
-      if (fromStorage >= today) {
-        return fromStorage;
+    if (typeof window !== 'undefined') {
+      const isPinned = sessionStorage.getItem('session_date_pinned') === 'true';
+      const fromSession = sessionStorage.getItem('session_working_date');
+      if (fromSession && fromSession.includes('-')) {
+        if (isPinned) {
+          return fromSession;
+        }
+        // Stale unpinned past date in session: discard
+        if (fromSession < today) {
+          sessionStorage.removeItem('session_working_date');
+        } else if (fromSession === today) {
+          return today;
+        }
+      }
+
+      const fromStorage = localStorage.getItem(STORAGE_KEY_ACTIVE_DATE);
+      if (fromStorage && fromStorage.includes('-')) {
+        if (fromStorage >= today) {
+          return fromStorage;
+        }
       }
     }
   } catch (_) {}
@@ -73,20 +85,30 @@ export function getActiveWorkingDateSync(): string {
 export async function getActiveWorkingDate(): Promise<string> {
   const today = getLocalTodayDateString();
   try {
+    const isPinned = typeof window !== 'undefined' && sessionStorage.getItem('session_date_pinned') === 'true';
     if (typeof window !== 'undefined' && window.sessionStorage) {
       const fromSession = sessionStorage.getItem('session_working_date');
       if (fromSession && fromSession.includes('-')) {
-        cachedActiveDate = fromSession;
-        return fromSession;
+        if (isPinned) {
+          cachedActiveDate = fromSession;
+          return fromSession;
+        }
+        // Stale unpinned past date in session: discard and advance
+        if (fromSession < today) {
+          sessionStorage.removeItem('session_working_date');
+        } else {
+          cachedActiveDate = fromSession;
+          return fromSession;
+        }
       }
     }
 
     const stored = await db.get<string>(STORAGE_KEY_ACTIVE_DATE);
     if (stored && typeof stored === 'string' && stored.includes('-')) {
       // If stored date is in the past relative to today, advance to today
-      if (stored < today) {
+      if (stored < today && !isPinned) {
         cachedActiveDate = today;
-        await setActiveWorkingDate(today);
+        await setActiveWorkingDate(today, false);
         return today;
       }
       cachedActiveDate = stored;
@@ -106,12 +128,19 @@ export async function getActiveWorkingDate(): Promise<string> {
  * Update the active working date system-wide (Admin/Principal action).
  * Persists to IndexedDB, updates cache & localStorage, and broadcasts event.
  */
-export async function setActiveWorkingDate(dateStr: string): Promise<void> {
+export async function setActiveWorkingDate(dateStr: string, isPinned = true): Promise<void> {
   if (!dateStr || !dateStr.includes('-')) return;
+  const today = getLocalTodayDateString();
+  const shouldPin = isPinned && dateStr !== today;
   cachedActiveDate = dateStr;
   try {
     if (typeof window !== 'undefined' && window.sessionStorage) {
       sessionStorage.setItem('session_working_date', dateStr);
+      if (shouldPin) {
+        sessionStorage.setItem('session_date_pinned', 'true');
+      } else {
+        sessionStorage.removeItem('session_date_pinned');
+      }
     }
     if (typeof window !== 'undefined' && window.localStorage) {
       localStorage.setItem(STORAGE_KEY_ACTIVE_DATE, dateStr);
@@ -161,13 +190,15 @@ export function useActiveWorkingDate() {
   }, []);
 
   const updateActiveDate = useCallback(async (newDate: string) => {
-    await setActiveWorkingDate(newDate);
+    const today = getLocalTodayDateString();
+    const isPinned = newDate !== today;
+    await setActiveWorkingDate(newDate, isPinned);
     setDateState(newDate);
   }, []);
 
   const resetToToday = useCallback(async () => {
     const today = getLocalTodayDateString();
-    await setActiveWorkingDate(today);
+    await setActiveWorkingDate(today, false);
     setDateState(today);
   }, []);
 

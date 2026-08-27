@@ -45,6 +45,8 @@ import {
   Calendar,
   ExternalLink,
   ChevronRight,
+  ChevronDown,
+  ChevronUp,
   ShieldAlert,
   Copy,
   SlidersHorizontal,
@@ -85,6 +87,15 @@ export const StaffDetailsManager: React.FC<StaffDetailsManagerProps> = ({
   const [selectedStatus, setSelectedStatus] = useState<string>('all');
   const [maskSensitiveData, setMaskSensitiveData] = useState(true);
   const [copiedField, setCopiedField] = useState<string | null>(null);
+
+  // Mobile UI States
+  const [expandedRowIds, setExpandedRowIds] = useState<Record<string, boolean>>({});
+  const [isMobileAddMenuOpen, setIsMobileAddMenuOpen] = useState(false);
+  const [isMobileCsvMenuOpen, setIsMobileCsvMenuOpen] = useState(false);
+
+  const toggleRowExpanded = (id: string) => {
+    setExpandedRowIds(prev => ({ ...prev, [id]: !prev[id] }));
+  };
 
   // KVS Samagam Role Assignment Modal State
   const [isAssignRolesModalOpen, setIsAssignRolesModalOpen] = useState(false);
@@ -408,8 +419,50 @@ export const StaffDetailsManager: React.FC<StaffDetailsManagerProps> = ({
         </div>
       )}
 
-      {/* Top Banner: Master Staff Directory & Bulk Management */}
-      <div className="bg-slate-900 border border-slate-800 rounded-3xl p-6 relative overflow-hidden shadow-lg">
+      {/* Mobile Top Header (Clean, compact, no poster) */}
+      <div className="md:hidden p-3.5 rounded-2xl bg-slate-900 border border-slate-800 space-y-2">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <h2 className="text-base font-black text-white tracking-tight m-0">Staff Directory</h2>
+            <span className="text-[10px] text-slate-500 font-mono">20 Columns</span>
+          </div>
+          {isAdmin && (
+            <div className="flex items-center gap-1.5">
+              <button
+                onClick={() => setIsProfileRequestsModalOpen(true)}
+                className="px-2.5 py-1 rounded-lg bg-amber-600/90 hover:bg-amber-500 text-white text-[11px] font-bold flex items-center gap-1 relative shadow-sm cursor-pointer"
+                title="Review Profile Updates"
+              >
+                <Sparkles className="w-3 h-3 text-amber-200" />
+                <span>Updates</span>
+                {pendingProfileRequestsCount > 0 && (
+                  <span className="px-1 py-0.2 rounded-full bg-rose-500 text-white text-[9px] font-black animate-pulse">
+                    {pendingProfileRequestsCount}
+                  </span>
+                )}
+              </button>
+              <button
+                onClick={() => {
+                  setSelectedStaffForRole(null);
+                  setAssignRoleAction('class_teacher');
+                  setIsAssignRolesModalOpen(true);
+                }}
+                className="px-2.5 py-1 rounded-lg bg-emerald-600/90 hover:bg-emerald-500 text-white text-[11px] font-bold flex items-center gap-1 shadow-sm cursor-pointer"
+                title="Assign Roles"
+              >
+                <Crown className="w-3 h-3 text-amber-300" />
+                <span>Roles</span>
+              </button>
+            </div>
+          )}
+        </div>
+        <p className="text-xs text-slate-400 m-0">
+          {staffList.length} staff · {regularCount} Regular · {contractualCount} Contractual{isAdmin ? ` · ${approvedCount} Verified` : ''}
+        </p>
+      </div>
+
+      {/* Desktop Top Banner (hidden on mobile, preserved as-is) */}
+      <div className="hidden md:block bg-slate-900 border border-slate-800 rounded-3xl p-6 relative overflow-hidden shadow-lg">
         <div className="absolute top-0 right-0 w-96 h-96 bg-amber-600/10 rounded-full blur-3xl -mr-20 -mt-20 pointer-events-none" />
 
         <div className="relative z-10 flex flex-col md:flex-row md:items-center justify-between gap-4">
@@ -566,8 +619,242 @@ export const StaffDetailsManager: React.FC<StaffDetailsManagerProps> = ({
       </div>
 
       {/* Filter and Search Bar */}
-      <div className="bg-slate-900 border border-slate-800 rounded-2xl p-4 space-y-3 shadow-sm">
-        <div className="flex flex-col md:flex-row md:items-center justify-between gap-3">
+      <div className="bg-slate-900 border border-slate-800 rounded-2xl p-3 md:p-4 space-y-3 shadow-sm">
+        {/* MOBILE TOOLBAR (< md) */}
+        <div className="space-y-2.5 md:hidden">
+          {/* Row 1: Search Box + Action Menus */}
+          <div className="flex items-center gap-2">
+            <div className="relative flex-1">
+              <Search className="w-4 h-4 text-slate-500 absolute left-3 top-2.5" />
+              <input
+                type="text"
+                value={searchQuery}
+                onChange={e => setSearchQuery(e.target.value)}
+                placeholder="Search staff, code, post..."
+                className="w-full pl-9 pr-4 py-2 rounded-xl bg-slate-950 border border-slate-800 text-white text-xs placeholder:text-slate-500 focus:outline-none focus:border-purple-500"
+              />
+              {searchQuery && (
+                <button
+                  onClick={() => setSearchQuery('')}
+                  className="absolute right-3 top-2.5 text-slate-400 hover:text-white"
+                >
+                  <X className="w-3.5 h-3.5" />
+                </button>
+              )}
+            </div>
+
+            {/* Add Staff Dropdown Menu */}
+            {isAdminOrDataManager(currentUser) && (
+              <div className="relative shrink-0">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setIsMobileAddMenuOpen(v => !v);
+                    setIsMobileCsvMenuOpen(false);
+                  }}
+                  className="px-2.5 py-2 rounded-xl bg-sky-600 hover:bg-sky-500 text-white text-xs font-bold flex items-center gap-1 shadow-sm cursor-pointer"
+                >
+                  <UserPlus className="w-3.5 h-3.5" />
+                  <span>Add ▾</span>
+                </button>
+
+                {isMobileAddMenuOpen && (
+                  <>
+                    <div className="fixed inset-0 z-30" onClick={() => setIsMobileAddMenuOpen(false)} />
+                    <div className="absolute right-0 top-full mt-1.5 w-48 bg-slate-900 border border-slate-700 rounded-xl shadow-2xl z-40 p-1.5 space-y-1 animate-fadeIn">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          handleOpenAddModal('Regular');
+                          setIsMobileAddMenuOpen(false);
+                        }}
+                        className="w-full text-left px-3 py-2 rounded-lg text-xs text-sky-300 hover:bg-slate-800 flex items-center gap-2 cursor-pointer"
+                      >
+                        <Shield className="w-3.5 h-3.5 text-sky-400" />
+                        <span>+ Add Regular Staff</span>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          handleOpenAddModal('Contractual');
+                          setIsMobileAddMenuOpen(false);
+                        }}
+                        className="w-full text-left px-3 py-2 rounded-lg text-xs text-amber-300 hover:bg-slate-800 flex items-center gap-2 cursor-pointer"
+                      >
+                        <Zap className="w-3.5 h-3.5 text-amber-400" />
+                        <span>+ Add Contractual Staff</span>
+                      </button>
+                    </div>
+                  </>
+                )}
+              </div>
+            )}
+
+            {/* CSV Import / Export Dropdown Menu */}
+            <div className="relative shrink-0">
+              <button
+                type="button"
+                onClick={() => {
+                  setIsMobileCsvMenuOpen(v => !v);
+                  setIsMobileAddMenuOpen(false);
+                }}
+                className="px-2.5 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-bold flex items-center gap-1 border border-slate-700 shadow-sm cursor-pointer"
+              >
+                <FileSpreadsheet className="w-3.5 h-3.5 text-purple-400" />
+                <span>CSV ▾</span>
+              </button>
+
+              {isMobileCsvMenuOpen && (
+                <>
+                  <div className="fixed inset-0 z-30" onClick={() => setIsMobileCsvMenuOpen(false)} />
+                  <div className="absolute right-0 top-full mt-1.5 w-48 bg-slate-900 border border-slate-700 rounded-xl shadow-2xl z-40 p-1.5 space-y-1 animate-fadeIn">
+                    {isAdminOrDataManager(currentUser) && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setShowImportModal(true);
+                          setIsMobileCsvMenuOpen(false);
+                        }}
+                        className="w-full text-left px-3 py-2 rounded-lg text-xs text-purple-300 hover:bg-slate-800 flex items-center gap-2 cursor-pointer"
+                      >
+                        <Upload className="w-3.5 h-3.5" />
+                        <span>Import Staff CSV</span>
+                      </button>
+                    )}
+                    <button
+                      type="button"
+                      onClick={() => {
+                        downloadSampleStaffCSVFile();
+                        setIsMobileCsvMenuOpen(false);
+                      }}
+                      className="w-full text-left px-3 py-2 rounded-lg text-xs text-amber-300 hover:bg-slate-800 flex items-center gap-2 cursor-pointer"
+                    >
+                      <FileDown className="w-3.5 h-3.5" />
+                      <span>Sample CSV</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        downloadBlankStaffCSVFile();
+                        setIsMobileCsvMenuOpen(false);
+                      }}
+                      className="w-full text-left px-3 py-2 rounded-lg text-xs text-slate-300 hover:bg-slate-800 flex items-center gap-2 cursor-pointer"
+                    >
+                      <FileSpreadsheet className="w-3.5 h-3.5" />
+                      <span>Blank CSV</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        handleExportCSV();
+                        setIsMobileCsvMenuOpen(false);
+                      }}
+                      className="w-full text-left px-3 py-2 rounded-lg text-xs text-cyan-300 hover:bg-slate-800 flex items-center gap-2 cursor-pointer"
+                    >
+                      <Download className="w-3.5 h-3.5" />
+                      <span>Export CSV</span>
+                    </button>
+                  </div>
+                </>
+              )}
+            </div>
+          </div>
+
+          {/* Row 2: Cadre Chips (Scrollable) */}
+          <div className="flex items-center gap-1.5 overflow-x-auto pb-1 scrollbar-none">
+            <button
+              onClick={() => setSelectedEmploymentType('all')}
+              className={`px-3 py-1.5 rounded-xl text-xs font-bold whitespace-nowrap transition-all cursor-pointer ${
+                selectedEmploymentType === 'all'
+                  ? 'bg-purple-600 text-white shadow-sm'
+                  : 'bg-slate-950 text-slate-400 hover:text-white border border-slate-800'
+              }`}
+            >
+              All ({staffList.length})
+            </button>
+            <button
+              onClick={() => setSelectedEmploymentType('Regular')}
+              className={`px-3 py-1.5 rounded-xl text-xs font-bold whitespace-nowrap transition-all flex items-center gap-1 cursor-pointer ${
+                selectedEmploymentType === 'Regular'
+                  ? 'bg-sky-600 text-white shadow-sm'
+                  : 'bg-slate-950 text-sky-400 hover:text-sky-300 border border-slate-800'
+              }`}
+            >
+              <Shield className="w-3 h-3" />
+              <span>Regular ({regularCount})</span>
+            </button>
+            <button
+              onClick={() => setSelectedEmploymentType('Contractual')}
+              className={`px-3 py-1.5 rounded-xl text-xs font-bold whitespace-nowrap transition-all flex items-center gap-1 cursor-pointer ${
+                selectedEmploymentType === 'Contractual'
+                  ? 'bg-amber-600 text-white shadow-sm'
+                  : 'bg-slate-950 text-amber-400 hover:text-amber-300 border border-slate-800'
+              }`}
+            >
+              <Zap className="w-3 h-3" />
+              <span>Contractual ({contractualCount})</span>
+            </button>
+          </div>
+
+          {/* Row 3: Compact Filter Selects */}
+          <div className="grid grid-cols-2 gap-2">
+            <select
+              value={selectedCategory}
+              onChange={e => setSelectedCategory(e.target.value)}
+              className="px-2.5 py-1.5 rounded-xl bg-slate-950 border border-slate-800 text-slate-300 text-xs focus:outline-none focus:border-purple-500"
+            >
+              <option value="all">Category: All</option>
+              <option value="GEN">GEN (General)</option>
+              <option value="OBC">OBC</option>
+              <option value="SC">SC</option>
+              <option value="ST">ST</option>
+              <option value="EWS">EWS</option>
+            </select>
+
+            <select
+              value={selectedDesignation}
+              onChange={e => setSelectedDesignation(e.target.value)}
+              className="px-2.5 py-1.5 rounded-xl bg-slate-950 border border-slate-800 text-slate-300 text-xs focus:outline-none focus:border-purple-500"
+            >
+              <option value="all">Cadre: All</option>
+              <option value="Principal">Principal</option>
+              <option value="PGT">PGT</option>
+              <option value="TGT">TGT</option>
+              <option value="PRT">PRT</option>
+              <option value="Data Entry">Data Entry</option>
+            </select>
+
+            {isAdmin && (
+              <select
+                value={selectedStatus}
+                onChange={e => setSelectedStatus(e.target.value)}
+                className="px-2.5 py-1.5 rounded-xl bg-slate-950 border border-slate-800 text-slate-300 text-xs focus:outline-none focus:border-purple-500"
+              >
+                <option value="all">Status: All</option>
+                <option value="Verified & Approved">Verified</option>
+                <option value="Pending Review">Pending</option>
+                <option value="Correction Requested">Correction</option>
+              </select>
+            )}
+
+            <button
+              onClick={() => setMaskSensitiveData(m => !m)}
+              className={`px-2.5 py-1.5 rounded-xl border text-xs font-bold flex items-center justify-center gap-1.5 transition-all cursor-pointer ${
+                !isAdmin ? 'col-span-2' : ''
+              } ${
+                maskSensitiveData
+                  ? 'bg-slate-950 text-slate-300 border-slate-800'
+                  : 'bg-amber-950/40 text-amber-300 border-amber-500/40'
+              }`}
+            >
+              {maskSensitiveData ? <Lock className="w-3.5 h-3.5 text-amber-400" /> : <Unlock className="w-3.5 h-3.5 text-emerald-400" />}
+              <span>{maskSensitiveData ? 'Masked' : 'Unmasked'}</span>
+            </button>
+          </div>
+        </div>
+
+        {/* DESKTOP TOOLBAR (>= md, preserved as-is) */}
+        <div className="hidden md:flex flex-col md:flex-row md:items-center justify-between gap-3">
           {/* Search Box */}
           <div className="relative flex-1 max-w-md">
             <Search className="w-4 h-4 text-slate-500 absolute left-3 top-2.5" />
@@ -687,14 +974,317 @@ export const StaffDetailsManager: React.FC<StaffDetailsManagerProps> = ({
         </div>
       </div>
 
-      {/* 20-Column Official Staff Registry Table */}
-      <div className="bg-slate-900 border border-slate-800 rounded-3xl overflow-hidden shadow-lg">
-        <div className="overflow-x-auto max-h-[650px] relative">
-          <table className="w-full text-left border-collapse text-xs">
+      {/* ========================================================================= */}
+      {/* MOBILE VIEW (< md): Responsive Card List with 100% Width Definition List   */}
+      {/* ========================================================================= */}
+      <div className="md:hidden space-y-3">
+        {filteredStaffList.length === 0 ? (
+          <div className="p-6 text-center text-slate-500 italic bg-slate-900 border border-slate-800 rounded-2xl">
+            No staff records found matching your filters. Click &ldquo;+ Add&rdquo; or &ldquo;CSV&rdquo; above to add data.
+          </div>
+        ) : (
+          filteredStaffList.map((stf, index) => {
+            const isApproved = stf.approvalStatus === 'Verified & Approved';
+            const isCorrection = stf.approvalStatus === 'Correction Requested';
+            const isContractual = (stf.employmentType || detectEmploymentType(stf.designation)) === 'Contractual';
+            const isExpanded = !!expandedRowIds[stf.id];
+
+            return (
+              <div
+                key={stf.id}
+                className={`p-3.5 rounded-2xl border transition-all ${
+                  isContractual
+                    ? 'bg-slate-900/95 border-amber-500/30 shadow-md'
+                    : 'bg-slate-900/95 border-slate-800 shadow-md'
+                }`}
+              >
+                {/* Collapsed Card Header */}
+                <div className="flex items-start justify-between gap-2">
+                  <div className="flex items-start gap-2 min-w-0 flex-1">
+                    <span className="font-mono text-[10px] font-bold px-1.5 py-0.5 rounded bg-slate-800 text-slate-400 shrink-0 mt-0.5">
+                      #{stf.serialNo || index + 1}
+                    </span>
+
+                    <button
+                      type="button"
+                      onClick={() => toggleRowExpanded(stf.id)}
+                      className="p-1 rounded-md bg-slate-800 hover:bg-slate-700 text-slate-400 hover:text-white transition-all cursor-pointer shrink-0 mt-0.5"
+                      title={isExpanded ? "Collapse details" : "Expand details"}
+                    >
+                      <ChevronRight
+                        className={`w-3.5 h-3.5 transition-transform duration-200 ${
+                          isExpanded ? 'rotate-90 text-purple-400' : ''
+                        }`}
+                      />
+                    </button>
+
+                    <div className="min-w-0 flex-1">
+                      <button
+                        type="button"
+                        onClick={() => toggleRowExpanded(stf.id)}
+                        className={`font-bold text-left leading-snug cursor-pointer text-sm ${
+                          isContractual ? 'text-amber-300' : 'text-sky-100'
+                        }`}
+                      >
+                        {stf.name}
+                      </button>
+
+                      <div className="flex items-center gap-1.5 flex-wrap mt-0.5">
+                        <span className="text-[11px] text-slate-400">
+                          {stf.designation}
+                        </span>
+                        <span className={`inline-flex items-center gap-0.5 px-1.5 py-0.2 rounded text-[9px] font-black ${
+                          isContractual
+                            ? 'bg-amber-500/20 text-amber-300 border border-amber-500/30'
+                            : 'bg-sky-500/20 text-sky-300 border border-sky-500/30'
+                        }`}>
+                          {isContractual ? <Zap className="w-2 h-2" /> : <Shield className="w-2 h-2" />}
+                          <span>{isContractual ? 'Contractual' : 'Regular'}</span>
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Actions Column */}
+                  {isAdmin && (
+                    <div className="flex items-center gap-1 shrink-0">
+                      <button
+                        onClick={() => {
+                          setSelectedStaffForRole(stf);
+                          setAssignRoleAction('class_teacher');
+                          setIsAssignRolesModalOpen(true);
+                        }}
+                        className="p-1.5 rounded-lg bg-emerald-950/80 hover:bg-emerald-900 text-emerald-300 border border-emerald-500/40 cursor-pointer"
+                        title="Assign Role"
+                      >
+                        <Crown className="w-3.5 h-3.5 text-amber-300" />
+                      </button>
+
+                      <button
+                        onClick={() => handleOpenVerification(stf)}
+                        className="p-1.5 rounded-lg bg-cyan-950/80 hover:bg-cyan-900 text-cyan-300 border border-cyan-500/30 cursor-pointer"
+                        title="Verify"
+                      >
+                        <ShieldCheck className="w-3.5 h-3.5" />
+                      </button>
+
+                      {onInspectTeacherBioData && (
+                        <button
+                          onClick={async () => {
+                            await setActiveInspectedTeacher(stf);
+                            onInspectTeacherBioData(stf);
+                          }}
+                          className="p-1.5 rounded-lg bg-purple-950/80 hover:bg-purple-900 text-purple-300 border border-purple-500/30 cursor-pointer"
+                          title="Inspect Bio-Data"
+                        >
+                          <Eye className="w-3.5 h-3.5" />
+                        </button>
+                      )}
+
+                      {isAdminOrDataManager(currentUser) && (
+                        <>
+                          <button
+                            onClick={() => handleOpenEditModal(stf)}
+                            className="p-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 cursor-pointer"
+                            title="Edit"
+                          >
+                            <Edit className="w-3.5 h-3.5" />
+                          </button>
+
+                          <button
+                            onClick={() => handleDeleteStaff(stf.id, stf.name)}
+                            className="p-1.5 rounded-lg bg-slate-800 hover:bg-rose-950 text-slate-400 hover:text-rose-400 cursor-pointer"
+                            title="Delete"
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </button>
+                        </>
+                      )}
+                    </div>
+                  )}
+                </div>
+
+                {/* Exact user requested structure for open card: */}
+                {isExpanded && (
+                  <div className="w-full max-w-full overflow-x-hidden px-3 pb-3 pt-1 border-t border-slate-800 text-xs">
+                    <div className="flex justify-between gap-3 py-1.5">
+                      <span className="text-slate-400 shrink-0">Designation</span>
+                      <span className="text-white text-right break-words">{stf.designation || '—'}</span>
+                    </div>
+                    <div className="flex justify-between gap-3 py-1.5">
+                      <span className="text-slate-400 shrink-0">Emp Code</span>
+                      <span className="text-white text-right break-words font-mono font-bold">{stf.employeeCode || '—'}</span>
+                    </div>
+                    <div className="flex justify-between gap-3 py-1.5">
+                      <span className="text-slate-400 shrink-0">Category</span>
+                      <span className="text-white text-right break-words">{stf.socialCategory || 'GEN'}</span>
+                    </div>
+                    <div className="flex justify-between gap-3 py-1.5">
+                      <span className="text-slate-400 shrink-0">Seniority No</span>
+                      <span className="text-white text-right break-words">{stf.seniorityNumber || '—'}</span>
+                    </div>
+                    <div className="flex justify-between gap-3 py-1.5">
+                      <span className="text-slate-400 shrink-0">Minority</span>
+                      <span className="text-white text-right break-words">{stf.isMinority || 'No'}</span>
+                    </div>
+                    <div className="flex justify-between gap-3 py-1.5">
+                      <span className="text-slate-400 shrink-0">Date of Birth</span>
+                      <span className="text-white text-right break-words font-mono">{stf.dob || '—'}</span>
+                    </div>
+                    <div className="flex justify-between gap-3 py-1.5">
+                      <span className="text-slate-400 shrink-0">KVS Joining</span>
+                      <span className="text-white text-right break-words">{stf.joiningDateKVSWithDesignation || '—'}</span>
+                    </div>
+                    <div className="flex justify-between gap-3 py-1.5">
+                      <span className="text-slate-400 shrink-0">Present KV Joining</span>
+                      <span className="text-white text-right break-words">{stf.joiningDatePresentKVWithDesignation || '—'}</span>
+                    </div>
+                    <div className="flex justify-between items-center gap-3 py-1.5">
+                      <span className="text-slate-400 shrink-0">Bank A/C</span>
+                      <div className="flex items-center gap-1.5 text-right">
+                        <span className="text-white font-mono break-words">{maskSensitiveData ? maskText(stf.bankAccountNo, 4) : (stf.bankAccountNo || '—')}</span>
+                        {stf.bankAccountNo && (
+                          <button
+                            onClick={() => handleCopy(stf.bankAccountNo, 'Bank Account')}
+                            className="text-slate-500 hover:text-white"
+                            title="Copy Bank A/C"
+                          >
+                            <Copy className="w-3 h-3" />
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                    <div className="flex justify-between items-center gap-3 py-1.5">
+                      <span className="text-slate-400 shrink-0">IFSC</span>
+                      <div className="flex items-center gap-1.5 text-right">
+                        <span className="text-white font-mono break-words">{stf.ifscCode || '—'}</span>
+                        {stf.ifscCode && (
+                          <button
+                            onClick={() => handleCopy(stf.ifscCode, 'IFSC')}
+                            className="text-slate-500 hover:text-white"
+                            title="Copy IFSC"
+                          >
+                            <Copy className="w-3 h-3" />
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                    <div className="flex justify-between gap-3 py-1.5">
+                      <span className="text-slate-400 shrink-0">Bank Name</span>
+                      <span className="text-white text-right break-words">{stf.bankName || '—'}</span>
+                    </div>
+                    <div className="flex justify-between gap-3 py-1.5">
+                      <span className="text-slate-400 shrink-0">Aadhar</span>
+                      <span className="text-white font-mono text-right break-words">{maskSensitiveData ? maskText(stf.aadharNo, 4) : (stf.aadharNo || '—')}</span>
+                    </div>
+                    <div className="flex justify-between gap-3 py-1.5">
+                      <span className="text-slate-400 shrink-0">PRAN / PAN</span>
+                      <span className="text-white font-mono text-right break-words">{stf.pranOrPanNo || '—'}</span>
+                    </div>
+                    <div className="flex justify-between items-center gap-3 py-1.5">
+                      <span className="text-slate-400 shrink-0">Email</span>
+                      <div className="flex items-center gap-1.5 text-right min-w-0">
+                        {stf.email ? (
+                          <a href={`mailto:${stf.email}`} className="text-purple-400 hover:underline break-all">
+                            {stf.email}
+                          </a>
+                        ) : (
+                          <span className="text-white">—</span>
+                        )}
+                        {stf.email && (
+                          <button onClick={() => handleCopy(stf.email, 'Email')} className="text-slate-500 hover:text-white shrink-0">
+                            <Copy className="w-3 h-3" />
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                    <div className="flex justify-between items-center gap-3 py-1.5">
+                      <span className="text-slate-400 shrink-0">Phone Calls</span>
+                      <div className="flex items-center gap-1.5 text-right">
+                        {stf.phoneCalls ? (
+                          <a href={`tel:${stf.phoneCalls}`} className="text-white font-mono hover:underline">
+                            {stf.phoneCalls}
+                          </a>
+                        ) : (
+                          <span className="text-white">—</span>
+                        )}
+                        {stf.phoneCalls && (
+                          <button onClick={() => handleCopy(stf.phoneCalls, 'Phone')} className="text-slate-500 hover:text-white shrink-0">
+                            <Copy className="w-3 h-3" />
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                    <div className="flex justify-between items-center gap-3 py-1.5">
+                      <span className="text-slate-400 shrink-0">Phone WhatsApp</span>
+                      <div className="flex items-center gap-1.5 text-right">
+                        {stf.phoneWhatsapp ? (
+                          <>
+                            <span className="text-emerald-400 font-mono">{stf.phoneWhatsapp}</span>
+                            <a
+                              href={`https://wa.me/${stf.phoneWhatsapp.replace(/[^0-9]/g, '')}`}
+                              target="_blank"
+                              rel="noreferrer"
+                              className="text-emerald-400 hover:text-emerald-300 shrink-0"
+                              title="WhatsApp"
+                            >
+                              <MessageCircle className="w-3.5 h-3.5" />
+                            </a>
+                          </>
+                        ) : (
+                          <span className="text-white">—</span>
+                        )}
+                      </div>
+                    </div>
+                    <div className="flex justify-between gap-3 py-1.5">
+                      <span className="text-slate-400 shrink-0">Qualifications</span>
+                      <span className="text-white text-right break-words">{stf.highestAcademicAndProfessionalQual || '—'}</span>
+                    </div>
+                    <div className="flex justify-between gap-3 py-1.5">
+                      <span className="text-slate-400 shrink-0">Address</span>
+                      <span className="text-white text-right break-words">{stf.permanentPostalAddress || '—'}</span>
+                    </div>
+                    <div className="flex justify-between items-center gap-3 py-1.5">
+                      <span className="text-slate-400 shrink-0">Status</span>
+                      <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold border ${
+                        isApproved
+                          ? 'bg-emerald-500/20 text-emerald-300 border-emerald-500/30'
+                          : isCorrection
+                          ? 'bg-rose-500/20 text-rose-300 border-rose-500/30'
+                          : 'bg-amber-500/20 text-amber-300 border-amber-500/30'
+                      }`}>
+                        {stf.approvalStatus || 'Pending Review'}
+                      </span>
+                    </div>
+
+                    <button
+                      type="button"
+                      onClick={() => toggleRowExpanded(stf.id)}
+                      className="w-full mt-2 py-1.5 text-center text-[11px] font-bold text-purple-400 hover:text-purple-300 bg-slate-950/80 rounded-lg cursor-pointer border border-slate-800/60"
+                    >
+                      Collapse Details ▲
+                    </button>
+                  </div>
+                )}
+              </div>
+            );
+          })
+        )}
+      </div>
+
+      {/* ========================================================================= */}
+      {/* DESKTOP VIEW (>= md): Full 20-Column Official Staff Registry Table         */}
+      {/* ========================================================================= */}
+      <div className="hidden md:block bg-slate-900 border border-slate-800 rounded-3xl overflow-hidden shadow-lg">
+        <div
+          className="overflow-x-auto max-h-[650px] relative w-full"
+          style={{ WebkitOverflowScrolling: 'touch' }}
+        >
+          <table className="w-full text-left border-collapse text-xs min-w-[2200px]">
             <thead className="bg-slate-950/90 backdrop-blur-md sticky top-0 z-20 border-b border-slate-800 text-slate-400 font-bold uppercase text-[10px] tracking-wider">
               <tr>
                 <th className="p-3 sticky left-0 bg-slate-950 z-30 min-w-[50px] text-center border-r border-slate-800">S.N.</th>
-                <th className="p-3 sticky left-[50px] bg-slate-950 z-30 min-w-[210px] border-r border-slate-800">Name & Cadre Type</th>
+                <th className="p-3 sticky left-[50px] bg-slate-950 z-30 min-w-[210px] border-r border-slate-800">Name &amp; Cadre Type</th>
                 <th className="p-3 min-w-[110px]">Emp Code</th>
                 <th className="p-3 min-w-[170px]">Designation</th>
                 <th className="p-3 min-w-[90px] text-center">Category</th>
@@ -728,7 +1318,7 @@ export const StaffDetailsManager: React.FC<StaffDetailsManagerProps> = ({
               {filteredStaffList.length === 0 ? (
                 <tr>
                   <td colSpan={isAdmin ? 22 : 20} className="p-8 text-center text-slate-500 italic">
-                    No staff records found matching your filters. Click "+ Add Regular", "+ Add Contractual", or "Import Staff CSV" to add data.
+                    No staff records found matching your filters. Click &ldquo;+ Add Regular&rdquo;, &ldquo;+ Add Contractual&rdquo;, or &ldquo;Import Staff CSV&rdquo; to add data.
                   </td>
                 </tr>
               ) : (
@@ -907,7 +1497,7 @@ export const StaffDetailsManager: React.FC<StaffDetailsManagerProps> = ({
                               className="text-emerald-400 hover:text-emerald-300"
                               title="Chat on WhatsApp"
                             >
-                              <MessageCircle className="w-3 h-3" />
+                              <MessageCircle className="w-3.5 h-3.5" />
                             </a>
                           )}
                         </div>

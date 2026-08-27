@@ -1,7 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { db, initializeDatabaseIfEmpty, initCloudSync, TEMPLATE_PAGES_MAP, TEMPLATE_PAGES_MAP_FOUNDATIONAL } from './lib/storage';
-import { TopNavBar, TopModuleKey } from './components/navigation/TopNavBar';
-import { MobileSidebar } from './components/navigation/MobileSidebar';
+import { LeftSidebar } from './components/navigation/LeftSidebar';
+import { TopHeader } from './components/navigation/TopHeader';
+import { TopModuleKey } from './components/navigation/TopNavBar';
 
 // 12 Top-Level Modules
 import { TeacherDashboard } from './components/TeacherDashboard';
@@ -338,143 +339,148 @@ export default function App() {
   const isDark = theme !== 'light';
 
   return (
-    <div className={`min-h-screen font-sans flex flex-col selection:bg-indigo-500 selection:text-white transition-colors duration-200 ${
+    <div className={`min-h-screen font-sans flex selection:bg-indigo-500 selection:text-white transition-colors duration-200 ${
       isDark ? 'bg-[#0B0D14] text-slate-100' : 'bg-[#F8FAFC] text-slate-900'
     }`}>
-      {/* 1. Desktop & Mobile New Navigation Shell */}
-      <TopNavBar
+      {/* 1. Modern Collapsible Left Sidebar (Desktop + Mobile Slide-in Drawer) */}
+      <LeftSidebar
         activeModule={activeModule}
         onSelectModule={setActiveModule}
-        onOpenMobileMenu={() => setIsMobileMenuOpen(true)}
-        theme={theme}
-        onToggleTheme={() => handleToggleTheme(theme === 'dark' ? 'light' : 'dark')}
+        onNavigateTab={handleLegacyNavigation}
         currentUser={currentUser}
         onOpenLoginModal={() => setIsLoginModalOpen(true)}
         onLogout={handleLogout}
-        onQuickTasksClick={() => setActiveModule('tasks')}
+        theme={theme}
+        onToggleTheme={() => handleToggleTheme(theme === 'dark' ? 'light' : 'dark')}
         onOpenVersionHistory={() => setIsVersionModalOpen(true)}
         onOpenInspector={() => setIsInspectorOpen(true)}
         devMode={devMode}
         onToggleDevMode={handleToggleDevMode}
+        isMobileOpen={isMobileMenuOpen}
+        onCloseMobile={() => setIsMobileMenuOpen(false)}
       />
 
-      {/* Mobile Drawer (12 Top Modules) */}
-      <MobileSidebar
-        isOpen={isMobileMenuOpen}
-        onClose={() => setIsMobileMenuOpen(false)}
-        activeModule={activeModule}
-        onSelectModule={setActiveModule}
-        currentUser={currentUser}
-        onOpenLoginModal={() => setIsLoginModalOpen(true)}
-        onLogout={handleLogout}
-        theme={theme}
-      />
-
-      {/* 2. Admin Inspecting Teacher Context Bar */}
-      {currentUser?.role === 'admin' && (
-        <AdminTeacherContextBar
-          activeTeacher={activeInspectedTeacher}
-          onSelectTeacher={setActiveInspectedTeacherState}
+      {/* 2. Main Content Column (TopHeader + Dynamic Content Area) */}
+      <div className="flex-1 flex flex-col min-w-0 min-h-screen overflow-x-hidden">
+        <TopHeader
+          activeModule={activeModule}
+          onOpenMobileMenu={() => setIsMobileMenuOpen(true)}
+          theme={theme}
+          onToggleTheme={() => handleToggleTheme(theme === 'dark' ? 'light' : 'dark')}
+          currentUser={currentUser}
+          onOpenVersionHistory={() => setIsVersionModalOpen(true)}
+          onOpenInspector={() => setIsInspectorOpen(true)}
+          devMode={devMode}
+          onToggleDevMode={handleToggleDevMode}
           onNavigateTab={handleLegacyNavigation}
-          activeTab={activeModule}
-          onOpenRoleAssignment={(action, roleId) => {
-            setAssignRoleInitialAction(action);
-            setAssignRoleTargetRoleId(roleId);
-            setIsAssignRolesModalOpen(true);
-          }}
         />
-      )}
 
-      {/* 3. Main Workspace Container */}
-      <main className="flex-1 w-full max-w-[1720px] mx-auto px-3 sm:px-5 py-4 min-w-0">
-        <ErrorBoundary fallbackTitle="Module View Error">
-          {activeModule === 'dashboard' && (
-            <TeacherDashboard
-              key={`${currentUser?.id || 'guest'}-${currentUser?.activePersona || 'default'}`}
-              currentUser={currentUser}
-              devMode={devMode}
-              onNavigateTab={handleLegacyNavigation}
-              onSwitchPersona={handleSwitchPersona}
-            />
-          )}
+        {/* Admin Inspecting Teacher Context Bar */}
+        {currentUser?.role === 'admin' && (
+          <AdminTeacherContextBar
+            activeTeacher={activeInspectedTeacher}
+            onSelectTeacher={setActiveInspectedTeacherState}
+            onNavigateTab={handleLegacyNavigation}
+            activeTab={activeModule}
+            onOpenRoleAssignment={(action, roleId) => {
+              setAssignRoleInitialAction(action);
+              setAssignRoleTargetRoleId(roleId);
+              setIsAssignRolesModalOpen(true);
+            }}
+          />
+        )}
 
-          {activeModule === 'school' && <SchoolModule devMode={devMode} theme={theme} />}
+        {/* Main Workspace Container */}
+        <main className="flex-1 w-full max-w-[1720px] mx-auto px-3 sm:px-6 py-4 min-w-0">
+          <ErrorBoundary fallbackTitle="Module View Error">
+            {activeModule === 'dashboard' && (
+              <TeacherDashboard
+                key={`${currentUser?.id || 'guest'}-${currentUser?.activePersona || 'default'}`}
+                currentUser={currentUser}
+                devMode={devMode}
+                onNavigateTab={handleLegacyNavigation}
+                onSwitchPersona={handleSwitchPersona}
+              />
+            )}
 
-          {activeModule === 'calendar' && (
-            <div className="space-y-4 animate-fadeIn">
-              <div className="p-4 rounded-2xl bg-indigo-950/40 border border-indigo-500/30 flex items-center justify-between">
-                <div className="space-y-0.5">
-                  <h3 className="text-base font-bold text-white flex items-center gap-2 m-0">
-                    <span>📅 KVS Academic Calendar 2026-27</span>
-                    <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-indigo-500/20 text-indigo-300 border border-indigo-500/30">View-Only</span>
-                  </h3>
-                  <p className="text-xs text-slate-400 m-0">
-                    Official Kendriya Vidyalaya Sangathan academic schedule, holidays, exam dates & celebrations.
-                  </p>
+            {activeModule === 'school' && <SchoolModule devMode={devMode} theme={theme} />}
+
+            {activeModule === 'calendar' && (
+              <div className="space-y-4 animate-fadeIn">
+                <div className="p-4 rounded-2xl bg-indigo-950/40 border border-indigo-500/30 flex items-center justify-between">
+                  <div className="space-y-0.5">
+                    <h3 className="text-base font-bold text-white flex items-center gap-2 m-0">
+                      <span>📅 KVS Academic Calendar 2026-27</span>
+                      <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-indigo-500/20 text-indigo-300 border border-indigo-500/30">View-Only</span>
+                    </h3>
+                    <p className="text-xs text-slate-400 m-0">
+                      Official Kendriya Vidyalaya Sangathan academic schedule, holidays, exam dates & celebrations.
+                    </p>
+                  </div>
                 </div>
+                <KvsCalendarManager devMode={devMode} />
               </div>
-              <KvsCalendarManager devMode={devMode} />
-            </div>
-          )}
+            )}
 
-          {activeModule === 'staff' && (
-            <StaffModule
-              devMode={devMode}
-              currentUser={currentUser}
-            />
-          )}
+            {activeModule === 'staff' && (
+              <StaffModule
+                devMode={devMode}
+                currentUser={currentUser}
+              />
+            )}
 
-          {activeModule === 'students' && (
-            <StudentsModule
-              devMode={devMode}
-              currentUser={currentUser}
-            />
-          )}
+            {activeModule === 'students' && (
+              <StudentsModule
+                devMode={devMode}
+                currentUser={currentUser}
+              />
+            )}
 
-          {activeModule === 'roles' && (
-            <RolesModule
-              devMode={devMode}
-              currentUser={currentUser}
-              onOpenAssignModal={() => setIsAssignRolesModalOpen(true)}
-            />
-          )}
+            {activeModule === 'roles' && (
+              <RolesModule
+                devMode={devMode}
+                currentUser={currentUser}
+                onOpenAssignModal={() => setIsAssignRolesModalOpen(true)}
+              />
+            )}
 
-          {activeModule === 'diary' && (
-            <TeacherDiaryModule
-              devMode={devMode}
-              theme={theme}
-              currentUser={currentUser}
-              activeInspectedTeacher={activeInspectedTeacher}
-              onOpenReportGenerator={() => setActiveModule('diary')}
-            />
-          )}
+            {activeModule === 'diary' && (
+              <TeacherDiaryModule
+                devMode={devMode}
+                theme={theme}
+                currentUser={currentUser}
+                activeInspectedTeacher={activeInspectedTeacher}
+                onOpenReportGenerator={() => setActiveModule('diary')}
+              />
+            )}
 
-          {activeModule === 'timetable' && (
-            <TimetableModule
-              devMode={devMode}
-              currentUser={currentUser}
-            />
-          )}
+            {activeModule === 'timetable' && (
+              <TimetableModule
+                devMode={devMode}
+                currentUser={currentUser}
+              />
+            )}
 
-          {activeModule === 'admission' && <AdmissionModule devMode={devMode} />}
+            {activeModule === 'admission' && <AdmissionModule devMode={devMode} />}
 
-          {activeModule === 'office' && <OfficeModule devMode={devMode} />}
+            {activeModule === 'office' && <OfficeModule devMode={devMode} />}
 
-          {activeModule === 'tasks' && <TasksModule devMode={devMode} currentUser={currentUser} />}
+            {activeModule === 'tasks' && <TasksModule devMode={devMode} currentUser={currentUser} />}
 
-          {activeModule === 'settings' && (
-            <SettingsModule
-              devMode={devMode}
-              onToggleDevMode={handleToggleDevMode}
-              theme={theme}
-              onToggleTheme={handleToggleTheme}
-              currentUser={currentUser}
-              onSwitchAccount={() => setIsLoginModalOpen(true)}
-              onNavigateTab={handleLegacyNavigation}
-            />
-          )}
-        </ErrorBoundary>
-      </main>
+            {activeModule === 'settings' && (
+              <SettingsModule
+                devMode={devMode}
+                onToggleDevMode={handleToggleDevMode}
+                theme={theme}
+                onToggleTheme={handleToggleTheme}
+                currentUser={currentUser}
+                onSwitchAccount={() => setIsLoginModalOpen(true)}
+                onNavigateTab={handleLegacyNavigation}
+              />
+            )}
+          </ErrorBoundary>
+        </main>
+      </div>
 
       {/* 4. Global Modals & Utilities */}
       <TemplateMappingDrawer

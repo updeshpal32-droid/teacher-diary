@@ -329,6 +329,7 @@
   backdrop-filter: blur(8px);
 }
 @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+@keyframes slideRight { from { transform: translateX(-100%); } to { transform: translateX(0); } }
 .td-modal-body {
   @apply bg-[rgba(15,17,26,0.95)] rounded-[32px] w-full max-w-[640px] max-h-[90vh] overflow-y-auto border border-[var(--glass-border)] animate-[slideUp_0.3s_ease-out];
   backdrop-filter: blur(25px);

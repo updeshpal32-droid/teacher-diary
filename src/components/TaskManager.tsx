@@ -74,6 +74,8 @@ import {
   Edit2,
   ChevronDown,
   ChevronUp,
+  ChevronLeft,
+  Menu,
   ListTodo,
   Grid,
   CheckCircle2,
@@ -147,6 +149,13 @@ export const TaskManager: React.FC<TaskManagerProps> = ({ devMode, currentUser, 
   const [isAiLoading, setIsAiLoading] = useState(false);
   const [isListening, setIsListening] = useState(false);
   const [expandedTaskIds, setExpandedTaskIds] = useState<Record<string, boolean>>({});
+
+  // Mobile TickTick UI State
+  const [isMobileListDrawerOpen, setIsMobileListDrawerOpen] = useState(false);
+  const [isMobileMoreMenuOpen, setIsMobileMoreMenuOpen] = useState(false);
+  const [isMobileSearchOpen, setIsMobileSearchOpen] = useState(false);
+  const [mobileStatusFilter, setMobileStatusFilter] = useState<'All' | 'Pending' | 'Completed'>('All');
+  const moreMenuRef = useRef<HTMLDivElement>(null);
 
   // Duty Presets State & Form
   const [dutyPresets, setDutyPresets] = useState<DutyPreset[]>([]);
@@ -1511,8 +1520,51 @@ export const TaskManager: React.FC<TaskManagerProps> = ({ devMode, currentUser, 
   const doFirstCount = allEffectiveTasks.filter(t => t.priority === 'Do First (Urgent & Important)' && t.status !== 'Completed').length;
   const overloadCount = allEffectiveTasks.filter(t => t.overloadImpact && t.status !== 'Completed').length;
 
+  useEffect(() => {
+    const handleOutsideClick = (e: MouseEvent) => {
+      if (moreMenuRef.current && !moreMenuRef.current.contains(e.target as Node)) {
+        setIsMobileMoreMenuOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', handleOutsideClick);
+    return () => document.removeEventListener('mousedown', handleOutsideClick);
+  }, []);
+
+  useEffect(() => {
+    if (isMobileListDrawerOpen) {
+      const prev = document.body.style.overflow;
+      document.body.style.overflow = 'hidden';
+      return () => {
+        document.body.style.overflow = prev;
+      };
+    }
+  }, [isMobileListDrawerOpen]);
+
+  const currentListName = useMemo(() => {
+    if (selectedListId === 'inbox') return 'Inbox';
+    if (selectedListId === 'today') return 'Today';
+    if (selectedListId === 'tomorrow') return 'Tomorrow';
+    if (selectedListId === 'next_7_days') return 'Next 7 Days';
+    if (selectedListId === 'high_priority') return 'High Priority';
+    if (selectedListId === 'all') return 'All Tasks';
+    const found = taskLists.find(l => l.id === selectedListId);
+    return found?.name || 'Inbox';
+  }, [selectedListId, taskLists]);
+
+  const mobileFilteredTasks = useMemo(() => {
+    if (mobileStatusFilter === 'Pending') {
+      return filteredTasks.filter(t => t.status !== 'Completed');
+    }
+    if (mobileStatusFilter === 'Completed') {
+      return filteredTasks.filter(t => t.status === 'Completed');
+    }
+    return filteredTasks;
+  }, [filteredTasks, mobileStatusFilter]);
+
   return (
     <div className="space-y-6">
+      {/* DESKTOP INTERFACE (>= 768px) */}
+      <div className="hidden md:block space-y-6">
       {/* Top Banner & Action Controls */}
       <div className="p-6 rounded-2xl bg-slate-900 border border-slate-800 shadow-xl relative overflow-hidden">
         <div className="absolute top-0 right-0 w-96 h-96 bg-purple-600/10 rounded-full blur-3xl pointer-events-none" />
@@ -3035,8 +3087,684 @@ export const TaskManager: React.FC<TaskManagerProps> = ({ devMode, currentUser, 
           </div>
         </div>
       )}
+      </div>
 
-      {/* Task Edit / Create Modal */}
+      {/* ========================================================================= */}
+      {/* MOBILE TICKTICK INTERFACE (< 768px)                                       */}
+      {/* ========================================================================= */}
+      <div className="md:hidden space-y-3 pb-24">
+        {/* If a secondary view is selected (matrix, recurring, ai), display with a back button */}
+        {activeView !== 'list' ? (
+          <div className="space-y-4">
+            <div className="flex items-center justify-between py-1 border-b border-slate-800 pb-2">
+              <button
+                type="button"
+                onClick={() => setActiveView('list')}
+                className="flex items-center gap-1.5 text-xs font-bold text-purple-400 hover:text-purple-300 cursor-pointer"
+              >
+                <ChevronLeft className="w-4 h-4" />
+                <span>Back to Tasks</span>
+              </button>
+              <span className="text-xs font-bold text-slate-300">
+                {activeView === 'matrix' ? 'Eisenhower Matrix' : activeView === 'recurring' ? 'Duty Presets' : 'AI Assistant'}
+              </span>
+            </div>
+
+            {/* Matrix View */}
+            {activeView === 'matrix' && (
+              <div className="space-y-3">
+                <div className="p-3 rounded-xl bg-purple-950/30 border border-purple-800/30 text-purple-200 text-xs flex items-center gap-2">
+                  <Zap className="w-4 h-4 text-purple-400 shrink-0" />
+                  <span>Eisenhower 4-Quadrant Prioritization</span>
+                </div>
+                <div className="space-y-3">
+                  {/* Quadrant 1 */}
+                  <div className="p-3 rounded-2xl bg-slate-900 border border-rose-500/30 space-y-2">
+                    <div className="flex items-center justify-between pb-1.5 border-b border-rose-500/20">
+                      <div className="flex items-center gap-2">
+                        <div className="w-2.5 h-2.5 rounded-full bg-rose-500" />
+                        <h4 className="text-xs font-bold text-rose-300">Do First (Urgent &amp; Important)</h4>
+                      </div>
+                      <span className="text-[10px] font-mono font-bold text-rose-400">{doFirstTasks.length}</span>
+                    </div>
+                    <div className="space-y-2 max-h-[300px] overflow-y-auto pr-1">
+                      {doFirstTasks.length === 0 ? (
+                        <div className="text-center py-4 text-xs text-slate-500 italic">No urgent tasks.</div>
+                      ) : (
+                        doFirstTasks.map(task => (
+                          <MatrixTaskCard
+                            key={task.id}
+                            task={task}
+                            activeWorkingDate={activeWorkingDate}
+                            periodTimings={periodTimings}
+                            onToggleStatus={() => handleToggleTaskStatus(task.id)}
+                            onToggleSubtask={stId => handleToggleSubtask(task.id, stId)}
+                            onEdit={() => handleOpenEditModal(task)}
+                            onDelete={() => handleDeleteTask(task.id)}
+                            onSyncToWorkload={() => onSyncToWorkload && onSyncToWorkload(task)}
+                            isExpanded={!!expandedTaskIds[task.id]}
+                            onToggleExpand={() => toggleTaskExpansion(task.id)}
+                          />
+                        ))
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Quadrant 2 */}
+                  <div className="p-3 rounded-2xl bg-slate-900 border border-purple-500/30 space-y-2">
+                    <div className="flex items-center justify-between pb-1.5 border-b border-purple-500/20">
+                      <div className="flex items-center gap-2">
+                        <div className="w-2.5 h-2.5 rounded-full bg-purple-500" />
+                        <h4 className="text-xs font-bold text-purple-300">Schedule (Important &amp; Not Urgent)</h4>
+                      </div>
+                      <span className="text-[10px] font-mono font-bold text-purple-400">{scheduleTasks.length}</span>
+                    </div>
+                    <div className="space-y-2 max-h-[300px] overflow-y-auto pr-1">
+                      {scheduleTasks.length === 0 ? (
+                        <div className="text-center py-4 text-xs text-slate-500 italic">No scheduled tasks.</div>
+                      ) : (
+                        scheduleTasks.map(task => (
+                          <MatrixTaskCard
+                            key={task.id}
+                            task={task}
+                            activeWorkingDate={activeWorkingDate}
+                            periodTimings={periodTimings}
+                            onToggleStatus={() => handleToggleTaskStatus(task.id)}
+                            onToggleSubtask={stId => handleToggleSubtask(task.id, stId)}
+                            onEdit={() => handleOpenEditModal(task)}
+                            onDelete={() => handleDeleteTask(task.id)}
+                            onSyncToWorkload={() => onSyncToWorkload && onSyncToWorkload(task)}
+                            isExpanded={!!expandedTaskIds[task.id]}
+                            onToggleExpand={() => toggleTaskExpansion(task.id)}
+                          />
+                        ))
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Quadrant 3 */}
+                  <div className="p-3 rounded-2xl bg-slate-900 border border-amber-500/30 space-y-2">
+                    <div className="flex items-center justify-between pb-1.5 border-b border-amber-500/20">
+                      <div className="flex items-center gap-2">
+                        <div className="w-2.5 h-2.5 rounded-full bg-amber-500" />
+                        <h4 className="text-xs font-bold text-amber-300">Delegate (Urgent &amp; Not Important)</h4>
+                      </div>
+                      <span className="text-[10px] font-mono font-bold text-amber-400">{delegateTasks.length}</span>
+                    </div>
+                    <div className="space-y-2 max-h-[300px] overflow-y-auto pr-1">
+                      {delegateTasks.length === 0 ? (
+                        <div className="text-center py-4 text-xs text-slate-500 italic">No delegate tasks.</div>
+                      ) : (
+                        delegateTasks.map(task => (
+                          <MatrixTaskCard
+                            key={task.id}
+                            task={task}
+                            activeWorkingDate={activeWorkingDate}
+                            periodTimings={periodTimings}
+                            onToggleStatus={() => handleToggleTaskStatus(task.id)}
+                            onToggleSubtask={stId => handleToggleSubtask(task.id, stId)}
+                            onEdit={() => handleOpenEditModal(task)}
+                            onDelete={() => handleDeleteTask(task.id)}
+                            onSyncToWorkload={() => onSyncToWorkload && onSyncToWorkload(task)}
+                            isExpanded={!!expandedTaskIds[task.id]}
+                            onToggleExpand={() => toggleTaskExpansion(task.id)}
+                          />
+                        ))
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Quadrant 4 */}
+                  <div className="p-3 rounded-2xl bg-slate-900 border border-slate-700/50 space-y-2">
+                    <div className="flex items-center justify-between pb-1.5 border-b border-slate-800">
+                      <div className="flex items-center gap-2">
+                        <div className="w-2.5 h-2.5 rounded-full bg-slate-500" />
+                        <h4 className="text-xs font-bold text-slate-300">Don't Do / Low Priority</h4>
+                      </div>
+                      <span className="text-[10px] font-mono font-bold text-slate-400">{dontDoTasks.length}</span>
+                    </div>
+                    <div className="space-y-2 max-h-[300px] overflow-y-auto pr-1">
+                      {dontDoTasks.length === 0 ? (
+                        <div className="text-center py-4 text-xs text-slate-500 italic">No low priority tasks.</div>
+                      ) : (
+                        dontDoTasks.map(task => (
+                          <MatrixTaskCard
+                            key={task.id}
+                            task={task}
+                            activeWorkingDate={activeWorkingDate}
+                            periodTimings={periodTimings}
+                            onToggleStatus={() => handleToggleTaskStatus(task.id)}
+                            onToggleSubtask={stId => handleToggleSubtask(task.id, stId)}
+                            onEdit={() => handleOpenEditModal(task)}
+                            onDelete={() => handleDeleteTask(task.id)}
+                            onSyncToWorkload={() => onSyncToWorkload && onSyncToWorkload(task)}
+                            isExpanded={!!expandedTaskIds[task.id]}
+                            onToggleExpand={() => toggleTaskExpansion(task.id)}
+                          />
+                        ))
+                      )}
+                    </div>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* Recurring Presets View */}
+            {activeView === 'recurring' && (
+              <div className="space-y-3">
+                <div className="flex items-center justify-between">
+                  <h4 className="text-xs font-bold text-white">Teacher Duty Presets</h4>
+                  <button
+                    type="button"
+                    onClick={handleOpenNewPresetModal}
+                    className="px-3 py-1.5 rounded-xl bg-purple-600 hover:bg-purple-500 text-white font-bold text-xs flex items-center gap-1.5 cursor-pointer"
+                  >
+                    <Plus className="w-3.5 h-3.5" />
+                    <span>Add Preset</span>
+                  </button>
+                </div>
+                <div className="space-y-2.5">
+                  {dutyPresets.map(preset => (
+                    <div key={preset.id} className="p-3 rounded-2xl bg-slate-900 border border-slate-800 space-y-2">
+                      <div className="flex items-center justify-between">
+                        <span className="px-2 py-0.5 rounded-full bg-purple-950 border border-purple-800 text-purple-300 text-[10px] font-mono">
+                          {preset.category}
+                        </span>
+                        <span className="text-[10px] text-slate-400 font-mono flex items-center gap-1">
+                          <Clock className="w-3 h-3" /> {preset.estimatedMinutes}m
+                        </span>
+                      </div>
+                      <h5 className="text-xs font-bold text-white">{preset.title}</h5>
+                      <p className="text-[11px] text-slate-400">{preset.desc}</p>
+                      <button
+                        type="button"
+                        onClick={() => handleAddPresetDuty(preset)}
+                        className="w-full py-1.5 px-2.5 rounded-xl bg-purple-600 hover:bg-purple-500 text-white text-xs font-bold flex items-center justify-center gap-1.5 cursor-pointer"
+                      >
+                        <Plus className="w-3.5 h-3.5" />
+                        <span>Add to My Tasks</span>
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* AI Assistant View */}
+            {activeView === 'ai' && (
+              <div className="p-4 rounded-2xl bg-slate-900 border border-indigo-500/30 space-y-3">
+                <div className="flex items-center gap-2 text-xs font-mono font-bold text-indigo-400">
+                  <Bot className="w-4 h-4" />
+                  <span>Gemini AI Task Breakdown</span>
+                </div>
+                <p className="text-xs text-slate-400">
+                  Enter any instruction or diktat. AI will structure it with subtasks and priority.
+                </p>
+                <div className="relative">
+                  <textarea
+                    value={aiPrompt}
+                    onChange={e => setAiPrompt(e.target.value)}
+                    rows={3}
+                    placeholder="Type or speak prompt..."
+                    className="w-full p-3 text-xs bg-slate-950 border border-slate-800 rounded-xl text-white placeholder-slate-500 focus:outline-none focus:border-indigo-500"
+                  />
+                  <button
+                    type="button"
+                    onClick={handleVoiceInput}
+                    className={`absolute right-2.5 bottom-2.5 p-1.5 rounded-lg ${
+                      isListening ? 'bg-rose-600 text-white animate-pulse' : 'bg-slate-800 text-slate-300'
+                    }`}
+                  >
+                    <Mic className="w-3.5 h-3.5" />
+                  </button>
+                </div>
+                <button
+                  type="button"
+                  onClick={handleGenerateAiTask}
+                  disabled={isAiLoading || !aiPrompt.trim()}
+                  className="w-full py-2 rounded-xl bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 text-white font-bold text-xs flex items-center justify-center gap-2 cursor-pointer"
+                >
+                  {isAiLoading ? 'Structuring Task...' : 'Generate Structured Task'}
+                </button>
+              </div>
+            )}
+          </div>
+        ) : (
+          /* DEFAULT TICKTICK INBOX LIST VIEW */
+          <div>
+            {/* 1. Header Bar: Title + Count + Search Toggle + ⋯ More Menu */}
+            <div className="flex items-center justify-between py-2 px-1 mb-2">
+              <button
+                type="button"
+                onClick={() => setIsMobileListDrawerOpen(true)}
+                className="flex items-center gap-2 text-left cursor-pointer group select-none min-w-0"
+              >
+                <div className="p-1.5 rounded-lg bg-slate-900 border border-slate-800 text-purple-400 group-hover:border-purple-500/50 transition-colors">
+                  <Menu className="w-4 h-4" />
+                </div>
+                <div className="flex items-center gap-1.5 min-w-0">
+                  <span className="text-lg font-black tracking-tight text-white truncate">
+                    {currentListName}
+                  </span>
+                  <span className="text-xs font-mono font-bold text-purple-400 bg-purple-950/70 border border-purple-800/40 px-2 py-0.5 rounded-full">
+                    {mobileFilteredTasks.length}
+                  </span>
+                </div>
+              </button>
+
+              <div className="flex items-center gap-1">
+                <button
+                  type="button"
+                  onClick={() => setIsMobileSearchOpen(!isMobileSearchOpen)}
+                  className={`p-2 rounded-xl border transition-colors cursor-pointer ${
+                    isMobileSearchOpen || searchQuery
+                      ? 'bg-purple-950/60 text-purple-300 border-purple-500/40'
+                      : 'bg-slate-900 border-slate-800 text-slate-400 hover:text-white'
+                  }`}
+                  title="Search Tasks"
+                >
+                  <Search className="w-4 h-4" />
+                </button>
+
+                <div className="relative" ref={moreMenuRef}>
+                  <button
+                    type="button"
+                    onClick={() => setIsMobileMoreMenuOpen(!isMobileMoreMenuOpen)}
+                    className="p-2 rounded-xl bg-slate-900 border border-slate-800 text-slate-400 hover:text-white cursor-pointer"
+                    title="More Options"
+                  >
+                    <MoreHorizontal className="w-4 h-4" />
+                  </button>
+
+                  {/* ⋯ Dropdown Menu */}
+                  {isMobileMoreMenuOpen && (
+                    <div className="absolute right-0 top-full mt-2 w-56 p-2 rounded-2xl bg-slate-950/98 border border-slate-800 shadow-2xl z-50 animate-in fade-in zoom-in-95 space-y-1">
+                      <div className="px-3 py-1.5 text-[10px] font-bold text-slate-500 uppercase tracking-wider">
+                        Filter by Status
+                      </div>
+                      {(['All', 'Pending', 'Completed'] as const).map(status => (
+                        <button
+                          key={status}
+                          type="button"
+                          onClick={() => {
+                            setMobileStatusFilter(status);
+                            setIsMobileMoreMenuOpen(false);
+                          }}
+                          className={`w-full flex items-center justify-between px-3 py-2 rounded-xl text-xs font-semibold cursor-pointer ${
+                            mobileStatusFilter === status
+                              ? 'bg-purple-950/60 text-purple-300 border border-purple-500/30'
+                              : 'text-slate-300 hover:bg-slate-900'
+                          }`}
+                        >
+                          <span>{status === 'All' ? 'All Tasks' : status === 'Pending' ? 'Pending Tasks' : 'Completed Tasks'}</span>
+                          {mobileStatusFilter === status && <Check className="w-3.5 h-3.5 text-purple-400" />}
+                        </button>
+                      ))}
+
+                      <div className="my-1 border-t border-slate-800/80" />
+
+                      <div className="px-3 py-1.5 text-[10px] font-bold text-slate-500 uppercase tracking-wider">
+                        Views &amp; Tools
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setActiveView('matrix');
+                          setIsMobileMoreMenuOpen(false);
+                        }}
+                        className="w-full flex items-center gap-2 px-3 py-2 rounded-xl text-xs text-slate-300 hover:bg-slate-900 cursor-pointer"
+                      >
+                        <Grid className="w-3.5 h-3.5 text-purple-400" />
+                        <span>Eisenhower Matrix</span>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setActiveView('recurring');
+                          setIsMobileMoreMenuOpen(false);
+                        }}
+                        className="w-full flex items-center gap-2 px-3 py-2 rounded-xl text-xs text-slate-300 hover:bg-slate-900 cursor-pointer"
+                      >
+                        <RotateCcw className="w-3.5 h-3.5 text-indigo-400" />
+                        <span>Duty Presets</span>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setActiveView('ai');
+                          setIsMobileMoreMenuOpen(false);
+                        }}
+                        className="w-full flex items-center gap-2 px-3 py-2 rounded-xl text-xs text-slate-300 hover:bg-slate-900 cursor-pointer"
+                      >
+                        <Bot className="w-3.5 h-3.5 text-cyan-400" />
+                        <span>AI Task Breakdown</span>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setShowHelpModal(true);
+                          setIsMobileMoreMenuOpen(false);
+                        }}
+                        className="w-full flex items-center gap-2 px-3 py-2 rounded-xl text-xs text-slate-300 hover:bg-slate-900 cursor-pointer"
+                      >
+                        <Info className="w-3.5 h-3.5 text-slate-400" />
+                        <span>How to Use</span>
+                      </button>
+                    </div>
+                  )}
+                </div>
+              </div>
+            </div>
+
+            {/* Search Input (if opened) */}
+            {isMobileSearchOpen && (
+              <div className="mb-3 relative">
+                <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+                <input
+                  type="text"
+                  value={searchQuery}
+                  onChange={e => setSearchQuery(e.target.value)}
+                  placeholder="Search tasks or tags..."
+                  autoFocus
+                  className="w-full pl-9 pr-8 py-2 text-xs bg-slate-900 border border-slate-800 rounded-xl text-white placeholder-slate-500 focus:outline-none focus:border-purple-500"
+                />
+                {searchQuery && (
+                  <button
+                    type="button"
+                    onClick={() => setSearchQuery('')}
+                    className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-500 hover:text-white p-1"
+                  >
+                    <X className="w-3.5 h-3.5" />
+                  </button>
+                )}
+              </div>
+            )}
+
+            {/* 3. A Single Rounded List of Compact Rows */}
+            {mobileFilteredTasks.length === 0 ? (
+              <div className="p-8 text-center rounded-2xl bg-slate-900/60 border border-slate-800/80 space-y-2">
+                <CheckCircle2 className="w-10 h-10 text-slate-600 mx-auto" />
+                <p className="text-sm font-semibold text-slate-300">No tasks in {currentListName}</p>
+                <p className="text-xs text-slate-500">Tap the + button below to create a new task.</p>
+              </div>
+            ) : (
+              <div className="rounded-2xl bg-slate-900/90 border border-slate-800/80 divide-y divide-slate-800/60 overflow-hidden shadow-md">
+                {mobileFilteredTasks.map(task => {
+                  const isDone = task.status === 'Completed';
+                  const eligibility = isTaskCompletionAllowed(task, activeWorkingDate || task.dueDate || '', periodTimings);
+                  const isLocked = eligibility.isLocked && !isDone;
+                  const todayStr = activeWorkingDate || new Date().toISOString().split('T')[0];
+
+                  return (
+                    <div
+                      key={task.id}
+                      className={`px-3.5 py-3 flex items-start gap-3 transition-colors ${
+                        isDone ? 'bg-slate-950/30' : 'hover:bg-slate-800/40 active:bg-slate-800/60'
+                      }`}
+                    >
+                      {/* Checkbox */}
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handleToggleTaskStatus(task.id);
+                        }}
+                        className={`mt-0.5 w-5 h-5 rounded-md border flex items-center justify-center shrink-0 transition-colors cursor-pointer ${
+                          isDone
+                            ? 'bg-purple-600 border-purple-500 text-white shadow-xs'
+                            : isLocked
+                            ? 'bg-amber-950/40 border-amber-500/50 text-amber-400'
+                            : 'border-slate-600 hover:border-purple-400 bg-slate-950/50'
+                        }`}
+                        aria-label={isDone ? 'Mark as incomplete' : 'Mark as completed'}
+                      >
+                        {isDone ? (
+                          <Check className="w-3.5 h-3.5 stroke-[3]" />
+                        ) : isLocked ? (
+                          <Lock className="w-3 h-3 text-amber-400" />
+                        ) : null}
+                      </button>
+
+                      {/* Row Body - Tap row opens existing task detail/edit */}
+                      <div
+                        onClick={() => handleOpenEditModal(task)}
+                        className="flex-1 min-w-0 cursor-pointer"
+                      >
+                        <div className={`text-sm leading-snug break-words ${
+                          isDone ? 'line-through text-slate-500 font-normal' : 'text-slate-100 font-medium'
+                        }`}>
+                          {task.title}
+                        </div>
+
+                        {/* Subtitle: due date in small amber/orange IF present + one truncated muted note IF present */}
+                        {(task.dueDate || task.description) && (
+                          <div className="flex items-center gap-2 mt-1 text-[11px] leading-tight">
+                            {task.dueDate && (
+                              <span className={`font-mono shrink-0 flex items-center gap-1 ${
+                                task.dueDate === todayStr
+                                  ? 'text-amber-400 font-semibold'
+                                  : task.dueDate < todayStr && !isDone
+                                  ? 'text-rose-400 font-semibold'
+                                  : 'text-amber-500/90'
+                              }`}>
+                                <Clock className="w-3 h-3 shrink-0" />
+                                <span>{task.dueDate === todayStr ? 'Today' : task.dueDate}</span>
+                                {task.dueTime && <span>{formatTime12h(task.dueTime)}</span>}
+                              </span>
+                            )}
+
+                            {task.dueDate && task.description && (
+                              <span className="text-slate-600">•</span>
+                            )}
+
+                            {task.description && (
+                              <span className="text-slate-500 truncate flex-1">
+                                {task.description}
+                              </span>
+                            )}
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+
+            {/* 4. Circular + FAB bottom-right (purple) */}
+            <button
+              type="button"
+              onClick={handleOpenNewTaskModal}
+              className="fixed bottom-6 right-6 z-40 w-14 h-14 rounded-full bg-gradient-to-tr from-purple-600 to-indigo-600 hover:from-purple-500 hover:to-indigo-500 text-white shadow-2xl shadow-purple-900/60 flex items-center justify-center cursor-pointer active:scale-95 transition-all"
+              aria-label="Create new task"
+            >
+              <Plus className="w-7 h-7 stroke-[2.5]" />
+            </button>
+
+            {/* Slide-in Lists Drawer (TickTick sidebar) */}
+            {isMobileListDrawerOpen && (
+              <div className="fixed inset-0 z-50">
+                {/* Backdrop */}
+                <div
+                  className="fixed inset-0 bg-black/75 backdrop-blur-xs transition-opacity animate-fadeIn cursor-pointer"
+                  onClick={() => setIsMobileListDrawerOpen(false)}
+                />
+
+                {/* Drawer panel: max 300px, 84vw, slide from left */}
+                <div className="fixed inset-y-0 left-0 w-[84vw] max-w-[300px] bg-[#0F111A] border-r border-slate-800 z-50 flex flex-col justify-between shadow-2xl p-4 animate-[slideRight_0.25s_ease-out] overflow-hidden">
+                  {/* Top Brand Header */}
+                  <div className="flex items-center justify-between pb-3 border-b border-slate-800 shrink-0">
+                    <div className="flex items-center gap-2">
+                      <ListTodo className="w-5 h-5 text-purple-400" />
+                      <span className="text-sm font-black text-white">Lists &amp; Smart Views</span>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => setIsMobileListDrawerOpen(false)}
+                      className="p-1.5 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800 cursor-pointer"
+                    >
+                      <X className="w-4 h-4" />
+                    </button>
+                  </div>
+
+                  {/* Scrollable Middle */}
+                  <div className="flex-1 overflow-y-auto space-y-3 py-3 pr-1 scrollbar-thin">
+                    {/* Smart Views: Today, Inbox, Tomorrow, Next 7 Days, High Priority */}
+                    <div className="space-y-1">
+                      <div className="px-2 pb-1 text-[10px] font-bold text-slate-500 uppercase tracking-wider">
+                        Smart Views
+                      </div>
+                      {[
+                        { id: 'today', name: 'Today', icon: Calendar, color: 'text-blue-400' },
+                        { id: 'inbox', name: 'Inbox', icon: Inbox, color: 'text-indigo-400' },
+                        { id: 'tomorrow', name: 'Tomorrow', icon: Sunrise, color: 'text-purple-400' },
+                        { id: 'next_7_days', name: 'Next 7 Days', icon: CalendarDays, color: 'text-cyan-400' },
+                        { id: 'high_priority', name: 'High Priority', icon: AlertTriangle, color: 'text-rose-400' },
+                        { id: 'all', name: 'All Tasks', icon: Layers, color: 'text-slate-400' }
+                      ].map(item => {
+                        const isSelected = selectedListId === item.id;
+                        const count = allEffectiveTasks.filter(t => {
+                          const todayStr = activeWorkingDate || new Date().toISOString().split('T')[0];
+                          const tomorrowStr = getOffsetDateStr(todayStr, 1);
+                          const next7Str = getOffsetDateStr(todayStr, 7);
+                          if (item.id === 'inbox') return !t.listId || t.listId === 'inbox';
+                          if (item.id === 'today') return t.dueDate === todayStr;
+                          if (item.id === 'tomorrow') return t.dueDate === tomorrowStr;
+                          if (item.id === 'next_7_days') return t.dueDate >= todayStr && t.dueDate <= next7Str;
+                          if (item.id === 'high_priority') return t.priority === 'Do First (Urgent & Important)' || !!t.isTopPriority;
+                          if (item.id === 'all') return true;
+                          return false;
+                        }).length;
+                        const Icon = item.icon;
+
+                        return (
+                          <button
+                            key={item.id}
+                            type="button"
+                            onClick={() => {
+                              setSelectedListId(item.id);
+                              setIsMobileListDrawerOpen(false);
+                            }}
+                            className={`w-full flex items-center justify-between px-3 py-2 rounded-xl text-xs font-semibold transition-all cursor-pointer ${
+                              isSelected
+                                ? 'bg-purple-950/70 text-purple-200 border border-purple-500/40 font-bold'
+                                : 'text-slate-300 hover:text-white hover:bg-slate-800/60'
+                            }`}
+                          >
+                            <div className="flex items-center gap-2.5">
+                              <Icon className={`w-4 h-4 ${item.color}`} />
+                              <span>{item.name}</span>
+                            </div>
+                            <span className={`px-2 py-0.5 rounded-full text-[10px] font-mono ${
+                              isSelected ? 'bg-purple-500/30 text-purple-200' : 'bg-slate-800 text-slate-400'
+                            }`}>
+                              {count}
+                            </span>
+                          </button>
+                        );
+                      })}
+                    </div>
+
+                    {/* Divider */}
+                    <div className="border-t border-slate-800/80 my-2" />
+
+                    {/* Lists: Work & Academic, Personal, existing lists */}
+                    <div className="space-y-1">
+                      <div className="flex items-center justify-between px-2 pb-1">
+                        <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">
+                          Lists
+                        </span>
+                        <button
+                          type="button"
+                          onClick={() => setIsAddingList(!isAddingList)}
+                          className="p-1 text-slate-400 hover:text-purple-300 cursor-pointer"
+                          title="Add Custom List"
+                        >
+                          <Plus className="w-3.5 h-3.5" />
+                        </button>
+                      </div>
+
+                      {taskLists.filter(l => l.type === 'regular').map(list => {
+                        const isSelected = selectedListId === list.id;
+                        const count = allEffectiveTasks.filter(t => t.listId === list.id).length;
+
+                        return (
+                          <button
+                            key={list.id}
+                            type="button"
+                            onClick={() => {
+                              setSelectedListId(list.id);
+                              setIsMobileListDrawerOpen(false);
+                            }}
+                            className={`w-full flex items-center justify-between px-3 py-2 rounded-xl text-xs font-semibold transition-all cursor-pointer ${
+                              isSelected
+                                ? 'bg-purple-950/70 text-purple-200 border border-purple-500/40 font-bold'
+                                : 'text-slate-300 hover:text-white hover:bg-slate-800/60'
+                            }`}
+                          >
+                            <div className="flex items-center gap-2.5 truncate flex-1 text-left">
+                              <span
+                                className="w-2.5 h-2.5 rounded-full shrink-0"
+                                style={{ backgroundColor: list.color || '#3b82f6' }}
+                              />
+                              <span className="truncate">{list.name}</span>
+                            </div>
+                            <span className={`px-2 py-0.5 rounded-full text-[10px] font-mono ${
+                              isSelected ? 'bg-purple-500/30 text-purple-200' : 'bg-slate-800 text-slate-400'
+                            }`}>
+                              {count}
+                            </span>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+
+                  {/* Footer: Duty Presets, Eisenhower, AI (secondary) */}
+                  <div className="pt-3 border-t border-slate-800 space-y-1 shrink-0">
+                    <div className="px-2 pb-1 text-[10px] font-bold text-slate-500 uppercase tracking-wider">
+                      Tools &amp; Views
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setActiveView('recurring');
+                        setIsMobileListDrawerOpen(false);
+                      }}
+                      className="w-full flex items-center gap-2.5 px-3 py-2 rounded-xl text-xs text-slate-300 hover:bg-slate-800 hover:text-white cursor-pointer"
+                    >
+                      <RotateCcw className="w-4 h-4 text-indigo-400" />
+                      <span>Duty Presets</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setActiveView('matrix');
+                        setIsMobileListDrawerOpen(false);
+                      }}
+                      className="w-full flex items-center gap-2.5 px-3 py-2 rounded-xl text-xs text-slate-300 hover:bg-slate-800 hover:text-white cursor-pointer"
+                    >
+                      <Grid className="w-4 h-4 text-purple-400" />
+                      <span>Eisenhower Matrix</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setActiveView('ai');
+                        setIsMobileListDrawerOpen(false);
+                      }}
+                      className="w-full flex items-center gap-2.5 px-3 py-2 rounded-xl text-xs text-slate-300 hover:bg-slate-800 hover:text-white cursor-pointer"
+                    >
+                      <Bot className="w-4 h-4 text-cyan-400" />
+                      <span>AI Task Breakdown</span>
+                    </button>
+                  </div>
+                </div>
+              </div>
+            )}
+          </div>
+        )}
+      </div>
       {isModalOpen && (
         <div className="fixed inset-0 bg-black/70 backdrop-blur-sm z-50 flex items-center justify-center p-4 overflow-y-auto">
           <div className="bg-slate-900 border border-slate-800 rounded-2xl w-full max-w-xl p-6 space-y-5 shadow-2xl relative">

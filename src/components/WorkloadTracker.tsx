@@ -370,6 +370,7 @@ export function WorkloadTracker({ devMode = true, currentUser }: WorkloadTracker
   const [statusFilter, setStatusFilter] = useState<string>('All');
   const [heatmapTimeframe, setHeatmapTimeframe] = useState<'Weekly' | 'Monthly' | 'Quarterly' | 'Annual'>('Weekly');
   const [syncFeedback, setSyncFeedback] = useState<string | null>(null);
+  const [isMobilePresetsOpen, setIsMobilePresetsOpen] = useState(false);
 
   // Form states
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
@@ -980,9 +981,41 @@ export function WorkloadTracker({ devMode = true, currentUser }: WorkloadTracker
   }, [activities, selectedDate, dateFilterMode, categoryFilter, statusFilter]);
 
   return (
-    <div className="space-y-6 animate-fadeIn pb-16">
-      {/* Top Banner */}
-      <div className="bg-gradient-to-r from-purple-950 via-slate-900 to-indigo-950 border border-purple-500/30 p-5 rounded-3xl shadow-xl flex flex-col md:flex-row md:items-center justify-between gap-4">
+    <div className="space-y-6 animate-fadeIn pb-28 md:pb-16">
+      {/* Mobile Compact Header Row */}
+      <div className="md:hidden p-3.5 rounded-2xl bg-slate-900 border border-slate-800 space-y-2.5">
+        <div className="flex items-center justify-between gap-2">
+          <div className="min-w-0">
+            <h2 className="text-base font-black text-white tracking-tight truncate m-0">
+              Hourly Log
+            </h2>
+            <p className="text-xs text-purple-400 font-medium truncate m-0">
+              {currentUser?.name || teacherProfile.name || 'UPDESH SINGH PAL'} &bull; {currentUser?.designation || 'TGT (P&HE)'}
+            </p>
+          </div>
+          <div className="flex items-center gap-1.5 shrink-0">
+            <button
+              onClick={() => handleSyncActualSchedule(selectedDate)}
+              className="px-2.5 py-1.5 rounded-xl bg-indigo-900/60 hover:bg-indigo-800 border border-indigo-500/40 text-indigo-200 font-semibold text-xs flex items-center gap-1 cursor-pointer transition-all active:scale-95"
+              title="Sync Daily Timetable & Duties"
+            >
+              <RotateCcw className="w-3 h-3" />
+              <span>Sync</span>
+            </button>
+
+            <button
+              onClick={handleOpenAddModal}
+              className="px-3 py-1.5 rounded-xl bg-purple-600 hover:bg-purple-500 text-white font-bold text-xs flex items-center gap-1 cursor-pointer shadow-md shadow-purple-900/50 active:scale-95"
+            >
+              <Plus className="w-3.5 h-3.5" />
+              <span>+ Log</span>
+            </button>
+          </div>
+        </div>
+      </div>
+
+      {/* Desktop Top Banner */}
+      <div className="hidden md:flex bg-gradient-to-r from-purple-950 via-slate-900 to-indigo-950 border border-purple-500/30 p-5 rounded-3xl shadow-xl flex-col md:flex-row md:items-center justify-between gap-4">
         <div className="space-y-1">
           <div className="flex items-center gap-2">
             <span className="p-2 rounded-xl bg-purple-600/30 border border-purple-500/50 text-purple-300">
@@ -1031,8 +1064,8 @@ export function WorkloadTracker({ devMode = true, currentUser }: WorkloadTracker
         </div>
       )}
 
-      {/* Metrics Strip */}
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+      {/* Desktop Metrics Strip */}
+      <div className="hidden md:grid grid-cols-2 sm:grid-cols-4 gap-3">
         <div className="p-4 rounded-3xl bg-[var(--glass-bg)] border border-[var(--glass-border)] space-y-1">
           <div className="text-xs text-purple-300 font-medium flex items-center gap-1">
             <Clock className="w-3.5 h-3.5 text-purple-400" />
@@ -1070,13 +1103,52 @@ export function WorkloadTracker({ devMode = true, currentUser }: WorkloadTracker
         </div>
       </div>
 
-      {/* Role & Committee Hours Summary Strip (Phase 4) */}
+      {/* Mobile Compact 2x2 KPI Strip */}
+      <div className="md:hidden grid grid-cols-2 gap-2">
+        <div className="p-3 rounded-2xl bg-slate-900 border border-slate-800">
+          <div className="text-[11px] text-slate-400 font-medium flex items-center gap-1 truncate">
+            <Clock className="w-3 h-3 text-purple-400 shrink-0" />
+            <span>Total Logged</span>
+          </div>
+          <div className="text-lg font-black text-white mt-0.5">{filteredActivities.length}</div>
+        </div>
+
+        <div className="p-3 rounded-2xl bg-slate-900 border border-slate-800">
+          <div className="text-[11px] text-slate-400 font-medium flex items-center gap-1 truncate">
+            <CheckCircle2 className="w-3 h-3 text-emerald-400 shrink-0" />
+            <span>Done</span>
+          </div>
+          <div className="text-lg font-black text-emerald-400 mt-0.5">
+            {filteredActivities.filter(a => a.status === 'Done').length}
+          </div>
+        </div>
+
+        <div className="p-3 rounded-2xl bg-slate-900 border border-slate-800">
+          <div className="text-[11px] text-slate-400 font-medium flex items-center gap-1 truncate">
+            <AlertTriangle className="w-3 h-3 text-amber-400 shrink-0" />
+            <span>Overload</span>
+          </div>
+          <div className="text-lg font-black text-amber-400 mt-0.5">
+            {filteredActivities.filter(a => a.isOverlappingDuty).length}
+          </div>
+        </div>
+
+        <div className="p-3 rounded-2xl bg-slate-900 border border-slate-800">
+          <div className="text-[11px] text-slate-400 font-medium flex items-center gap-1 truncate">
+            <ShieldCheck className="w-3 h-3 text-purple-400 shrink-0" />
+            <span>Proof Files</span>
+          </div>
+          <div className="text-lg font-black text-purple-300 mt-0.5">{evidenceList.length}</div>
+        </div>
+      </div>
+
+      {/* Role & Committee Hours Summary Strip (Desktop) */}
       {portfolioHoursSummary.length > 0 && (
-        <div className="p-4 rounded-3xl bg-slate-900 border border-purple-500/20 space-y-2">
+        <div className="hidden md:block p-4 rounded-3xl bg-slate-900 border border-purple-500/20 space-y-2">
           <div className="flex items-center justify-between text-xs font-bold text-purple-300">
             <span className="flex items-center gap-1.5">
               <Briefcase className="w-4 h-4 text-purple-400" />
-              <span>Logged Workload by Role & Committee Portfolio (Phase 4):</span>
+              <span>Logged Workload by Role &amp; Committee Portfolio (Phase 4):</span>
             </span>
             <span className="text-[11px] text-slate-400 font-mono">
               {portfolioHoursSummary.reduce((acc, p) => acc + p.hours, 0).toFixed(1)} Total Committee Hours
@@ -1092,6 +1164,35 @@ export function WorkloadTracker({ devMode = true, currentUser }: WorkloadTracker
                 <span className="text-white font-medium">{port.name}</span>
                 <span className="px-1.5 py-0.5 rounded-md bg-purple-600 text-white font-mono font-bold text-[10px]">
                   {port.hours.toFixed(1)} hrs ({port.count} duties)
+                </span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Role & Committee Hours Summary Strip (Mobile Compact Rows) */}
+      {portfolioHoursSummary.length > 0 && (
+        <div className="md:hidden p-3 rounded-2xl bg-slate-900 border border-purple-500/20 space-y-1.5">
+          <div className="flex items-center justify-between text-[11px] font-bold text-purple-300">
+            <span className="flex items-center gap-1 truncate">
+              <Briefcase className="w-3.5 h-3.5 text-purple-400 shrink-0" />
+              <span className="truncate">Workload by Role</span>
+            </span>
+            <span className="text-[10px] text-slate-400 font-mono shrink-0">
+              {portfolioHoursSummary.reduce((acc, p) => acc + p.hours, 0).toFixed(1)} hrs
+            </span>
+          </div>
+
+          <div className="space-y-1">
+            {portfolioHoursSummary.map((port, idx) => (
+              <div
+                key={idx}
+                className="px-2.5 py-1 rounded-xl bg-purple-950/40 border border-purple-500/20 text-xs flex items-center justify-between gap-2"
+              >
+                <span className="text-slate-200 font-medium truncate text-[11px]">{port.name}</span>
+                <span className="px-1.5 py-0.5 rounded-md bg-purple-600 text-white font-mono font-bold text-[10px] shrink-0">
+                  {port.hours.toFixed(1)}h ({port.count})
                 </span>
               </div>
             ))}
@@ -1137,8 +1238,8 @@ export function WorkloadTracker({ devMode = true, currentUser }: WorkloadTracker
       {/* SUB-VIEW 1: HOURLY TIMELINE & QUICK LOG */}
       {subTab === 'tracker' && (
         <div className="space-y-6">
-          {/* One-Tap Quick Entry Presets tailored to Teacher */}
-          <div className="p-4 rounded-3xl bg-purple-950/30 border border-purple-500/20 space-y-3">
+          {/* One-Tap Quick Entry Presets tailored to Teacher (Desktop) */}
+          <div className="hidden md:block p-4 rounded-3xl bg-purple-950/30 border border-purple-500/20 space-y-3">
             <div className="text-xs font-semibold text-purple-200 flex items-center justify-between">
               <span className="flex items-center gap-1.5">
                 <Sparkles className="w-3.5 h-3.5 text-purple-400" />
@@ -1172,8 +1273,8 @@ export function WorkloadTracker({ devMode = true, currentUser }: WorkloadTracker
             </div>
           </div>
 
-          {/* Filters & Date Bar */}
-          <div className="flex flex-wrap items-center justify-between gap-4 p-4 rounded-2xl bg-[var(--glass-bg)] border border-[var(--glass-border)]">
+          {/* Filters & Date Bar (Desktop) */}
+          <div className="hidden md:flex flex-wrap items-center justify-between gap-4 p-4 rounded-2xl bg-[var(--glass-bg)] border border-[var(--glass-border)]">
             <div className="flex items-center gap-3 flex-wrap">
               <div className="flex items-center gap-2">
                 <span className="text-xs font-semibold text-purple-200">Date View:</span>
@@ -1249,174 +1350,418 @@ export function WorkloadTracker({ devMode = true, currentUser }: WorkloadTracker
             </div>
           </div>
 
+          {/* Mobile Date & Filters Bar (One tight block) */}
+          <div className="md:hidden p-3 rounded-2xl bg-slate-900 border border-slate-800 space-y-2">
+            {/* Date Selector Row */}
+            <div className="flex items-center gap-2">
+              <div className="inline-flex rounded-xl bg-purple-950/60 p-0.5 border border-purple-500/30 text-xs shrink-0">
+                <button
+                  onClick={() => setDateFilterMode('selected')}
+                  className={`px-2.5 py-1 rounded-lg text-xs font-semibold transition-all ${
+                    dateFilterMode === 'selected' ? 'bg-purple-600 text-white' : 'text-purple-300'
+                  }`}
+                >
+                  Day
+                </button>
+                <button
+                  onClick={() => setDateFilterMode('all')}
+                  className={`px-2.5 py-1 rounded-lg text-xs font-semibold transition-all ${
+                    dateFilterMode === 'all' ? 'bg-purple-600 text-white' : 'text-purple-300'
+                  }`}
+                >
+                  All
+                </button>
+              </div>
+
+              {dateFilterMode === 'selected' ? (
+                <div className="flex items-center gap-1.5 flex-1 min-w-0">
+                  <input
+                    type="date"
+                    value={selectedDate}
+                    onChange={e => setSelectedDate(e.target.value)}
+                    className="flex-1 min-w-0 bg-slate-950 border border-slate-700 rounded-xl px-2 py-1 text-xs text-white"
+                  />
+                  <button
+                    onClick={() => setSelectedDate(todayStr)}
+                    className="px-2.5 py-1 rounded-xl bg-purple-900/50 text-[11px] font-semibold text-purple-200 border border-purple-500/30 shrink-0"
+                  >
+                    Today
+                  </button>
+                </div>
+              ) : (
+                <div className="text-xs text-slate-400 font-mono flex-1 truncate">All recorded dates</div>
+              )}
+            </div>
+
+            {/* Category & Status Dropdowns in 2 columns */}
+            <div className="grid grid-cols-2 gap-2">
+              <select
+                value={categoryFilter}
+                onChange={e => setCategoryFilter(e.target.value)}
+                className="bg-slate-950 border border-slate-700 rounded-xl px-2 py-1.5 text-xs text-slate-300 w-full"
+              >
+                <option value="All">All Categories</option>
+                {availableTags.map(tag => (
+                  <option key={tag.id} value={tag.name}>
+                    {tag.name}
+                  </option>
+                ))}
+              </select>
+
+              <select
+                value={statusFilter}
+                onChange={e => setStatusFilter(e.target.value)}
+                className="bg-slate-950 border border-slate-700 rounded-xl px-2 py-1.5 text-xs text-slate-300 w-full"
+              >
+                <option value="All">All Statuses</option>
+                <option value="Done">Done</option>
+                <option value="In Progress">In Progress</option>
+                <option value="Pending">Pending</option>
+                <option value="Missed">Overload</option>
+              </select>
+            </div>
+          </div>
+
+          {/* Mobile Collapsible Quick Presets */}
+          <div className="md:hidden p-3 rounded-2xl bg-slate-900 border border-slate-800">
+            <button
+              type="button"
+              onClick={() => setIsMobilePresetsOpen(!isMobilePresetsOpen)}
+              className="w-full flex items-center justify-between text-xs font-bold text-purple-300 cursor-pointer"
+            >
+              <span className="flex items-center gap-1.5">
+                <Sparkles className="w-3.5 h-3.5 text-purple-400" />
+                <span>Quick Presets ({quickPresets.length})</span>
+              </span>
+              <ChevronRight className={`w-3.5 h-3.5 transition-transform duration-200 ${isMobilePresetsOpen ? 'rotate-90' : ''}`} />
+            </button>
+
+            {isMobilePresetsOpen && (
+              <div className="flex flex-wrap gap-1.5 pt-2.5">
+                {quickPresets.map((preset, idx) => (
+                  <button
+                    key={idx}
+                    onClick={() =>
+                      handleQuickAddPreset(
+                        preset.title,
+                        preset.category,
+                        preset.priority,
+                        false,
+                        '',
+                        (preset as any).portId,
+                        undefined,
+                        (preset as any).className,
+                        (preset as any).subjectName
+                      )
+                    }
+                    className={`px-2.5 py-1.5 min-h-[36px] rounded-xl border text-[11px] font-medium leading-tight text-left cursor-pointer transition-all shadow-xs ${preset.bg}`}
+                  >
+                    <span>{preset.label}</span>
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+
           {/* Hourly Timeline List */}
           <div className="space-y-4">
             {filteredActivities.length === 0 ? (
-              <div className="p-8 rounded-3xl bg-purple-950/20 border border-purple-500/20 text-center space-y-4">
-                <Clock className="w-10 h-10 text-purple-400 mx-auto opacity-60" />
-                <div className="space-y-1">
-                  <div className="text-sm font-semibold text-purple-200">
-                    No activity logs recorded for {dateFilterMode === 'selected' ? selectedDate : 'this filter'}
+              <>
+                {/* Desktop Empty State */}
+                <div className="hidden md:block p-8 rounded-3xl bg-purple-950/20 border border-purple-500/20 text-center space-y-4">
+                  <Clock className="w-10 h-10 text-purple-400 mx-auto opacity-60" />
+                  <div className="space-y-1">
+                    <div className="text-sm font-semibold text-purple-200">
+                      No activity logs recorded for {dateFilterMode === 'selected' ? selectedDate : 'this filter'}
+                    </div>
+                    <p className="text-xs text-[var(--text-dim)] max-w-md mx-auto">
+                      Click &ldquo;Sync Daily Timetable & Duties&rdquo; below to automatically populate all scheduled periods and committee responsibilities for {currentUser?.name || 'Faculty Member'}.
+                    </p>
                   </div>
-                  <p className="text-xs text-[var(--text-dim)] max-w-md mx-auto">
-                    Click &ldquo;Sync Daily Timetable & Duties&rdquo; below to automatically populate all scheduled periods and committee responsibilities for {currentUser?.name || 'Faculty Member'}.
+                  <div className="flex items-center justify-center gap-3 pt-2">
+                    <button
+                      onClick={() => handleSyncActualSchedule(selectedDate)}
+                      className="px-4 py-2 rounded-2xl bg-purple-600 hover:bg-purple-500 text-white font-bold text-xs flex items-center gap-2 shadow-lg cursor-pointer"
+                    >
+                      <RotateCcw className="w-4 h-4" />
+                      <span>⚡ Auto-Fill Schedule from Timetable & Portfolios</span>
+                    </button>
+
+                    <button
+                      onClick={handleOpenAddModal}
+                      className="px-4 py-2 rounded-2xl bg-purple-950 hover:bg-purple-900 border border-purple-500/40 text-purple-200 font-semibold text-xs flex items-center gap-2 cursor-pointer"
+                    >
+                      <Plus className="w-4 h-4" />
+                      <span>Manual Log</span>
+                    </button>
+                  </div>
+                </div>
+
+                {/* Mobile Empty State */}
+                <div className="md:hidden p-5 rounded-2xl bg-slate-900/60 border border-slate-800 text-center space-y-3">
+                  <Clock className="w-7 h-7 text-purple-400/70 mx-auto" />
+                  <p className="text-xs text-slate-300 font-medium m-0">
+                    No logs for this date.
                   </p>
+                  <div className="flex items-center justify-center gap-2 pt-1">
+                    <button
+                      onClick={() => handleSyncActualSchedule(selectedDate)}
+                      className="flex-1 py-2 px-3 rounded-xl bg-purple-600 hover:bg-purple-500 text-white font-bold text-xs flex items-center justify-center gap-1.5 cursor-pointer shadow-md active:scale-95"
+                    >
+                      <RotateCcw className="w-3.5 h-3.5" />
+                      <span>Sync Timetable</span>
+                    </button>
+                    <button
+                      onClick={handleOpenAddModal}
+                      className="flex-1 py-2 px-3 rounded-xl bg-slate-800 hover:bg-slate-700 border border-slate-700 text-purple-200 font-semibold text-xs flex items-center justify-center gap-1.5 cursor-pointer active:scale-95"
+                    >
+                      <Plus className="w-3.5 h-3.5" />
+                      <span>+ Manual Log</span>
+                    </button>
+                  </div>
                 </div>
-                <div className="flex items-center justify-center gap-3 pt-2">
-                  <button
-                    onClick={() => handleSyncActualSchedule(selectedDate)}
-                    className="px-4 py-2 rounded-2xl bg-purple-600 hover:bg-purple-500 text-white font-bold text-xs flex items-center gap-2 shadow-lg cursor-pointer"
-                  >
-                    <RotateCcw className="w-4 h-4" />
-                    <span>⚡ Auto-Fill Schedule from Timetable & Portfolios</span>
-                  </button>
-
-                  <button
-                    onClick={handleOpenAddModal}
-                    className="px-4 py-2 rounded-2xl bg-purple-950 hover:bg-purple-900 border border-purple-500/40 text-purple-200 font-semibold text-xs flex items-center gap-2 cursor-pointer"
-                  >
-                    <Plus className="w-4 h-4" />
-                    <span>Manual Log</span>
-                  </button>
-                </div>
-              </div>
+              </>
             ) : (
-              filteredActivities.map((act) => {
-                const linkedEvidences = evidenceList.filter(e => (act.evidenceIds || []).includes(e.id) || e.activityId === act.id);
+              <>
+                {/* Desktop Activities List */}
+                <div className="hidden md:block space-y-4">
+                  {filteredActivities.map((act) => {
+                    const linkedEvidences = evidenceList.filter(e => (act.evidenceIds || []).includes(e.id) || e.activityId === act.id);
 
-                return (
-                  <div
-                    key={act.id}
-                    className={`p-5 rounded-3xl border transition-all relative overflow-hidden ${
-                      act.isOverlappingDuty
-                        ? 'bg-amber-950/20 border-amber-500/40 shadow-lg shadow-amber-950/20'
-                        : act.status === 'Done'
-                        ? 'bg-slate-900/60 border-slate-700/60'
-                        : 'bg-purple-950/30 border-purple-500/30'
-                    }`}
-                  >
-                    <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
-                      {/* Left: Time & Details */}
-                      <div className="flex items-start gap-4">
-                        <div className="p-3 rounded-2xl bg-purple-950/80 border border-purple-500/40 text-center shrink-0 min-w-[95px]">
-                          <div className="text-xs font-mono font-bold text-purple-200">{act.startTime}</div>
-                          <div className="text-[10px] text-purple-400 font-mono">to {act.endTime}</div>
-                          {act.date && act.date !== selectedDate && (
-                            <div className="text-[9px] text-slate-400 mt-1 font-mono">{act.date}</div>
-                          )}
-                        </div>
+                    return (
+                      <div
+                        key={act.id}
+                        className={`p-5 rounded-3xl border transition-all relative overflow-hidden ${
+                          act.isOverlappingDuty
+                            ? 'bg-amber-950/20 border-amber-500/40 shadow-lg shadow-amber-950/20'
+                            : act.status === 'Done'
+                            ? 'bg-slate-900/60 border-slate-700/60'
+                            : 'bg-purple-950/30 border-purple-500/30'
+                        }`}
+                      >
+                        <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+                          {/* Left: Time & Details */}
+                          <div className="flex items-start gap-4">
+                            <div className="p-3 rounded-2xl bg-purple-950/80 border border-purple-500/40 text-center shrink-0 min-w-[95px]">
+                              <div className="text-xs font-mono font-bold text-purple-200">{act.startTime}</div>
+                              <div className="text-[10px] text-purple-400 font-mono">to {act.endTime}</div>
+                              {act.date && act.date !== selectedDate && (
+                                <div className="text-[9px] text-slate-400 mt-1 font-mono">{act.date}</div>
+                              )}
+                            </div>
 
-                        <div className="space-y-1.5">
-                          <div className="flex flex-wrap items-center gap-2">
-                            <span className="text-sm font-bold text-white">{act.title}</span>
+                            <div className="space-y-1.5">
+                              <div className="flex flex-wrap items-center gap-2">
+                                <span className="text-sm font-bold text-white">{act.title}</span>
 
-                            <span className="px-2.5 py-0.5 rounded-full bg-purple-500/20 border border-purple-400/30 text-[10px] text-purple-300 font-medium">
-                              {act.category}
-                            </span>
+                                <span className="px-2.5 py-0.5 rounded-full bg-purple-500/20 border border-purple-400/30 text-[10px] text-purple-300 font-medium">
+                                  {act.category}
+                                </span>
 
-                            {/* Phase 4: Role & Responsibility Badge */}
-                            {act.portfolioTemplateName && (
-                              <span
-                                className={`px-2.5 py-0.5 rounded-full text-[10px] font-bold flex items-center gap-1 border ${
-                                  act.isDelegatedWork
-                                    ? 'bg-amber-950/80 border-amber-500/40 text-amber-300'
-                                    : 'bg-purple-950/80 border-purple-500/40 text-purple-200'
-                                }`}
-                              >
-                                <Briefcase className="w-3 h-3" />
-                                <span>{act.portfolioTemplateName}</span>
-                                {act.responsibilityTitle && <span>&bull; {act.responsibilityTitle}</span>}
-                                {act.isDelegatedWork && <span className="text-amber-400 font-mono">(Delegated)</span>}
-                              </span>
-                            )}
+                                {/* Phase 4: Role & Responsibility Badge */}
+                                {act.portfolioTemplateName && (
+                                  <span
+                                    className={`px-2.5 py-0.5 rounded-full text-[10px] font-bold flex items-center gap-1 border ${
+                                      act.isDelegatedWork
+                                        ? 'bg-amber-950/80 border-amber-500/40 text-amber-300'
+                                        : 'bg-purple-950/80 border-purple-500/40 text-purple-200'
+                                    }`}
+                                  >
+                                    <Briefcase className="w-3 h-3" />
+                                    <span>{act.portfolioTemplateName}</span>
+                                    {act.responsibilityTitle && <span>&bull; {act.responsibilityTitle}</span>}
+                                    {act.isDelegatedWork && <span className="text-amber-400 font-mono">(Delegated)</span>}
+                                  </span>
+                                )}
 
-                            {act.isOverlappingDuty && (
-                              <span className="px-2.5 py-0.5 rounded-full bg-amber-500/20 border border-amber-400/40 text-[10px] text-amber-300 font-bold flex items-center gap-1">
-                                <AlertTriangle className="w-3 h-3" />
-                                <span>Overload / Overlapping Duty</span>
-                              </span>
-                            )}
+                                {act.isOverlappingDuty && (
+                                  <span className="px-2.5 py-0.5 rounded-full bg-amber-500/20 border border-amber-400/40 text-[10px] text-amber-300 font-bold flex items-center gap-1">
+                                    <AlertTriangle className="w-3 h-3" />
+                                    <span>Overload / Overlapping Duty</span>
+                                  </span>
+                                )}
 
-                            <span className="px-2 py-0.5 rounded-md bg-slate-800 text-[10px] text-slate-300">
-                              {act.priority}
-                            </span>
+                                <span className="px-2 py-0.5 rounded-md bg-slate-800 text-[10px] text-slate-300">
+                                  {act.priority}
+                                </span>
+                              </div>
+
+                              <p className="text-xs text-[var(--text-dim)] leading-relaxed">{act.description}</p>
+
+                              {act.overloadReason && (
+                                <div className="p-2.5 rounded-xl bg-amber-950/60 border border-amber-500/30 text-xs text-amber-200 flex items-start gap-2">
+                                  <AlertCircle className="w-4 h-4 text-amber-400 shrink-0 mt-0.5" />
+                                  <div>
+                                    <span className="font-semibold text-amber-300">Official Overload Justification: </span>
+                                    <span>{act.overloadReason}</span>
+                                  </div>
+                                </div>
+                              )}
+
+                              {/* Attached Proof Badges */}
+                              {linkedEvidences.length > 0 && (
+                                <div className="flex flex-wrap items-center gap-2 pt-1">
+                                  <span className="text-[10px] text-purple-300 font-medium flex items-center gap-1">
+                                    <ShieldCheck className="w-3 h-3 text-emerald-400" />
+                                    <span>{linkedEvidences.length} Verified Evidence Record(s)</span>
+                                  </span>
+                                  {linkedEvidences.map(ev => (
+                                    <a
+                                      key={ev.id}
+                                      href={ev.fileUrl}
+                                      target="_blank"
+                                      rel="noopener noreferrer"
+                                      className="text-[10px] text-purple-400 hover:text-purple-200 underline font-mono flex items-center gap-0.5"
+                                    >
+                                      <span>{ev.fileName}</span>
+                                      <ExternalLink className="w-2.5 h-2.5" />
+                                    </a>
+                                  ))}
+                                </div>
+                              )}
+                            </div>
                           </div>
 
-                          <p className="text-xs text-[var(--text-dim)] leading-relaxed">{act.description}</p>
+                          {/* Right: Actions */}
+                          <div className="flex items-center gap-2 self-end md:self-center shrink-0">
+                            <select
+                              value={act.status}
+                              onChange={e => handleUpdateStatus(act.id, e.target.value as ActivityStatus)}
+                              className={`td-select text-xs py-1 px-2.5 font-semibold ${
+                                act.status === 'Done'
+                                  ? 'bg-emerald-950/60 border-emerald-500/40 text-emerald-300'
+                                  : act.status === 'In Progress'
+                                  ? 'bg-amber-950/60 border-amber-500/40 text-amber-300'
+                                  : 'bg-purple-950/60 border-purple-500/40 text-purple-300'
+                              }`}
+                            >
+                              <option value="Done">Completed (Done)</option>
+                              <option value="In Progress">In Progress</option>
+                              <option value="Pending">Pending</option>
+                              <option value="Missed">Missed / Delayed</option>
+                            </select>
 
-                          {act.overloadReason && (
-                            <div className="p-2.5 rounded-xl bg-amber-950/60 border border-amber-500/30 text-xs text-amber-200 flex items-start gap-2">
-                              <AlertCircle className="w-4 h-4 text-amber-400 shrink-0 mt-0.5" />
-                              <div>
-                                <span className="font-semibold text-amber-300">Official Overload Justification: </span>
-                                <span>{act.overloadReason}</span>
-                              </div>
-                            </div>
-                          )}
+                            <button
+                              onClick={() => handleOpenEditActivity(act)}
+                              className="p-2 rounded-xl bg-purple-950 hover:bg-purple-900 border border-purple-500/30 text-purple-300 transition-all cursor-pointer"
+                              title="Edit Activity"
+                            >
+                              <Edit2 className="w-4 h-4" />
+                            </button>
 
-                          {/* Attached Proof Badges */}
-                          {linkedEvidences.length > 0 && (
-                            <div className="flex flex-wrap items-center gap-2 pt-1">
-                              <span className="text-[10px] text-purple-300 font-medium flex items-center gap-1">
-                                <ShieldCheck className="w-3 h-3 text-emerald-400" />
-                                <span>{linkedEvidences.length} Verified Evidence Record(s)</span>
-                              </span>
-                              {linkedEvidences.map(ev => (
-                                <a
-                                  key={ev.id}
-                                  href={ev.fileUrl}
-                                  target="_blank"
-                                  rel="noopener noreferrer"
-                                  className="text-[10px] text-purple-400 hover:text-purple-200 underline font-mono flex items-center gap-0.5"
-                                >
-                                  <span>{ev.fileName}</span>
-                                  <ExternalLink className="w-2.5 h-2.5" />
-                                </a>
-                              ))}
-                            </div>
-                          )}
+                            <button
+                              onClick={() => handleDeleteActivity(act.id)}
+                              className="p-2 rounded-xl bg-rose-950/60 hover:bg-rose-900 border border-rose-500/30 text-rose-300 transition-all cursor-pointer"
+                              title="Delete Log"
+                            >
+                              <Trash2 className="w-4 h-4" />
+                            </button>
+                          </div>
                         </div>
                       </div>
+                    );
+                  })}
+                </div>
 
-                      {/* Right: Actions */}
-                      <div className="flex items-center gap-2 self-end md:self-center shrink-0">
-                        <select
-                          value={act.status}
-                          onChange={e => handleUpdateStatus(act.id, e.target.value as ActivityStatus)}
-                          className={`td-select text-xs py-1 px-2.5 font-semibold ${
-                            act.status === 'Done'
-                              ? 'bg-emerald-950/60 border-emerald-500/40 text-emerald-300'
-                              : act.status === 'In Progress'
-                              ? 'bg-amber-950/60 border-amber-500/40 text-amber-300'
-                              : 'bg-purple-950/60 border-purple-500/40 text-purple-300'
-                          }`}
-                        >
-                          <option value="Done">Completed (Done)</option>
-                          <option value="In Progress">In Progress</option>
-                          <option value="Pending">Pending</option>
-                          <option value="Missed">Missed / Delayed</option>
-                        </select>
+                {/* Mobile Compact Activities List */}
+                <div className="md:hidden space-y-2.5">
+                  {filteredActivities.map((act) => {
+                    const linkedEvidences = evidenceList.filter(e => (act.evidenceIds || []).includes(e.id) || e.activityId === act.id);
 
-                        <button
-                          onClick={() => handleOpenEditActivity(act)}
-                          className="p-2 rounded-xl bg-purple-950 hover:bg-purple-900 border border-purple-500/30 text-purple-300 transition-all cursor-pointer"
-                          title="Edit Activity"
-                        >
-                          <Edit2 className="w-4 h-4" />
-                        </button>
+                    return (
+                      <div
+                        key={act.id}
+                        className={`p-3.5 rounded-2xl border transition-all ${
+                          act.isOverlappingDuty
+                            ? 'bg-amber-950/20 border-amber-500/40'
+                            : act.status === 'Done'
+                            ? 'bg-slate-900/60 border-slate-800'
+                            : 'bg-slate-900 border-slate-800'
+                        }`}
+                      >
+                        <div className="space-y-2">
+                          {/* Top: Time badge + Title + Badges */}
+                          <div className="flex items-start gap-2.5">
+                            <div className="px-2 py-1 rounded-lg bg-purple-950/80 border border-purple-500/30 text-center shrink-0">
+                              <div className="text-[11px] font-mono font-bold text-purple-200">{act.startTime}</div>
+                              <div className="text-[9px] text-purple-400 font-mono">{act.endTime}</div>
+                            </div>
 
-                        <button
-                          onClick={() => handleDeleteActivity(act.id)}
-                          className="p-2 rounded-xl bg-rose-950/60 hover:bg-rose-900 border border-rose-500/30 text-rose-300 transition-all cursor-pointer"
-                          title="Delete Log"
-                        >
-                          <Trash2 className="w-4 h-4" />
-                        </button>
+                            <div className="flex-1 min-w-0">
+                              <div className="flex items-center gap-1.5 flex-wrap">
+                                <span className="text-xs font-bold text-white leading-tight">{act.title}</span>
+                                <span className="px-1.5 py-0.5 rounded text-[9px] font-medium bg-purple-500/20 text-purple-300 border border-purple-500/30">
+                                  {act.category}
+                                </span>
+                                {act.portfolioTemplateName && (
+                                  <span className="px-1.5 py-0.5 rounded text-[9px] font-medium bg-indigo-500/20 text-indigo-300 border border-indigo-500/30 truncate max-w-[140px]">
+                                    {act.portfolioTemplateName}
+                                  </span>
+                                )}
+                                {act.isOverlappingDuty && (
+                                  <span className="px-1.5 py-0.5 rounded text-[9px] font-bold bg-amber-500/20 text-amber-300 border border-amber-500/30">
+                                    Overlap
+                                  </span>
+                                )}
+                              </div>
+
+                              {act.description && (
+                                <p className="text-[11px] text-slate-400 mt-1 leading-snug line-clamp-2">
+                                  {act.description}
+                                </p>
+                              )}
+
+                              {linkedEvidences.length > 0 && (
+                                <div className="flex items-center gap-1.5 mt-1 text-[10px] text-emerald-400 font-medium">
+                                  <ShieldCheck className="w-3 h-3 shrink-0" />
+                                  <span>{linkedEvidences.length} proof record(s)</span>
+                                </div>
+                              )}
+                            </div>
+                          </div>
+
+                          {/* Bottom: Status Select + Edit/Delete Buttons */}
+                          <div className="flex items-center justify-between gap-2 pt-1 border-t border-slate-800/80">
+                            <select
+                              value={act.status}
+                              onChange={e => handleUpdateStatus(act.id, e.target.value as ActivityStatus)}
+                              className={`text-[11px] py-1 px-2 rounded-lg font-semibold border ${
+                                act.status === 'Done'
+                                  ? 'bg-emerald-950/60 border-emerald-500/40 text-emerald-300'
+                                  : act.status === 'In Progress'
+                                  ? 'bg-amber-950/60 border-amber-500/40 text-amber-300'
+                                  : 'bg-purple-950/60 border-purple-500/40 text-purple-300'
+                              }`}
+                            >
+                              <option value="Done">Done</option>
+                              <option value="In Progress">In Progress</option>
+                              <option value="Pending">Pending</option>
+                              <option value="Missed">Delayed</option>
+                            </select>
+
+                            <div className="flex items-center gap-1">
+                              <button
+                                onClick={() => handleOpenEditActivity(act)}
+                                className="p-1.5 rounded-lg bg-slate-800 text-slate-300 hover:text-white cursor-pointer"
+                                title="Edit"
+                              >
+                                <Edit2 className="w-3.5 h-3.5" />
+                              </button>
+                              <button
+                                onClick={() => handleDeleteActivity(act.id)}
+                                className="p-1.5 rounded-lg bg-rose-950/50 text-rose-300 hover:bg-rose-900/60 cursor-pointer"
+                                title="Delete"
+                              >
+                                <Trash2 className="w-3.5 h-3.5" />
+                              </button>
+                            </div>
+                          </div>
+                        </div>
                       </div>
-                    </div>
-                  </div>
-                );
-              })
+                    );
+                  })}
+                </div>
+              </>
             )}
           </div>
         </div>

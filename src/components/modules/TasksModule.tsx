@@ -29,7 +29,7 @@ export const TasksModule: React.FC<TasksModuleProps> = ({ devMode, currentUser }
           }`}
         >
           <ListTodo className="w-3.5 h-3.5" />
-          <span>Task Manager & To-Dos (P-18 & 32)</span>
+          <span>Task Manager & To-Dos</span>
         </button>
 
         <button
@@ -41,7 +41,7 @@ export const TasksModule: React.FC<TasksModuleProps> = ({ devMode, currentUser }
           }`}
         >
           <Activity className="w-3.5 h-3.5" />
-          <span>Hourly Activity & Duty Log (P-8 & 9)</span>
+          <span>Hourly Activity & Duty Log</span>
         </button>
 
         <button
@@ -53,7 +53,7 @@ export const TasksModule: React.FC<TasksModuleProps> = ({ devMode, currentUser }
           }`}
         >
           <Briefcase className="w-3.5 h-3.5" />
-          <span>Work Done Other Than Teaching (P-26)</span>
+          <span>Work Done Other Than Teaching</span>
         </button>
       </div>
 

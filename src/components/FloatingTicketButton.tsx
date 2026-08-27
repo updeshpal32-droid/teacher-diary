@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { MessageSquarePlus } from 'lucide-react';
 import { RaiseTicketModal } from './RaiseTicketModal';
 import { UserAccount } from '../types/auth';
@@ -14,10 +14,32 @@ export const FloatingTicketButton: React.FC<FloatingTicketButtonProps> = ({
   currentTab
 }) => {
   const [isOpen, setIsOpen] = useState(false);
+  const [isNearBottom, setIsNearBottom] = useState(false);
+
+  useEffect(() => {
+    const handleScroll = () => {
+      const scrollY = window.scrollY || window.pageYOffset;
+      const windowHeight = window.innerHeight;
+      const docHeight = document.documentElement.scrollHeight;
+      // Show when scrolled within ~32px of bottom
+      const nearBottom = scrollY + windowHeight >= docHeight - 32;
+      setIsNearBottom(nearBottom);
+    };
+
+    window.addEventListener('scroll', handleScroll, { passive: true });
+    handleScroll();
+    return () => window.removeEventListener('scroll', handleScroll);
+  }, []);
 
   return (
     <>
-      <div className="fixed bottom-6 right-6 z-40 print:hidden flex items-center">
+      <div
+        className={`fixed bottom-6 right-6 z-40 print:hidden flex items-center transition-all duration-300 ease-in-out ${
+          isNearBottom
+            ? 'opacity-100 translate-y-0 pointer-events-auto'
+            : 'max-md:opacity-0 max-md:translate-y-4 max-md:pointer-events-none md:opacity-100 md:translate-y-0 md:pointer-events-auto'
+        }`}
+      >
         <button
           onClick={() => setIsOpen(true)}
           className="group relative flex items-center h-11 rounded-full bg-gradient-to-r from-purple-600 via-indigo-600 to-purple-700 hover:from-purple-500 hover:to-indigo-500 text-white font-bold text-xs shadow-xl shadow-purple-600/30 border border-purple-400/40 cursor-pointer transition-all duration-300 ease-out hover:shadow-purple-500/50 p-2.5 overflow-hidden"

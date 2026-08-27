@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import {
   SchoolDetails,
   TeacherProfile,
@@ -96,6 +96,8 @@ import {
   Shield,
   Zap,
   ChevronRight,
+  ChevronDown,
+  ChevronUp,
   Filter,
   RefreshCw,
   X,
@@ -144,6 +146,7 @@ export interface FormattedRoleBadge {
   cleanName: string;
   isLeadership: boolean;
   isAcademicSupport?: boolean;
+  description?: string;
 }
 
 export function formatAndDeduplicateResponsibilities(responsibilities: AcademicResponsibility[]): FormattedRoleBadge[] {
@@ -198,7 +201,8 @@ export function formatAndDeduplicateResponsibilities(responsibilities: AcademicR
       rolePrefix,
       cleanName,
       isLeadership,
-      isAcademicSupport
+      isAcademicSupport,
+      description: resp.keyOutcomes || resp.levelOrClass
     });
   });
 
@@ -639,6 +643,33 @@ export const TeacherDashboard: React.FC<TeacherDashboardProps> = ({
   const [newTaskDueTime, setNewTaskDueTime] = useState('15:00');
   const [newTaskClass, setNewTaskClass] = useState('Class X-A');
   const [subjectAssignments, setSubjectAssignments] = useState<SubjectResponsibilityAssignment[]>(DEFAULT_SUBJECT_RESPONSIBILITIES);
+  const [isRolesDropdownOpen, setIsRolesDropdownOpen] = useState(false);
+  const rolesDropdownRef = useRef<HTMLDivElement>(null);
+
+  // Mobile Dashboard Specific State
+  const [isMobileRolesSheetOpen, setIsMobileRolesSheetOpen] = useState(false);
+  const [isMobileActionsSheetOpen, setIsMobileActionsSheetOpen] = useState(false);
+  const [isMobileStatsSheetOpen, setIsMobileStatsSheetOpen] = useState(false);
+  const [expandedMobileTaskId, setExpandedMobileTaskId] = useState<string | null>(null);
+  const [mobileTodayTab, setMobileTodayTab] = useState<'today' | 'upcoming'>('today');
+
+  useEffect(() => {
+    const handleClickOutside = (e: MouseEvent) => {
+      if (rolesDropdownRef.current && !rolesDropdownRef.current.contains(e.target as Node)) {
+        setIsRolesDropdownOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
+
+  useEffect(() => {
+    const handleOpenNewTask = () => {
+      setShowNewTaskModal(true);
+    };
+    window.addEventListener('kvs-open-new-task', handleOpenNewTask);
+    return () => window.removeEventListener('kvs-open-new-task', handleOpenNewTask);
+  }, []);
 
   useEffect(() => {
     loadData();
@@ -1381,6 +1412,19 @@ export const TeacherDashboard: React.FC<TeacherDashboardProps> = ({
     );
   }, [proxyAssignments, currentUser, effectiveDateStr]);
 
+  // Formatted & deduplicated academic roles and count
+  const formattedResponsibilities = useMemo(() => {
+    return formatAndDeduplicateResponsibilities(teacher.academicResponsibilities || []);
+  }, [teacher.academicResponsibilities]);
+
+  const teacherRolesCount = useMemo(() => {
+    let count = 0;
+    if (currentUser?.isClassTeacherOf || teacher.classTeacherRole) count++;
+    if (currentUser?.isCoClassTeacherOf || teacher.coClassTeacherRole) count++;
+    count += formattedResponsibilities.length;
+    return count;
+  }, [currentUser, teacher, formattedResponsibilities]);
+
   // School-wide Attendance summary for Principal / Admin
   const schoolAttendanceOverview = useMemo(() => {
     const effectiveStaffList = (staffList && staffList.length > 0) ? staffList : DEFAULT_STAFF_DETAILS;
@@ -1434,8 +1478,91 @@ export const TeacherDashboard: React.FC<TeacherDashboardProps> = ({
 
   return (
     <div className="space-y-6 pb-12">
-      {/* Top Banner / Role Identity Info */}
-      <div className="bg-slate-900 border border-slate-800 rounded-3xl p-6 relative overflow-hidden shadow-lg">
+      {/* 2. COMPACT IDENTITY STRIP (Mobile screens < 768px) */}
+      <div className="md:hidden bg-slate-900 border border-slate-800 rounded-2xl p-3.5 space-y-2.5 shadow-md">
+        {/* Line 1: Name + designation (TGT P&HE) + Persona Switcher */}
+        <div className="flex items-center justify-between gap-2">
+          <div className="min-w-0">
+            <h2 className="text-base font-black text-white truncate tracking-tight flex items-center gap-1.5 m-0">
+              <span className="truncate">
+                {isAdmin
+                  ? (school.principalName || currentUser?.name || 'Principal')
+                  : isDataEntry
+                  ? (currentUser?.name || 'Data Entry Manager')
+                  : currentTeacherName}
+              </span>
+              <span className="text-xs font-semibold text-purple-400 font-mono shrink-0">
+                ({isAdmin
+                  ? 'Principal'
+                  : isDataEntry
+                  ? 'Data Entry'
+                  : (teacher.designation || currentUser?.designation || 'TGT P&HE')})
+              </span>
+            </h2>
+          </div>
+
+          {/* Dual-Role Persona Switcher */}
+          {(currentUser?.role === 'data_entry_manager' || (currentUser?.role === 'admin' && currentUser?.assignments?.length > 0)) && onSwitchPersona && (
+            <div className="inline-flex items-center rounded-lg bg-slate-950 p-0.5 border border-slate-700 shrink-0">
+              <button
+                type="button"
+                onClick={() => onSwitchPersona('teacher')}
+                className={`px-2 py-0.5 rounded text-[9px] font-bold transition-all cursor-pointer ${
+                  isTeacher ? 'bg-purple-600 text-white' : 'text-slate-400 hover:text-slate-200'
+                }`}
+              >
+                Teacher
+              </button>
+              <button
+                type="button"
+                onClick={() => onSwitchPersona(currentUser.role === 'admin' ? 'admin' : 'data_entry_manager')}
+                className={`px-2 py-0.5 rounded text-[9px] font-bold transition-all cursor-pointer ${
+                  !isTeacher ? 'bg-amber-600 text-white' : 'text-slate-400 hover:text-slate-200'
+                }`}
+              >
+                {currentUser.role === 'admin' ? 'Principal' : 'Admin'}
+              </button>
+            </div>
+          )}
+        </div>
+
+        {/* Line 2: Today’s date · Attendance status (Present) · CL balance */}
+        <div className="flex items-center gap-1.5 text-xs text-slate-300 flex-wrap">
+          <span className="font-semibold text-slate-200">{activeDayName}, {formattedActiveDate}</span>
+          <span className="text-slate-500">•</span>
+          <span className="px-1.5 py-0.5 rounded bg-emerald-500/20 text-emerald-300 font-bold text-[10px] border border-emerald-500/30">
+            {myAttendanceToday?.status || 'Present'}
+          </span>
+          <span className="text-slate-500">•</span>
+          <span className="text-[11px] text-amber-300 font-mono font-bold">
+            {myLeaveBalance ? `${myLeaveBalance.clRemaining} CL Balance` : 'Leave Ledger'}
+          </span>
+        </div>
+
+        {/* Line 3: two buttons only: [My Roles (N) ▾]  [Actions ▾] */}
+        <div className="grid grid-cols-2 gap-2 pt-0.5">
+          <button
+            type="button"
+            onClick={() => setIsMobileRolesSheetOpen(true)}
+            className="h-9 px-3 rounded-xl bg-purple-950/80 hover:bg-purple-900 border border-purple-500/40 text-purple-200 text-xs font-bold flex items-center justify-center gap-1.5 shadow-sm transition-all cursor-pointer active:scale-95"
+          >
+            <ShieldCheck className="w-3.5 h-3.5 text-purple-400" />
+            <span>My Roles ({teacherRolesCount}) ▾</span>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => setIsMobileActionsSheetOpen(true)}
+            className="h-9 px-3 rounded-xl bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-500 hover:to-indigo-500 text-white text-xs font-black flex items-center justify-center gap-1.5 shadow-md shadow-purple-950/50 transition-all cursor-pointer active:scale-95"
+          >
+            <Sparkles className="w-3.5 h-3.5 text-amber-300" />
+            <span>Actions ▾</span>
+          </button>
+        </div>
+      </div>
+
+      {/* Top Banner / Role Identity Info (Desktop) */}
+      <div className="hidden md:block bg-slate-900 border border-slate-800 rounded-3xl p-6 relative overflow-hidden shadow-lg">
         <div className="absolute top-0 right-0 w-96 h-96 bg-purple-600/10 rounded-full blur-3xl -mr-20 -mt-20 pointer-events-none" />
         
         <div className="relative z-10 flex flex-col md:flex-row md:items-center justify-between gap-4">
@@ -1527,61 +1654,131 @@ export const TeacherDashboard: React.FC<TeacherDashboardProps> = ({
               )}
             </p>
 
-            {/* Individual Teacher's Allocated Leadership & Incharge Badges */}
-            {isTeacher && (currentUser?.isClassTeacherOf || currentUser?.isCoClassTeacherOf || teacher.classTeacherRole || teacher.coClassTeacherRole || (teacher.academicResponsibilities && teacher.academicResponsibilities.length > 0)) && (
-              <div className="flex items-center gap-2 flex-wrap pt-1 animate-fadeIn">
-                {(currentUser?.isClassTeacherOf || teacher.classTeacherRole) && (
-                  <span className="px-2.5 py-1 rounded-xl text-xs font-black bg-amber-500/25 text-amber-300 border border-amber-500/50 flex items-center gap-1.5 shadow-xs">
-                    <Crown className="w-3.5 h-3.5 text-amber-400" />
-                    <span>Class Teacher: Class {currentUser?.isClassTeacherOf || teacher.classTeacherRole.replace(/Class Teacher (of )?/i, '')}</span>
-                  </span>
-                )}
+            {/* Collapsed Compact Roles & Responsibilities Dropdown Button */}
+            {isTeacher && teacherRolesCount > 0 && (
+              <div className="relative inline-block pt-1 z-30" ref={rolesDropdownRef}>
+                <button
+                  type="button"
+                  onClick={() => setIsRolesDropdownOpen(!isRolesDropdownOpen)}
+                  className="px-3 py-1.5 rounded-xl text-xs font-bold bg-purple-950/80 hover:bg-purple-900 text-purple-200 border border-purple-500/40 flex items-center gap-2 transition-all cursor-pointer shadow-sm hover:scale-102"
+                >
+                  <ShieldCheck className="w-4 h-4 text-purple-400" />
+                  <span>My Roles & Responsibilities ({teacherRolesCount})</span>
+                  <ChevronDown className={`w-3.5 h-3.5 text-purple-400 transition-transform duration-200 ${isRolesDropdownOpen ? 'rotate-180' : ''}`} />
+                </button>
 
-                {(currentUser?.isCoClassTeacherOf || teacher.coClassTeacherRole) && (
-                  <span className="px-2.5 py-1 rounded-xl text-xs font-black bg-cyan-500/25 text-cyan-300 border border-cyan-500/50 flex items-center gap-1.5 shadow-xs">
-                    <Users2 className="w-3.5 h-3.5 text-cyan-400" />
-                    <span>Co-Class Teacher: Class {currentUser?.isCoClassTeacherOf || (teacher.coClassTeacherRole || '').replace(/Co-Class Teacher (of )?/i, '')}</span>
-                  </span>
-                )}
+                {isRolesDropdownOpen && (
+                  <div className="absolute left-0 top-full mt-2 w-80 sm:w-96 p-3 rounded-2xl bg-slate-900/98 border border-purple-500/40 shadow-2xl z-50 backdrop-blur-xl animate-fadeIn space-y-2.5">
+                    <div className="flex items-center justify-between border-b border-slate-800 pb-2">
+                      <div className="flex items-center gap-2">
+                        <ShieldCheck className="w-4 h-4 text-purple-400" />
+                        <h4 className="text-xs font-bold text-white m-0">Allocated Institutional Roles</h4>
+                      </div>
+                      <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-purple-500/20 text-purple-300 border border-purple-500/30 font-mono">
+                        {teacherRolesCount} Active
+                      </span>
+                    </div>
 
-                {formatAndDeduplicateResponsibilities(teacher.academicResponsibilities || []).map(badge => (
-                  <span
-                    key={badge.id}
-                    className={`px-2.5 py-1 rounded-xl text-xs font-bold flex items-center gap-1.5 shadow-xs transition-all ${
-                      badge.isLeadership
-                        ? 'bg-emerald-950/80 hover:bg-emerald-900/90 text-emerald-200 border border-emerald-500/50'
-                        : badge.isAcademicSupport
-                        ? 'bg-purple-950/80 hover:bg-purple-900/90 text-purple-200 border border-purple-500/40'
-                        : 'bg-indigo-950/80 hover:bg-indigo-900/90 text-indigo-200 border border-indigo-500/40'
-                    }`}
-                  >
-                    {badge.isLeadership ? (
-                      <Sparkles className="w-3.5 h-3.5 text-amber-400" />
-                    ) : badge.isAcademicSupport ? (
-                      <BookOpen className="w-3.5 h-3.5 text-purple-400" />
-                    ) : (
-                      <Users className="w-3.5 h-3.5 text-indigo-400" />
-                    )}
-                    <span>
-                      <strong className={`font-black ${
-                        badge.isLeadership
-                          ? 'text-emerald-300'
-                          : badge.isAcademicSupport
-                          ? 'text-purple-300'
-                          : 'text-indigo-300'
-                      }`}>
-                        {badge.rolePrefix}:
-                      </strong>{' '}
-                      {badge.cleanName}
-                    </span>
-                  </span>
-                ))}
+                    <div className="max-h-64 overflow-y-auto space-y-2 pr-1 scrollbar-thin">
+                      {/* Class Teacher */}
+                      {(currentUser?.isClassTeacherOf || teacher.classTeacherRole) && (
+                        <div className="p-2.5 rounded-xl bg-amber-950/40 border border-amber-500/40 flex items-center gap-2.5">
+                          <div className="p-1.5 rounded-lg bg-amber-500/20 text-amber-300">
+                            <Crown className="w-4 h-4" />
+                          </div>
+                          <div className="min-w-0 flex-1">
+                            <p className="text-xs font-bold text-amber-200 m-0">Class Teacher</p>
+                            <p className="text-[11px] text-slate-300 m-0">
+                              Class {currentUser?.isClassTeacherOf || teacher.classTeacherRole.replace(/Class Teacher (of )?/i, '')}
+                            </p>
+                          </div>
+                        </div>
+                      )}
+
+                      {/* Co-Class Teacher */}
+                      {(currentUser?.isCoClassTeacherOf || teacher.coClassTeacherRole) && (
+                        <div className="p-2.5 rounded-xl bg-cyan-950/40 border border-cyan-500/40 flex items-center gap-2.5">
+                          <div className="p-1.5 rounded-lg bg-cyan-500/20 text-cyan-300">
+                            <Users2 className="w-4 h-4" />
+                          </div>
+                          <div className="min-w-0 flex-1">
+                            <p className="text-xs font-bold text-cyan-200 m-0">Co-Class Teacher</p>
+                            <p className="text-[11px] text-slate-300 m-0">
+                              Class {currentUser?.isCoClassTeacherOf || (teacher.coClassTeacherRole || '').replace(/Co-Class Teacher (of )?/i, '')}
+                            </p>
+                          </div>
+                        </div>
+                      )}
+
+                      {/* Academic Responsibilities & Committee Roles */}
+                      {formattedResponsibilities.map(badge => (
+                        <div
+                          key={badge.id}
+                          className={`p-2.5 rounded-xl border flex items-center gap-2.5 ${
+                            badge.isLeadership
+                              ? 'bg-emerald-950/40 border-emerald-500/40 text-emerald-200'
+                              : badge.isAcademicSupport
+                              ? 'bg-purple-950/40 border-purple-500/40 text-purple-200'
+                              : 'bg-indigo-950/40 border-indigo-500/40 text-indigo-200'
+                          }`}
+                        >
+                          <div className={`p-1.5 rounded-lg ${
+                            badge.isLeadership
+                              ? 'bg-emerald-500/20 text-emerald-300'
+                              : badge.isAcademicSupport
+                              ? 'bg-purple-500/20 text-purple-300'
+                              : 'bg-indigo-500/20 text-indigo-300'
+                          }`}>
+                            {badge.isLeadership ? (
+                              <Sparkles className="w-4 h-4" />
+                            ) : badge.isAcademicSupport ? (
+                              <BookOpen className="w-4 h-4" />
+                            ) : (
+                              <Users className="w-4 h-4" />
+                            )}
+                          </div>
+                          <div className="min-w-0 flex-1">
+                            <p className="text-xs font-bold m-0 flex items-center gap-1.5">
+                              <span className={
+                                badge.isLeadership
+                                  ? 'text-emerald-300'
+                                  : badge.isAcademicSupport
+                                  ? 'text-purple-300'
+                                  : 'text-indigo-300'
+                              }>
+                                {badge.rolePrefix}:
+                              </span>
+                              <span className="text-white">{badge.cleanName}</span>
+                            </p>
+                            {badge.description && (
+                              <p className="text-[10px] text-slate-400 truncate m-0">{badge.description}</p>
+                            )}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+
+                    <div className="pt-2 border-t border-slate-800 flex justify-end">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setIsRolesDropdownOpen(false);
+                          onNavigateTab('roles');
+                        }}
+                        className="text-[11px] font-bold text-purple-400 hover:text-purple-300 flex items-center gap-1 cursor-pointer"
+                      >
+                        <span>View Full Committees Directory</span>
+                        <ArrowRight className="w-3 h-3" />
+                      </button>
+                    </div>
+                  </div>
+                )}
               </div>
             )}
           </div>
 
-          {/* Quick Action Shortcuts */}
-          <div className="flex flex-wrap items-center gap-2">
+          {/* Quick Action Shortcuts Hierarchy */}
+          <div className="flex flex-wrap items-center gap-2.5">
             {isAdmin ? (
               <>
                 <button
@@ -1590,7 +1787,7 @@ export const TeacherDashboard: React.FC<TeacherDashboardProps> = ({
                     setProxyPlannerInitialDate(activeWorkingDate);
                     setIsAutoProxyPlannerOpen(true);
                   }}
-                  className="px-3.5 py-2 rounded-xl bg-amber-600 hover:bg-amber-500 text-white text-xs font-bold transition-all shadow-md flex items-center gap-1.5 cursor-pointer"
+                  className="px-4 py-2.5 rounded-2xl bg-gradient-to-r from-amber-600 to-orange-600 hover:from-amber-500 hover:to-orange-500 text-white text-xs font-black shadow-lg shadow-amber-950/60 transition-all flex items-center gap-2 cursor-pointer hover:scale-102"
                 >
                   <AlertTriangle className="w-4 h-4 text-amber-200" />
                   <span>Assign Proxy Duty</span>
@@ -1598,7 +1795,7 @@ export const TeacherDashboard: React.FC<TeacherDashboardProps> = ({
 
                 <button
                   onClick={() => onNavigateTab('lessonplan')}
-                  className="px-3.5 py-2 rounded-xl bg-purple-600 hover:bg-purple-500 text-white text-xs font-bold transition-all shadow-md flex items-center gap-1.5 cursor-pointer"
+                  className="px-4 py-2.5 rounded-2xl bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-500 hover:to-indigo-500 text-white text-xs font-black shadow-lg shadow-purple-950/60 transition-all flex items-center gap-2 cursor-pointer hover:scale-102"
                 >
                   <FileEdit className="w-4 h-4" />
                   <span>Approve Lesson Plans</span>
@@ -1606,7 +1803,7 @@ export const TeacherDashboard: React.FC<TeacherDashboardProps> = ({
 
                 <button
                   onClick={() => onNavigateTab('teacher')}
-                  className="px-3.5 py-2 rounded-xl bg-purple-950/90 hover:bg-purple-900 text-purple-200 text-xs font-bold border border-purple-500/40 transition-all flex items-center gap-1.5 cursor-pointer shadow-md"
+                  className="px-3.5 py-2 rounded-xl bg-slate-900 hover:bg-slate-800 text-purple-200 text-xs font-bold border border-purple-500/40 transition-all flex items-center gap-1.5 cursor-pointer shadow-xs"
                 >
                   <Users className="w-4 h-4 text-purple-300" />
                   <span>Inspect Staff Diaries</span>
@@ -1632,7 +1829,7 @@ export const TeacherDashboard: React.FC<TeacherDashboardProps> = ({
               <>
                 <button
                   onClick={() => onNavigateTab('students')}
-                  className="px-3.5 py-2 rounded-xl bg-amber-600 hover:bg-amber-500 text-white text-xs font-bold transition-all shadow-md flex items-center gap-1.5 cursor-pointer"
+                  className="px-4 py-2.5 rounded-2xl bg-gradient-to-r from-amber-600 to-orange-600 hover:from-amber-500 hover:to-orange-500 text-white text-xs font-black shadow-lg shadow-amber-950/60 transition-all flex items-center gap-2 cursor-pointer hover:scale-102"
                 >
                   <Users className="w-4 h-4 text-amber-100" />
                   <span>Manage Student Rosters</span>
@@ -1640,7 +1837,7 @@ export const TeacherDashboard: React.FC<TeacherDashboardProps> = ({
 
                 <button
                   onClick={() => onNavigateTab('classes')}
-                  className="px-3.5 py-2 rounded-xl bg-purple-600 hover:bg-purple-500 text-white text-xs font-bold transition-all shadow-md flex items-center gap-1.5 cursor-pointer"
+                  className="px-4 py-2.5 rounded-2xl bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-500 hover:to-indigo-500 text-white text-xs font-black shadow-lg shadow-purple-950/60 transition-all flex items-center gap-2 cursor-pointer hover:scale-102"
                 >
                   <BookOpen className="w-4 h-4" />
                   <span>Classes & Subjects Setup</span>
@@ -1655,14 +1852,6 @@ export const TeacherDashboard: React.FC<TeacherDashboardProps> = ({
                 </button>
 
                 <button
-                  onClick={() => onNavigateTab('exams')}
-                  className="px-3 py-2 rounded-xl bg-slate-950 hover:bg-slate-900 text-slate-300 text-xs font-bold border border-slate-800 transition-all flex items-center gap-1 cursor-pointer"
-                >
-                  <Award className="w-3.5 h-3.5 text-amber-400" />
-                  <span>Exam Schedules</span>
-                </button>
-
-                <button
                   onClick={() => onNavigateTab('reports')}
                   className="px-3 py-2 rounded-xl bg-slate-950 hover:bg-slate-900 text-slate-300 text-xs font-bold border border-slate-800 transition-all flex items-center gap-1 cursor-pointer"
                 >
@@ -1672,10 +1861,11 @@ export const TeacherDashboard: React.FC<TeacherDashboardProps> = ({
               </>
             ) : (
               <>
+                {/* PRIMARY ACTIONS: Larger, Prominent, Gradient */}
                 {isTimetableOrDutyIncharge && (
                   <button
                     onClick={() => setIsDutyProxyModalOpen(true)}
-                    className="px-3.5 py-2 rounded-xl bg-amber-600 hover:bg-amber-500 text-white text-xs font-bold transition-all shadow-md flex items-center gap-1.5 cursor-pointer"
+                    className="px-4 py-2.5 rounded-2xl bg-gradient-to-r from-amber-600 to-orange-600 hover:from-amber-500 hover:to-orange-500 text-white text-xs font-black shadow-lg shadow-amber-950/60 transition-all flex items-center gap-2 cursor-pointer hover:scale-102"
                   >
                     <Clock className="w-4 h-4 text-amber-200" />
                     <span>Assign Proxy & Duties</span>
@@ -1684,34 +1874,35 @@ export const TeacherDashboard: React.FC<TeacherDashboardProps> = ({
 
                 <button
                   onClick={() => onNavigateTab('lessonplan')}
-                  className="px-3.5 py-2 rounded-xl bg-purple-600 hover:bg-purple-500 text-white text-xs font-bold transition-all shadow-md flex items-center gap-1.5 cursor-pointer"
+                  className="px-4 py-2.5 rounded-2xl bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-500 hover:to-indigo-500 text-white text-xs font-black shadow-lg shadow-purple-950/60 transition-all flex items-center gap-2 cursor-pointer hover:scale-102"
                 >
                   <FileEdit className="w-4 h-4" />
                   <span>Write Lesson Plan (P-32)</span>
                 </button>
 
                 <button
-                  onClick={() => setShowNewTaskModal(true)}
-                  className="px-3.5 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-purple-300 hover:text-white border border-purple-500/30 text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer"
+                  onClick={() => onNavigateTab('taskmanager')}
+                  className="px-4 py-2.5 rounded-2xl bg-gradient-to-r from-indigo-600 to-violet-600 hover:from-indigo-500 hover:to-violet-500 text-white text-xs font-black shadow-lg shadow-indigo-950/60 transition-all flex items-center gap-2 cursor-pointer hover:scale-102"
                 >
-                  <Plus className="w-4 h-4 text-purple-400" />
-                  <span>Add Priority Task</span>
+                  <ListTodo className="w-4 h-4 text-purple-200" />
+                  <span>My Tasks Hub</span>
+                </button>
+
+                {/* SECONDARY ACTIONS: Smaller, Outlined */}
+                <button
+                  onClick={() => setShowNewTaskModal(true)}
+                  className="px-3 py-2 rounded-xl bg-slate-900/90 hover:bg-slate-800 text-purple-300 hover:text-white border border-purple-500/40 text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer shadow-xs"
+                >
+                  <Plus className="w-3.5 h-3.5 text-purple-400" />
+                  <span>+ Add Priority Task</span>
                 </button>
 
                 <button
                   onClick={() => onNavigateTab('workload')}
-                  className="px-3 py-2 rounded-xl bg-emerald-950/80 hover:bg-emerald-900 text-emerald-200 text-xs font-bold border border-emerald-500/40 transition-all flex items-center gap-1.5 cursor-pointer"
+                  className="px-3 py-2 rounded-xl bg-slate-900/90 hover:bg-slate-800 text-emerald-300 hover:text-white border border-emerald-500/40 text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer shadow-xs"
                 >
                   <Activity className="w-3.5 h-3.5 text-emerald-400" />
                   <span>Log Hourly Activity</span>
-                </button>
-
-                <button
-                  onClick={() => onNavigateTab('taskmanager')}
-                  className="px-3 py-2 rounded-xl bg-slate-950 hover:bg-slate-900 text-slate-300 text-xs font-bold border border-slate-800 transition-all flex items-center gap-1 cursor-pointer"
-                >
-                  <ListTodo className="w-3.5 h-3.5 text-purple-400" />
-                  <span>My Tasks Hub</span>
                 </button>
               </>
             )}
@@ -1802,9 +1993,9 @@ export const TeacherDashboard: React.FC<TeacherDashboardProps> = ({
         );
       })()}
 
-      {/* Incharge Duty Desk Banner for Timetable & Proxy Incharge */}
+      {/* Incharge Duty Desk Banner for Timetable & Proxy Incharge (Desktop only, mobile buttons are inside Actions Sheet) */}
       {isTimetableOrDutyIncharge && isTeacher && (
-        <div className="p-4 rounded-3xl bg-gradient-to-r from-amber-950/80 via-slate-900 to-purple-950/80 border border-amber-500/40 flex flex-col md:flex-row md:items-center justify-between gap-4 shadow-xl animate-fadeIn">
+        <div className="hidden md:flex p-4 rounded-3xl bg-gradient-to-r from-amber-950/80 via-slate-900 to-purple-950/80 border border-amber-500/40 flex-col md:flex-row md:items-center justify-between gap-4 shadow-xl animate-fadeIn">
           <div className="flex items-center gap-3.5">
             <div className="w-11 h-11 rounded-2xl bg-amber-500/20 border border-amber-500/40 flex items-center justify-center text-amber-300 shrink-0">
               <Clock className="w-6 h-6" />
@@ -1819,36 +2010,36 @@ export const TeacherDashboard: React.FC<TeacherDashboardProps> = ({
             </div>
           </div>
 
-          <div className="flex items-center gap-2 flex-wrap">
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5 w-full md:w-auto">
             <button
               onClick={() => setIsDutyProxyModalOpen(true)}
-              className="px-3.5 py-2 rounded-xl bg-amber-600 hover:bg-amber-500 text-white font-bold text-xs flex items-center gap-1.5 cursor-pointer shadow-md shadow-amber-600/30 transition-all"
+              className="h-10 px-3.5 rounded-xl bg-amber-600 hover:bg-amber-500 text-white font-bold text-xs flex items-center justify-center gap-1.5 cursor-pointer shadow-md shadow-amber-600/30 transition-all hover:scale-102"
             >
-              <Clock className="w-3.5 h-3.5" />
+              <Clock className="w-4 h-4" />
               <span>Assign Proxy Period</span>
             </button>
 
             <button
               onClick={() => setIsDutyProxyModalOpen(true)}
-              className="px-3.5 py-2 rounded-xl bg-purple-600 hover:bg-purple-500 text-white font-bold text-xs flex items-center gap-1.5 cursor-pointer shadow-md shadow-purple-600/30 transition-all"
+              className="h-10 px-3.5 rounded-xl bg-purple-600 hover:bg-purple-500 text-white font-bold text-xs flex items-center justify-center gap-1.5 cursor-pointer shadow-md shadow-purple-600/30 transition-all hover:scale-102"
             >
-              <Coffee className="w-3.5 h-3.5" />
+              <Coffee className="w-4 h-4" />
               <span>Recess Duty Roster</span>
             </button>
 
             <button
               onClick={() => setIsDutyProxyModalOpen(true)}
-              className="px-3.5 py-2 rounded-xl bg-sky-600 hover:bg-sky-500 text-white font-bold text-xs flex items-center gap-1.5 cursor-pointer shadow-md shadow-sky-600/30 transition-all"
+              className="h-10 px-3.5 rounded-xl bg-sky-600 hover:bg-sky-500 text-white font-bold text-xs flex items-center justify-center gap-1.5 cursor-pointer shadow-md shadow-sky-600/30 transition-all hover:scale-102"
             >
-              <ShieldCheck className="w-3.5 h-3.5 text-sky-300" />
+              <ShieldCheck className="w-4 h-4 text-sky-200" />
               <span>Morning Gate Duty</span>
             </button>
 
             <button
               onClick={() => setIsDutyProxyModalOpen(true)}
-              className="px-3.5 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs flex items-center gap-1.5 cursor-pointer shadow-md shadow-emerald-600/30 transition-all"
+              className="h-10 px-3.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs flex items-center justify-center gap-1.5 cursor-pointer shadow-md shadow-emerald-600/30 transition-all hover:scale-102"
             >
-              <DoorOpen className="w-3.5 h-3.5 text-emerald-300" />
+              <DoorOpen className="w-4 h-4 text-emerald-200" />
               <span>Afternoon Gate Duty</span>
             </button>
           </div>
@@ -1925,13 +2116,69 @@ export const TeacherDashboard: React.FC<TeacherDashboardProps> = ({
         </div>
       )}
 
-      {/* Core KPI Metrics Grid */}
-      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
+      {/* 3. TODAY STRIP (Mobile screens < 768px: 1 row of 4 compact tiles) */}
+      <div className="md:hidden">
+        <div className="grid grid-cols-4 gap-1.5 sm:gap-2">
+          {/* Tile 1: Classes Today */}
+          <div
+            onClick={() => onNavigateTab('timetable')}
+            className="bg-gradient-to-b from-purple-950/70 via-slate-900 to-slate-900 border border-purple-500/50 p-2 rounded-xl text-center cursor-pointer shadow-sm active:scale-95 transition-transform"
+          >
+            <div className="text-[10px] font-black text-purple-300 uppercase tracking-tight truncate">Classes</div>
+            <div className="text-lg font-black text-white font-mono mt-0.5 leading-none">
+              {isAdmin ? allTodaySlots.length : myTodayClasses.length}
+            </div>
+            <div className="text-[9px] text-slate-400 mt-1 truncate">Today</div>
+          </div>
+
+          {/* Tile 2: Priority Tasks */}
+          <div
+            onClick={() => onNavigateTab('workload')}
+            className="bg-gradient-to-b from-indigo-950/70 via-slate-900 to-slate-900 border border-indigo-500/50 p-2 rounded-xl text-center cursor-pointer shadow-sm active:scale-95 transition-transform"
+          >
+            <div className="text-[10px] font-black text-indigo-300 uppercase tracking-tight truncate">Tasks</div>
+            <div className="text-lg font-black text-indigo-300 font-mono mt-0.5 leading-none">
+              {tasks.filter(t => t.status !== 'Completed').length}
+            </div>
+            <div className="text-[9px] text-slate-400 mt-1 truncate">Pending</div>
+          </div>
+
+          {/* Tile 3: Approvals */}
+          <div
+            onClick={() => onNavigateTab('inspection')}
+            className="bg-gradient-to-b from-cyan-950/70 via-slate-900 to-slate-900 border border-cyan-500/50 p-2 rounded-xl text-center cursor-pointer shadow-sm active:scale-95 transition-transform"
+          >
+            <div className="text-[10px] font-black text-cyan-300 uppercase tracking-tight truncate">Approvals</div>
+            <div className="text-lg font-black text-cyan-300 font-mono mt-0.5 leading-none">
+              {isAdmin ? pendingInspectionsCount : approvedInspections.length}
+            </div>
+            <div className="text-[9px] text-slate-400 mt-1 truncate">{isAdmin ? 'To Stamp' : 'Stamped'}</div>
+          </div>
+
+          {/* Tile 4: Attendance & More Stats Trigger */}
+          <div
+            onClick={() => setIsMobileStatsSheetOpen(true)}
+            className="bg-slate-900 border border-slate-800 hover:border-emerald-500/50 p-2 rounded-xl text-center cursor-pointer shadow-sm active:scale-95 transition-transform"
+          >
+            <div className="text-[10px] font-black text-emerald-300 uppercase tracking-tight truncate">Attendance</div>
+            <div className="text-xs font-black text-emerald-400 truncate mt-1 leading-none">
+              {isAdmin ? `${schoolAttendanceOverview.attendanceRate}%` : (myAttendanceToday?.status || 'Present')}
+            </div>
+            <div className="text-[9px] text-purple-400 mt-1 font-bold flex items-center justify-center gap-0.5">
+              <span>More</span>
+              <ChevronRight className="w-2.5 h-2.5" />
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* Core KPI Metrics Grid (Desktop) */}
+      <div className="hidden md:grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
         {isAdmin ? (
           <>
             <div
               onClick={() => onNavigateTab('timetable')}
-              className="bg-slate-900 border border-slate-800 hover:border-purple-500/50 p-4 rounded-2xl cursor-pointer transition-all space-y-1 shadow-sm"
+              className="bg-slate-900 border border-slate-800 hover:border-purple-500/50 p-3.5 rounded-2xl cursor-pointer transition-all space-y-0.5 shadow-sm"
             >
               <div className="flex items-center justify-between">
                 <span className="text-[11px] font-extrabold uppercase text-slate-400">Total Classes</span>
@@ -1943,7 +2190,7 @@ export const TeacherDashboard: React.FC<TeacherDashboardProps> = ({
 
             <div
               onClick={() => onNavigateTab('timetable')}
-              className="bg-slate-900 border border-slate-800 hover:border-amber-500/50 p-4 rounded-2xl cursor-pointer transition-all space-y-1 shadow-sm"
+              className="bg-slate-900 border border-slate-800 hover:border-amber-500/50 p-3.5 rounded-2xl cursor-pointer transition-all space-y-0.5 shadow-sm"
             >
               <div className="flex items-center justify-between">
                 <span className="text-[11px] font-extrabold uppercase text-slate-400">Arrangements</span>
@@ -1955,7 +2202,7 @@ export const TeacherDashboard: React.FC<TeacherDashboardProps> = ({
 
             <div
               onClick={() => onNavigateTab('lessonplan')}
-              className="bg-slate-900 border border-slate-800 hover:border-purple-500/50 p-4 rounded-2xl cursor-pointer transition-all space-y-1 shadow-sm"
+              className="bg-slate-900 border border-slate-800 hover:border-purple-500/50 p-3.5 rounded-2xl cursor-pointer transition-all space-y-0.5 shadow-sm"
             >
               <div className="flex items-center justify-between">
                 <span className="text-[11px] font-extrabold uppercase text-slate-400">Lesson Plans</span>
@@ -1967,7 +2214,7 @@ export const TeacherDashboard: React.FC<TeacherDashboardProps> = ({
 
             <div
               onClick={() => onNavigateTab('inspection')}
-              className="bg-slate-900 border border-slate-800 hover:border-rose-500/50 p-4 rounded-2xl cursor-pointer transition-all space-y-1 shadow-sm"
+              className="bg-slate-900 border border-slate-800 hover:border-rose-500/50 p-3.5 rounded-2xl cursor-pointer transition-all space-y-0.5 shadow-sm"
             >
               <div className="flex items-center justify-between">
                 <span className="text-[11px] font-extrabold uppercase text-slate-400">Pending Stamping</span>
@@ -1979,7 +2226,7 @@ export const TeacherDashboard: React.FC<TeacherDashboardProps> = ({
 
             <div
               onClick={() => onNavigateTab('syllabus')}
-              className="bg-slate-900 border border-slate-800 hover:border-emerald-500/50 p-4 rounded-2xl cursor-pointer transition-all space-y-1 shadow-sm"
+              className="bg-slate-900 border border-slate-800 hover:border-emerald-500/50 p-3.5 rounded-2xl cursor-pointer transition-all space-y-0.5 shadow-sm"
             >
               <div className="flex items-center justify-between">
                 <span className="text-[11px] font-extrabold uppercase text-slate-400">Syllabus Health</span>
@@ -1991,7 +2238,7 @@ export const TeacherDashboard: React.FC<TeacherDashboardProps> = ({
 
             <div
               onClick={() => onNavigateTab('workload')}
-              className="bg-slate-900 border border-slate-800 hover:border-cyan-500/50 p-4 rounded-2xl cursor-pointer transition-all space-y-1 shadow-sm"
+              className="bg-slate-900 border border-slate-800 hover:border-cyan-500/50 p-3.5 rounded-2xl cursor-pointer transition-all space-y-0.5 shadow-sm"
             >
               <div className="flex items-center justify-between">
                 <span className="text-[11px] font-extrabold uppercase text-slate-400">Directives</span>
@@ -2005,7 +2252,7 @@ export const TeacherDashboard: React.FC<TeacherDashboardProps> = ({
           <>
             <div
               onClick={() => onNavigateTab('students')}
-              className="bg-slate-900 border border-slate-800 hover:border-amber-500/50 p-4 rounded-2xl cursor-pointer transition-all space-y-1 shadow-sm"
+              className="bg-slate-900 border border-slate-800 hover:border-amber-500/50 p-3.5 rounded-2xl cursor-pointer transition-all space-y-0.5 shadow-sm"
             >
               <div className="flex items-center justify-between">
                 <span className="text-[11px] font-extrabold uppercase text-slate-400">Staff & Students</span>
@@ -2017,7 +2264,7 @@ export const TeacherDashboard: React.FC<TeacherDashboardProps> = ({
 
             <div
               onClick={() => onNavigateTab('classes')}
-              className="bg-slate-900 border border-slate-800 hover:border-purple-500/50 p-4 rounded-2xl cursor-pointer transition-all space-y-1 shadow-sm"
+              className="bg-slate-900 border border-slate-800 hover:border-purple-500/50 p-3.5 rounded-2xl cursor-pointer transition-all space-y-0.5 shadow-sm"
             >
               <div className="flex items-center justify-between">
                 <span className="text-[11px] font-extrabold uppercase text-slate-400">Classes Setup</span>
@@ -2029,7 +2276,7 @@ export const TeacherDashboard: React.FC<TeacherDashboardProps> = ({
 
             <div
               onClick={() => onNavigateTab('timetable')}
-              className="bg-slate-900 border border-slate-800 hover:border-purple-500/50 p-4 rounded-2xl cursor-pointer transition-all space-y-1 shadow-sm"
+              className="bg-slate-900 border border-slate-800 hover:border-purple-500/50 p-3.5 rounded-2xl cursor-pointer transition-all space-y-0.5 shadow-sm"
             >
               <div className="flex items-center justify-between">
                 <span className="text-[11px] font-extrabold uppercase text-slate-400">Master Timetable</span>
@@ -2041,7 +2288,7 @@ export const TeacherDashboard: React.FC<TeacherDashboardProps> = ({
 
             <div
               onClick={() => onNavigateTab('timetable')}
-              className="bg-slate-900 border border-slate-800 hover:border-amber-500/50 p-4 rounded-2xl cursor-pointer transition-all space-y-1 shadow-sm"
+              className="bg-slate-900 border border-slate-800 hover:border-amber-500/50 p-3.5 rounded-2xl cursor-pointer transition-all space-y-0.5 shadow-sm"
             >
               <div className="flex items-center justify-between">
                 <span className="text-[11px] font-extrabold uppercase text-slate-400">Arrangements</span>
@@ -2053,7 +2300,7 @@ export const TeacherDashboard: React.FC<TeacherDashboardProps> = ({
 
             <div
               onClick={() => onNavigateTab('syllabus')}
-              className="bg-slate-900 border border-slate-800 hover:border-emerald-500/50 p-4 rounded-2xl cursor-pointer transition-all space-y-1 shadow-sm"
+              className="bg-slate-900 border border-slate-800 hover:border-emerald-500/50 p-3.5 rounded-2xl cursor-pointer transition-all space-y-0.5 shadow-sm"
             >
               <div className="flex items-center justify-between">
                 <span className="text-[11px] font-extrabold uppercase text-slate-400">Syllabus Master</span>
@@ -2065,7 +2312,7 @@ export const TeacherDashboard: React.FC<TeacherDashboardProps> = ({
 
             <div
               onClick={() => onNavigateTab('reports')}
-              className="bg-slate-900 border border-slate-800 hover:border-cyan-500/50 p-4 rounded-2xl cursor-pointer transition-all space-y-1 shadow-sm"
+              className="bg-slate-900 border border-slate-800 hover:border-cyan-500/50 p-3.5 rounded-2xl cursor-pointer transition-all space-y-0.5 shadow-sm"
             >
               <div className="flex items-center justify-between">
                 <span className="text-[11px] font-extrabold uppercase text-slate-400">Export Reports</span>
@@ -2077,21 +2324,23 @@ export const TeacherDashboard: React.FC<TeacherDashboardProps> = ({
           </>
         ) : (
           <>
+            {/* 1. MY CLASSES TODAY - STRONGER VISUAL WEIGHT (PURPLE GLOW) */}
             <div
               onClick={() => onNavigateTab('timetable')}
-              className="bg-slate-900 border border-slate-800 hover:border-purple-500/50 p-4 rounded-2xl cursor-pointer transition-all space-y-1 shadow-sm"
+              className="bg-gradient-to-b from-purple-950/70 via-slate-900 to-slate-900 border-2 border-purple-500/60 hover:border-purple-400 p-3.5 rounded-2xl cursor-pointer transition-all space-y-0.5 shadow-lg shadow-purple-950/50 ring-1 ring-purple-500/30 hover:scale-102"
             >
               <div className="flex items-center justify-between">
-                <span className="text-[11px] font-extrabold uppercase text-slate-400">My Classes Today</span>
+                <span className="text-[11px] font-black uppercase tracking-wider text-purple-300">My Classes Today</span>
                 <Clock className="w-4 h-4 text-purple-400" />
               </div>
               <div className="text-2xl font-black text-white font-mono">{myTodayClasses.length}</div>
-              <p className="text-[10px] font-semibold text-slate-400">{selectedDay} Teaching Periods</p>
+              <p className="text-[10px] font-semibold text-purple-200/80">{selectedDay} Teaching Periods</p>
             </div>
 
+            {/* 2. PENDING PLANS */}
             <div
               onClick={() => onNavigateTab('lessonplan')}
-              className="bg-slate-900 border border-slate-800 hover:border-purple-500/50 p-4 rounded-2xl cursor-pointer transition-all space-y-1 shadow-sm"
+              className="bg-slate-900 border border-slate-800 hover:border-amber-500/50 p-3.5 rounded-2xl cursor-pointer transition-all space-y-0.5 shadow-sm hover:scale-102"
             >
               <div className="flex items-center justify-between">
                 <span className="text-[11px] font-extrabold uppercase text-slate-400">Pending Plans</span>
@@ -2101,9 +2350,10 @@ export const TeacherDashboard: React.FC<TeacherDashboardProps> = ({
               <p className="text-[10px] font-semibold text-slate-400">Lesson Plans in Draft</p>
             </div>
 
+            {/* 3. REFLECTIONS */}
             <div
               onClick={() => onNavigateTab('lessonplan')}
-              className="bg-slate-900 border border-slate-800 hover:border-purple-500/50 p-4 rounded-2xl cursor-pointer transition-all space-y-1 shadow-sm"
+              className="bg-slate-900 border border-slate-800 hover:border-rose-500/50 p-3.5 rounded-2xl cursor-pointer transition-all space-y-0.5 shadow-sm hover:scale-102"
             >
               <div className="flex items-center justify-between">
                 <span className="text-[11px] font-extrabold uppercase text-slate-400">Reflections</span>
@@ -2113,9 +2363,10 @@ export const TeacherDashboard: React.FC<TeacherDashboardProps> = ({
               <p className="text-[10px] font-semibold text-slate-400">Pg 49 Self-Reflection</p>
             </div>
 
+            {/* 4. SYLLABUS PROGRESS */}
             <div
               onClick={() => onNavigateTab('syllabus')}
-              className="bg-slate-900 border border-slate-800 hover:border-purple-500/50 p-4 rounded-2xl cursor-pointer transition-all space-y-1 shadow-sm"
+              className="bg-slate-900 border border-slate-800 hover:border-emerald-500/50 p-3.5 rounded-2xl cursor-pointer transition-all space-y-0.5 shadow-sm hover:scale-102"
             >
               <div className="flex items-center justify-between">
                 <span className="text-[11px] font-extrabold uppercase text-slate-400">Syllabus Progress</span>
@@ -2125,44 +2376,30 @@ export const TeacherDashboard: React.FC<TeacherDashboardProps> = ({
               <p className="text-[10px] font-semibold text-slate-400">{completedSyllabusChapters}/{totalSyllabusChapters} Chapters Done</p>
             </div>
 
+            {/* 5. PRIORITY TASKS - STRONGER VISUAL WEIGHT (INDIGO GLOW) */}
             <div
               onClick={() => onNavigateTab('workload')}
-              className="bg-slate-900 border border-slate-800 hover:border-purple-500/50 p-4 rounded-2xl cursor-pointer transition-all space-y-1 shadow-sm"
+              className="bg-gradient-to-b from-indigo-950/70 via-slate-900 to-slate-900 border-2 border-indigo-500/60 hover:border-indigo-400 p-3.5 rounded-2xl cursor-pointer transition-all space-y-0.5 shadow-lg shadow-indigo-950/50 ring-1 ring-indigo-500/30 hover:scale-102"
             >
               <div className="flex items-center justify-between">
-                <span className="text-[11px] font-extrabold uppercase text-slate-400">Priority Tasks</span>
+                <span className="text-[11px] font-black uppercase tracking-wider text-indigo-300">Priority Tasks</span>
                 <ListTodo className="w-4 h-4 text-indigo-400" />
               </div>
-              <div className="text-2xl font-black text-indigo-400 font-mono">{tasks.filter(t => t.status !== 'Completed').length}</div>
-              <p className="text-[10px] font-semibold text-slate-400">{completedTasksCount}/{tasks.length} Done</p>
+              <div className="text-2xl font-black text-indigo-300 font-mono">{tasks.filter(t => t.status !== 'Completed').length}</div>
+              <p className="text-[10px] font-semibold text-indigo-200/80">{completedTasksCount}/{tasks.length} Done</p>
             </div>
 
+            {/* 6. APPROVALS - STRONGER VISUAL WEIGHT (CYAN GLOW) */}
             <div
               onClick={() => onNavigateTab('inspection')}
-              className="bg-slate-900 border border-slate-800 hover:border-purple-500/50 p-4 rounded-2xl cursor-pointer transition-all space-y-1 shadow-sm"
+              className="bg-gradient-to-b from-cyan-950/70 via-slate-900 to-slate-900 border-2 border-cyan-500/60 hover:border-cyan-400 p-3.5 rounded-2xl cursor-pointer transition-all space-y-0.5 shadow-lg shadow-cyan-950/50 ring-1 ring-cyan-500/30 hover:scale-102"
             >
               <div className="flex items-center justify-between">
-                <span className="text-[11px] font-extrabold uppercase text-slate-400">Approvals</span>
+                <span className="text-[11px] font-black uppercase tracking-wider text-cyan-300">Approvals</span>
                 <ShieldCheck className="w-4 h-4 text-cyan-400" />
               </div>
-              <div className="text-2xl font-black text-cyan-400 font-mono">{approvedInspections.length}</div>
-              <p className="text-[10px] font-semibold text-slate-400">Principal / Incharge Stamped</p>
-            </div>
-
-            <div
-              onClick={() => onNavigateTab('teacher_attendance')}
-              className="bg-slate-900 border border-slate-800 hover:border-purple-500/50 p-4 rounded-2xl cursor-pointer transition-all space-y-1 shadow-sm"
-            >
-              <div className="flex items-center justify-between">
-                <span className="text-[11px] font-extrabold uppercase text-slate-400">Attendance & Leave</span>
-                <UserCheck className="w-4 h-4 text-emerald-400" />
-              </div>
-              <div className="text-2xl font-black text-emerald-400 font-mono">
-                {myAttendanceToday?.status || 'Present'}
-              </div>
-              <p className="text-[10px] font-semibold text-slate-400">
-                {myLeaveBalance ? `${myLeaveBalance.clRemaining}/${myLeaveBalance.clTotal} CL Balance` : 'View Leave Ledger'}
-              </p>
+              <div className="text-2xl font-black text-cyan-300 font-mono">{approvedInspections.length}</div>
+              <p className="text-[10px] font-semibold text-cyan-200/80">Principal / Incharge Stamped</p>
             </div>
           </>
         )}
@@ -2475,9 +2712,9 @@ export const TeacherDashboard: React.FC<TeacherDashboardProps> = ({
                 </div>
               </div>
 
-              {/* Assigned Academic & Subject Responsibilities Banner */}
+              {/* Assigned Academic & Subject Responsibilities Banner (Desktop only - moved to My Roles sheet on mobile) */}
               {myActiveSubjectResponsibilities.length > 0 && (
-                <div className="p-4 rounded-2xl bg-gradient-to-r from-amber-950/50 via-slate-950 to-indigo-950/50 border border-amber-500/40 space-y-2.5 shadow-sm">
+                <div className="hidden md:block p-4 rounded-2xl bg-gradient-to-r from-amber-950/50 via-slate-950 to-indigo-950/50 border border-amber-500/40 space-y-2.5 shadow-sm">
                   <div className="flex items-center justify-between">
                     <div className="flex items-center gap-2">
                       <GraduationCap className="w-5 h-5 text-amber-400" />
@@ -2572,7 +2809,7 @@ export const TeacherDashboard: React.FC<TeacherDashboardProps> = ({
                     return (
                       <div
                         key={slot.id}
-                        className={`p-4 rounded-xl border transition-all space-y-2.5 relative overflow-hidden ${
+                        className={`p-3 md:p-4 rounded-xl border transition-all space-y-2 md:space-y-2.5 relative overflow-hidden ${
                           isCurrent
                             ? 'bg-purple-950/40 border-purple-500 shadow-md ring-1 ring-purple-500/50'
                             : isProxy
@@ -2582,15 +2819,15 @@ export const TeacherDashboard: React.FC<TeacherDashboardProps> = ({
                       >
                         {/* Period Header */}
                         <div className="flex items-center justify-between">
-                          <div className="flex items-center gap-2">
-                            <span className={`w-6 h-6 rounded-lg flex items-center justify-center font-mono font-bold text-xs ${
+                          <div className="flex items-center gap-1.5 md:gap-2">
+                            <span className={`w-5 h-5 md:w-6 md:h-6 rounded-md md:rounded-lg flex items-center justify-center font-mono font-bold text-xs ${
                               isCurrent
                                 ? 'bg-rose-500 text-white animate-pulse'
                                 : 'bg-purple-600/30 text-purple-200 border border-purple-500/30'
                             }`}>
                               P{periodNum}
                             </span>
-                            <span className="text-xs font-bold text-white">Period {periodNum}</span>
+                            <span className="text-xs font-bold text-white hidden md:inline">Period {periodNum}</span>
                             <span className="text-[10px] font-mono text-slate-400 bg-slate-900 px-1.5 py-0.5 rounded border border-slate-800">
                               {timeSlot}
                             </span>
@@ -2610,31 +2847,32 @@ export const TeacherDashboard: React.FC<TeacherDashboardProps> = ({
                           )}
                         </div>
 
-                        {/* Class Details */}
-                        <div className="space-y-1">
-                          <div className="flex items-center gap-2 flex-wrap">
-                            <span className="px-2 py-0.5 rounded text-xs font-mono font-black bg-amber-500/20 text-amber-300 border border-amber-500/30">
+                        {/* Class Details - Dense on mobile */}
+                        <div className="space-y-0.5 md:space-y-1">
+                          <div className="flex items-center gap-1.5 md:gap-2 flex-wrap">
+                            <span className="px-1.5 py-0.5 rounded text-[11px] md:text-xs font-mono font-black bg-amber-500/20 text-amber-300 border border-amber-500/30">
                               {slot.className}{slot.section ? `-${slot.section}` : ''}
                             </span>
-                            <h5 className="font-bold text-sm text-white truncate m-0">
+                            <span className="text-slate-500 text-xs md:hidden">&bull;</span>
+                            <h5 className="font-bold text-xs md:text-sm text-white truncate m-0">
                               {slot.subjectName}
                             </h5>
+                            <span className="text-slate-500 text-xs md:hidden">&bull;</span>
+                            <div className="text-[11px] text-slate-400 flex items-center gap-1">
+                              <MapPin className="w-3 h-3 text-purple-400" />
+                              <strong className="text-slate-200">{slot.roomNo || 'Ground'}</strong>
+                            </div>
                             {(slot as any).isSupportSubject && (
                               <span className="px-1.5 py-0.5 rounded text-[9px] font-bold bg-purple-500/20 text-purple-300 border border-purple-500/30" title={`Academic Support for ${(slot as any).originalSubject} period`}>
-                                Academic Support ({(slot as any).originalSubject})
+                                Support ({(slot as any).originalSubject})
                               </span>
                             )}
-                          </div>
-
-                          <div className="text-[11px] text-slate-400 flex items-center gap-1.5">
-                            <MapPin className="w-3.5 h-3.5 text-purple-400" />
-                            <span>Room: <strong className="text-slate-200">{slot.roomNo || 'Classroom'}</strong></span>
                           </div>
                         </div>
 
                         {/* Proxy duty note if applicable */}
                         {isProxy && (
-                          <div className="p-2 rounded-lg bg-amber-950/60 border border-amber-500/30 text-[10px] text-amber-200 space-y-1">
+                          <div className="p-1.5 md:p-2 rounded-lg bg-amber-950/60 border border-amber-500/30 text-[10px] text-amber-200 space-y-0.5">
                             <div className="flex items-center gap-1.5 font-semibold flex-wrap">
                               <AlertTriangle className="w-3.5 h-3.5 text-amber-400 shrink-0" />
                               <span>Arrangement for:</span>
@@ -2647,20 +2885,20 @@ export const TeacherDashboard: React.FC<TeacherDashboardProps> = ({
                         )}
 
                         {/* Action Links */}
-                        <div className="pt-2 border-t border-slate-800/80 flex items-center justify-between text-[11px]">
+                        <div className="pt-1.5 md:pt-2 border-t border-slate-800/80 flex items-center justify-between text-[11px]">
                           <button
                             onClick={() => onNavigateTab('lessonplan')}
                             className="text-purple-400 hover:text-purple-300 font-bold flex items-center gap-1 hover:underline cursor-pointer"
                           >
-                            <span>Lesson Plan (P-32)</span>
-                            <ChevronRight className="w-3 h-3" />
+                            <span>Lesson Plan</span>
+                            <ChevronRight className="w-3 h-3 hidden md:inline" />
                           </button>
 
                           <button
                             onClick={() => onNavigateTab('assessment')}
                             className="text-slate-400 hover:text-white font-medium hover:underline cursor-pointer"
                           >
-                            Assessment Marks →
+                            Assessment Marks &rarr;
                           </button>
                         </div>
                       </div>
@@ -2671,8 +2909,255 @@ export const TeacherDashboard: React.FC<TeacherDashboardProps> = ({
             </div>
           )}
 
-          {/* SECTION 2: TOP PRIORITY TASKS & ACTION CENTER */}
-          <div className="bg-slate-900 border border-slate-800 rounded-2xl p-5 space-y-4 shadow-sm">
+          {/* MOBILE MERGED SECTION: TODAY & COMING UP (Requirement 5) */}
+          <div className="md:hidden bg-slate-900 border border-slate-800 rounded-2xl p-3.5 space-y-3 shadow-sm">
+            <div className="flex items-center justify-between border-b border-slate-800 pb-2.5">
+              <div className="flex items-center gap-2">
+                <CalendarDays className="w-4 h-4 text-purple-400" />
+                <h3 className="font-bold text-sm text-white m-0">Today &amp; Coming Up</h3>
+              </div>
+              <div className="flex items-center gap-1 bg-slate-950 p-0.5 rounded-lg border border-slate-800 text-[10px]">
+                <button
+                  type="button"
+                  onClick={() => setMobileTodayTab('today')}
+                  className={`px-2 py-0.5 rounded-md font-bold transition-all cursor-pointer ${
+                    mobileTodayTab === 'today' ? 'bg-purple-600 text-white' : 'text-slate-400'
+                  }`}
+                >
+                  Today ({TODAY_SCHEDULED_ACTIVITIES.length})
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setMobileTodayTab('upcoming')}
+                  className={`px-2 py-0.5 rounded-md font-bold transition-all cursor-pointer ${
+                    mobileTodayTab === 'upcoming' ? 'bg-teal-600 text-white' : 'text-slate-400'
+                  }`}
+                >
+                  Later ({UPCOMING_ACADEMIC_DEADLINES.length})
+                </button>
+              </div>
+            </div>
+
+            {mobileTodayTab === 'today' ? (
+              <div className="space-y-2">
+                {TODAY_SCHEDULED_ACTIVITIES.map(act => (
+                  <div key={act.id} className="p-2.5 bg-slate-950/80 border border-slate-800/80 rounded-xl space-y-1 text-xs">
+                    <div className="flex items-center justify-between">
+                      <span className="font-bold text-white truncate max-w-[200px]">{act.title}</span>
+                      <span className="text-[9px] font-mono font-bold text-purple-300 bg-purple-950 px-1.5 py-0.5 rounded border border-purple-500/30 shrink-0">
+                        {act.time}
+                      </span>
+                    </div>
+                    <div className="text-[10px] text-slate-300 flex items-center justify-between gap-1">
+                      <span className="flex items-center gap-1 truncate text-slate-400">
+                        <MapPin className="w-3 h-3 text-amber-400 shrink-0" />
+                        {act.location}
+                      </span>
+                      <span className="text-[9px] text-indigo-300 font-medium">⭐ {act.role}</span>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <div className="space-y-2">
+                {UPCOMING_ACADEMIC_DEADLINES.map(dead => (
+                  <div key={dead.id} className="p-2.5 bg-slate-950/80 border border-slate-800/80 rounded-xl space-y-1 text-xs">
+                    <div className="flex items-center justify-between">
+                      <span className="font-bold text-white truncate max-w-[180px]">{dead.title}</span>
+                      <span className={`px-1.5 py-0.5 rounded text-[9px] font-bold font-mono border ${
+                        dead.urgency === 'high'
+                          ? 'bg-rose-500/20 text-rose-300 border-rose-500/30'
+                          : 'bg-indigo-500/20 text-indigo-300 border-indigo-500/30'
+                      }`}>
+                        {dead.date}
+                      </span>
+                    </div>
+                    <p className="text-[10px] text-slate-400 leading-tight m-0">{dead.desc}</p>
+                    <div className="flex items-center justify-between pt-1 border-t border-slate-800/60 text-[9px] text-slate-400">
+                      <span>📌 {dead.tag}</span>
+                      <span className="font-bold text-amber-300">{dead.daysLeft}</span>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+
+          {/* MOBILE CONDENSED TASKS (Requirement 6: short rows, no essays) */}
+          <div className="md:hidden bg-slate-900 border border-slate-800 rounded-2xl p-3.5 space-y-3 shadow-sm">
+            {/* Header */}
+            <div className="flex items-center justify-between border-b border-slate-800 pb-2.5">
+              <div className="flex items-center gap-1.5">
+                <Star className="w-4 h-4 text-amber-400" />
+                <h3 className="font-bold text-sm text-white m-0">Today's Priority Tasks</h3>
+                <span className="px-1.5 py-0.2 rounded-full text-[9px] font-bold bg-amber-500/20 text-amber-300 border border-amber-500/30">
+                  {tasks.filter(t => t.status !== 'Completed').length}
+                </span>
+              </div>
+
+              <button
+                type="button"
+                onClick={() => setShowNewTaskModal(true)}
+                className="px-2.5 py-1 rounded-lg bg-purple-600 hover:bg-purple-500 text-white text-[11px] font-bold flex items-center gap-1 cursor-pointer"
+              >
+                <Plus className="w-3 h-3" />
+                <span>Add</span>
+              </button>
+            </div>
+
+            {/* Compact Filter Tabs */}
+            <div className="grid grid-cols-3 gap-1 bg-slate-950 p-1 rounded-xl border border-slate-800 text-[10px] text-center">
+              <button
+                type="button"
+                onClick={() => setTaskTab('all')}
+                className={`py-1 rounded-lg font-bold transition-all cursor-pointer ${
+                  taskTab === 'all' ? 'bg-purple-600 text-white shadow-xs' : 'text-slate-400 hover:text-white'
+                }`}
+              >
+                All ({tasks.length})
+              </button>
+              <button
+                type="button"
+                onClick={() => setTaskTab('assigned_by_superiors')}
+                className={`py-1 rounded-lg font-bold transition-all cursor-pointer flex items-center justify-center gap-1 ${
+                  taskTab === 'assigned_by_superiors' ? 'bg-amber-600 text-white shadow-xs' : 'text-amber-400 hover:text-white'
+                }`}
+              >
+                <Crown className="w-2.5 h-2.5 text-amber-300" />
+                <span>Directives ({superiorTasksCount})</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => setTaskTab('self')}
+                className={`py-1 rounded-lg font-bold transition-all cursor-pointer ${
+                  taskTab === 'self' ? 'bg-purple-600 text-white shadow-xs' : 'text-slate-400 hover:text-white'
+                }`}
+              >
+                Personal ({selfTasksCount})
+              </button>
+            </div>
+
+            {/* Tasks List: 1-line for teaching periods, 2-line with tap-to-expand for others */}
+            <div className="space-y-1.5">
+              {filteredTasks.map(task => {
+                const isDone = task.status === 'Completed';
+                const isSuperior = task.assignedByRole === 'Principal' || task.assignedByRole === 'Incharge' || task.assignedByRole === 'Committee';
+                const eligibility = isTaskCompletionAllowed(task, activeWorkingDate, periodTimings);
+                const isLocked = eligibility.isLocked && !isDone;
+                const timeRange = getTaskTimeRangeDisplay(task, periodTimings);
+                const isTeachingTask = task.category === 'Teaching' || task.id.startsWith('task-teaching-');
+
+                if (isTeachingTask) {
+                  // ONE-LINE row: title + time + urgent chip
+                  return (
+                    <div
+                      key={task.id}
+                      className={`p-2 rounded-xl border transition-all flex items-center justify-between gap-2 ${
+                        isDone ? 'bg-slate-950/40 border-slate-800/60 opacity-60' : 'bg-slate-950 border-slate-800/80 shadow-xs'
+                      }`}
+                    >
+                      <div className="flex items-center gap-2 min-w-0">
+                        <button
+                          type="button"
+                          onClick={() => handleToggleTask(task.id)}
+                          className="cursor-pointer shrink-0"
+                        >
+                          {isDone ? (
+                            <CheckSquare className="w-4 h-4 text-emerald-400" />
+                          ) : isLocked ? (
+                            <Lock className="w-4 h-4 text-amber-400/80" />
+                          ) : (
+                            <Square className="w-4 h-4 text-slate-500" />
+                          )}
+                        </button>
+                        <span className={`text-xs font-semibold truncate ${isDone ? 'line-through text-slate-500' : 'text-white'}`}>
+                          {task.title}
+                        </span>
+                      </div>
+
+                      <div className="flex items-center gap-1.5 shrink-0">
+                        {timeRange && (
+                          <span className="text-[9px] font-mono text-indigo-300 bg-indigo-950/60 px-1.5 py-0.5 rounded border border-indigo-500/20">
+                            {timeRange.display}
+                          </span>
+                        )}
+                        {task.isTopPriority && (
+                          <span className="text-[9px] text-rose-400 font-bold">Urgent</span>
+                        )}
+                      </div>
+                    </div>
+                  );
+                }
+
+                // Non-teaching task: 2-line row with tap-to-expand
+                const isExpanded = expandedMobileTaskId === task.id;
+                return (
+                  <div
+                    key={task.id}
+                    className={`p-2.5 rounded-xl border transition-all space-y-1.5 ${
+                      isDone
+                        ? 'bg-slate-950/40 border-slate-800/60 opacity-60'
+                        : isSuperior
+                        ? 'bg-amber-950/20 border-amber-500/40 shadow-xs'
+                        : 'bg-slate-950 border-slate-800 shadow-xs'
+                    }`}
+                  >
+                    <div className="flex items-start justify-between gap-2">
+                      <div className="flex items-start gap-2 min-w-0">
+                        <button
+                          type="button"
+                          onClick={() => handleToggleTask(task.id)}
+                          className="mt-0.5 cursor-pointer shrink-0"
+                        >
+                          {isDone ? (
+                            <CheckSquare className="w-4 h-4 text-emerald-400" />
+                          ) : isLocked ? (
+                            <Lock className="w-4 h-4 text-amber-400/80" />
+                          ) : (
+                            <Square className="w-4 h-4 text-slate-500" />
+                          )}
+                        </button>
+                        <p className={`text-xs font-bold leading-snug m-0 ${isDone ? 'line-through text-slate-500' : 'text-white'}`}>
+                          {task.title}
+                        </p>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => setExpandedMobileTaskId(isExpanded ? null : task.id)}
+                        className="p-1 text-slate-400 hover:text-white shrink-0 cursor-pointer"
+                      >
+                        {isExpanded ? <ChevronUp className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}
+                      </button>
+                    </div>
+
+                    <div className="flex items-center justify-between text-[10px] text-slate-400 pl-6">
+                      <div className="flex items-center gap-1.5 flex-wrap">
+                        {timeRange && <span className="font-mono text-slate-300">{timeRange.display}</span>}
+                        {isSuperior && <span className="text-amber-300 font-bold">👑 {task.assignedBy || 'Directive'}</span>}
+                      </div>
+                      {task.isTopPriority && <span className="text-rose-400 font-bold">Urgent</span>}
+                    </div>
+
+                    {/* Expanded details */}
+                    {isExpanded && (task.description || (task.subtasks && task.subtasks.length > 0)) && (
+                      <div className="pl-6 pt-1.5 text-[11px] text-slate-400 space-y-1.5 border-t border-slate-800/60 mt-1">
+                        {task.description && <p className="m-0 leading-normal">{task.description}</p>}
+                        {task.subtasks && task.subtasks.map(st => (
+                          <div key={st.id} className="flex items-center gap-1.5 text-[10px]">
+                            <span className={st.completed ? 'text-emerald-400' : 'text-slate-500'}>•</span>
+                            <span className={st.completed ? 'line-through text-slate-500' : 'text-slate-300'}>{st.title}</span>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+
+          {/* SECTION 2: TOP PRIORITY TASKS & ACTION CENTER (Desktop screens >= 768px) */}
+          <div className="hidden md:block bg-slate-900 border border-slate-800 rounded-2xl p-5 space-y-4 shadow-sm">
             
             {/* Header: Title, Controls, Add Task Button */}
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-800 pb-3.5">
@@ -2896,8 +3381,8 @@ export const TeacherDashboard: React.FC<TeacherDashboardProps> = ({
         {/* RIGHT 1 COLUMN: PENDING TASKS, SCHEDULED ACTIVITIES, UPCOMING DEADLINES */}
         <div className="space-y-6">
 
-          {/* SECTION 3: PENDING COMPLIANCE / PRINCIPAL APPROVALS */}
-          <div className="bg-slate-900 border border-slate-800 rounded-2xl p-5 space-y-4 shadow-sm">
+          {/* SECTION 3: PENDING COMPLIANCE / PRINCIPAL APPROVALS (Desktop only) */}
+          <div className="hidden md:block bg-slate-900 border border-slate-800 rounded-2xl p-5 space-y-4 shadow-sm">
             <div className="flex items-center justify-between border-b border-slate-800 pb-3">
               <div className="flex items-center gap-2">
                 {isAdmin ? <ShieldCheck className="w-5 h-5 text-cyan-400" /> : <AlertTriangle className="w-5 h-5 text-amber-400" />}
@@ -2995,7 +3480,7 @@ export const TeacherDashboard: React.FC<TeacherDashboardProps> = ({
                     <div className="flex items-center justify-between">
                       <span className="font-bold text-xs text-white flex items-center gap-1.5">
                         <ShieldCheck className="w-3.5 h-3.5 text-cyan-400" />
-                        <span>Inspection & Diary Endorsement (P-25)</span>
+                        <span>Inspection &amp; Diary Endorsement (P-25)</span>
                       </span>
                       <span className="px-2 py-0.5 rounded-full text-[9px] font-bold bg-rose-500/20 text-rose-300 border border-rose-500/30">
                         {pendingInspectionsCount} Pending
@@ -3054,7 +3539,7 @@ export const TeacherDashboard: React.FC<TeacherDashboardProps> = ({
                     <div className="flex items-center justify-between">
                       <span className="font-bold text-xs text-white flex items-center gap-1.5">
                         <BookOpen className="w-3.5 h-3.5 text-purple-400" />
-                        <span>Homework & Assessment Logs</span>
+                        <span>Homework &amp; Assessment Logs</span>
                       </span>
                       <span className="px-2 py-0.5 rounded-full text-[9px] font-bold bg-amber-500/20 text-amber-300 border border-amber-500/30">
                         {pendingHomework.length} Incomplete
@@ -3088,8 +3573,8 @@ export const TeacherDashboard: React.FC<TeacherDashboardProps> = ({
             </div>
           </div>
 
-          {/* SECTION 4: OTHER IMPORTANT SCHEDULED ACTIVITIES TODAY */}
-          <div className="bg-slate-900 border border-slate-800 rounded-2xl p-5 space-y-4 shadow-sm">
+          {/* SECTION 4: OTHER IMPORTANT SCHEDULED ACTIVITIES TODAY (Desktop only - merged into Today & Coming Up on mobile) */}
+          <div className="hidden md:block bg-slate-900 border border-slate-800 rounded-2xl p-5 space-y-4 shadow-sm">
             <div className="flex items-center justify-between border-b border-slate-800 pb-3">
               <div className="flex items-center gap-2">
                 <CalendarDays className="w-5 h-5 text-indigo-400" />
@@ -3126,13 +3611,13 @@ export const TeacherDashboard: React.FC<TeacherDashboardProps> = ({
             </div>
           </div>
 
-          {/* SECTION 5: UPCOMING IMPORTANT EVENTS & ACADEMIC DEADLINES */}
-          <div className="bg-slate-900 border border-slate-800 rounded-2xl p-5 space-y-4 shadow-sm">
+          {/* SECTION 5: UPCOMING IMPORTANT EVENTS & ACADEMIC DEADLINES (Desktop only - merged into Today & Coming Up on mobile) */}
+          <div className="hidden md:block bg-slate-900 border border-slate-800 rounded-2xl p-5 space-y-4 shadow-sm">
             <div className="flex items-center justify-between border-b border-slate-800 pb-3">
               <div className="flex items-center gap-2">
                 <Calendar className="w-5 h-5 text-teal-400" />
                 <h3 className="font-bold text-base text-white">
-                  Upcoming Events & Deadlines
+                  Upcoming Events &amp; Deadlines
                 </h3>
               </div>
               <button
@@ -3166,8 +3651,8 @@ export const TeacherDashboard: React.FC<TeacherDashboardProps> = ({
             </div>
           </div>
 
-          {/* SECTION 6: MASTER PRINT REPORTS QUICK LAUNCHER */}
-          <div className="bg-purple-950/40 border border-purple-500/30 rounded-2xl p-5 space-y-3 shadow-md">
+          {/* SECTION 6: MASTER PRINT REPORTS QUICK LAUNCHER (Final Card on Mobile & Desktop) */}
+          <div className="bg-purple-950/40 border border-purple-500/30 rounded-2xl p-4 md:p-5 space-y-3 shadow-md">
             <div className="flex items-center gap-2">
               <Printer className="w-5 h-5 text-amber-400" />
               <h3 className="font-bold text-sm text-white">
@@ -3353,6 +3838,462 @@ export const TeacherDashboard: React.FC<TeacherDashboardProps> = ({
         currentUser={currentUser}
         onProxySaved={loadData}
       />
+      {/* MOBILE BOTTOM SHEET: MY ROLES & RESPONSIBILITIES */}
+      {isMobileRolesSheetOpen && (
+        <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/80 backdrop-blur-xs animate-fadeIn">
+          <div className="fixed inset-0" onClick={() => setIsMobileRolesSheetOpen(false)} />
+          <div className="relative z-10 w-full max-h-[85vh] bg-slate-900 border-t border-purple-500/40 rounded-t-3xl p-4 shadow-2xl overflow-y-auto space-y-3.5 animate-slideUp">
+            <div className="w-12 h-1 bg-slate-700 rounded-full mx-auto" />
+            <div className="flex items-center justify-between border-b border-slate-800 pb-2">
+              <div className="flex items-center gap-2">
+                <ShieldCheck className="w-4 h-4 text-purple-400" />
+                <h4 className="text-sm font-bold text-white m-0">My Roles &amp; Responsibilities</h4>
+              </div>
+              <div className="flex items-center gap-2">
+                <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-purple-500/20 text-purple-300 border border-purple-500/30 font-mono">
+                  {teacherRolesCount} Active
+                </span>
+                <button
+                  type="button"
+                  onClick={() => setIsMobileRolesSheetOpen(false)}
+                  className="p-1 rounded-lg text-slate-400 hover:text-white cursor-pointer"
+                >
+                  <X className="w-4 h-4" />
+                </button>
+              </div>
+            </div>
+
+            <div className="space-y-2 max-h-[55vh] overflow-y-auto pr-1">
+              {/* Class Teacher */}
+              {(currentUser?.isClassTeacherOf || teacher.classTeacherRole) && (
+                <div className="p-2.5 rounded-xl bg-amber-950/40 border border-amber-500/40 flex items-center gap-2.5">
+                  <div className="p-1.5 rounded-lg bg-amber-500/20 text-amber-300">
+                    <Crown className="w-4 h-4" />
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    <p className="text-xs font-bold text-amber-200 m-0">Class Teacher</p>
+                    <p className="text-[11px] text-slate-300 m-0">
+                      Class {currentUser?.isClassTeacherOf || teacher.classTeacherRole.replace(/Class Teacher (of )?/i, '')}
+                    </p>
+                  </div>
+                </div>
+              )}
+
+              {/* Co-Class Teacher */}
+              {(currentUser?.isCoClassTeacherOf || teacher.coClassTeacherRole) && (
+                <div className="p-2.5 rounded-xl bg-cyan-950/40 border border-cyan-500/40 flex items-center gap-2.5">
+                  <div className="p-1.5 rounded-lg bg-cyan-500/20 text-cyan-300">
+                    <Users2 className="w-4 h-4" />
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    <p className="text-xs font-bold text-cyan-200 m-0">Co-Class Teacher</p>
+                    <p className="text-[11px] text-slate-300 m-0">
+                      Class {currentUser?.isCoClassTeacherOf || (teacher.coClassTeacherRole || '').replace(/Co-Class Teacher (of )?/i, '')}
+                    </p>
+                  </div>
+                </div>
+              )}
+
+              {/* Formatted Committee Responsibilities */}
+              {formattedResponsibilities.map(badge => (
+                <div
+                  key={badge.id}
+                  className={`p-2.5 rounded-xl border flex items-center gap-2.5 ${
+                    badge.isLeadership
+                      ? 'bg-emerald-950/40 border-emerald-500/40 text-emerald-200'
+                      : badge.isAcademicSupport
+                      ? 'bg-purple-950/40 border-purple-500/40 text-purple-200'
+                      : 'bg-indigo-950/40 border-indigo-500/40 text-indigo-200'
+                  }`}
+                >
+                  <div className={`p-1.5 rounded-lg ${
+                    badge.isLeadership
+                      ? 'bg-emerald-500/20 text-emerald-300'
+                      : badge.isAcademicSupport
+                      ? 'bg-purple-500/20 text-purple-300'
+                      : 'bg-indigo-500/20 text-indigo-300'
+                  }`}>
+                    {badge.isLeadership ? (
+                      <Sparkles className="w-4 h-4" />
+                    ) : badge.isAcademicSupport ? (
+                      <BookOpen className="w-4 h-4" />
+                    ) : (
+                      <Users className="w-4 h-4" />
+                    )}
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    <p className="text-xs font-bold m-0 flex items-center gap-1.5">
+                      <span className={
+                        badge.isLeadership
+                          ? 'text-emerald-300'
+                          : badge.isAcademicSupport
+                          ? 'text-purple-300'
+                          : 'text-indigo-300'
+                      }>
+                        {badge.rolePrefix}:
+                      </span>
+                      <span className="text-white">{badge.cleanName}</span>
+                    </p>
+                    {badge.description && (
+                      <p className="text-[10px] text-slate-400 truncate m-0">{badge.description}</p>
+                    )}
+                  </div>
+                </div>
+              ))}
+
+              {/* Relocated from schedule card: Assigned Subject & Academic Responsibilities */}
+              {myActiveSubjectResponsibilities.length > 0 && (
+                <div className="pt-2 border-t border-slate-800 space-y-2">
+                  <h5 className="text-xs font-bold text-amber-300 flex items-center gap-1.5 m-0">
+                    <GraduationCap className="w-3.5 h-3.5" />
+                    <span>Assigned Subjects &amp; Teaching Delegations</span>
+                  </h5>
+                  {myActiveSubjectResponsibilities.map(sra => (
+                    <div
+                      key={sra.id}
+                      className="p-2.5 rounded-xl bg-slate-950 border border-slate-800 flex items-center justify-between gap-2"
+                    >
+                      <div className="space-y-0.5">
+                        <div className="flex items-center gap-1.5">
+                          <span className="px-1.5 py-0.5 rounded text-[10px] font-bold bg-amber-500/20 text-amber-300">
+                            {sra.subjectName}
+                          </span>
+                          <span className="px-1.5 py-0.5 rounded text-[9px] font-mono font-bold bg-purple-950 text-purple-300">
+                            {sra.className}
+                          </span>
+                        </div>
+                        <p className="text-[10px] text-slate-400 m-0">
+                          {sra.supportType} {sra.roleNote ? `· "${sra.roleNote}"` : ''}
+                        </p>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setIsMobileRolesSheetOpen(false);
+                          onNavigateTab('lessonplan');
+                        }}
+                        className="px-2.5 py-1 rounded-lg bg-purple-600 hover:bg-purple-500 text-white text-[10px] font-bold shrink-0 cursor-pointer"
+                      >
+                        Plan Lesson
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            <div className="pt-2 border-t border-slate-800 flex justify-end">
+              <button
+                type="button"
+                onClick={() => {
+                  setIsMobileRolesSheetOpen(false);
+                  onNavigateTab('roles');
+                }}
+                className="text-xs font-bold text-purple-400 hover:text-purple-300 flex items-center gap-1 cursor-pointer"
+              >
+                <span>View Full Committees Directory</span>
+                <ArrowRight className="w-3.5 h-3.5" />
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* MOBILE BOTTOM SHEET: ACTIONS & TOOLS */}
+      {isMobileActionsSheetOpen && (
+        <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/80 backdrop-blur-xs animate-fadeIn">
+          <div className="fixed inset-0" onClick={() => setIsMobileActionsSheetOpen(false)} />
+          <div className="relative z-10 w-full max-h-[85vh] bg-slate-900 border-t border-indigo-500/40 rounded-t-3xl p-4 shadow-2xl overflow-y-auto space-y-4 animate-slideUp">
+            <div className="w-12 h-1 bg-slate-700 rounded-full mx-auto" />
+            <div className="flex items-center justify-between border-b border-slate-800 pb-2">
+              <div className="flex items-center gap-2">
+                <Sparkles className="w-4 h-4 text-amber-400" />
+                <h4 className="text-sm font-bold text-white m-0">Quick Action Center</h4>
+              </div>
+              <button
+                type="button"
+                onClick={() => setIsMobileActionsSheetOpen(false)}
+                className="p-1 rounded-lg text-slate-400 hover:text-white cursor-pointer"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            {/* Primary Actions */}
+            <div className="space-y-2">
+              <h5 className="text-[11px] font-bold uppercase tracking-wider text-slate-400 m-0">Primary Actions</h5>
+              <div className="space-y-2">
+                {(isTimetableOrDutyIncharge || isAdmin) && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setIsMobileActionsSheetOpen(false);
+                      setIsDutyProxyModalOpen(true);
+                    }}
+                    className="w-full h-11 px-4 rounded-xl bg-gradient-to-r from-amber-600 to-orange-600 hover:from-amber-500 hover:to-orange-500 text-white text-xs font-black shadow-md flex items-center justify-center gap-2 cursor-pointer active:scale-98"
+                  >
+                    <Clock className="w-4 h-4" />
+                    <span>Assign Proxy &amp; Duties</span>
+                  </button>
+                )}
+
+                <button
+                  type="button"
+                  onClick={() => {
+                    setIsMobileActionsSheetOpen(false);
+                    onNavigateTab('lessonplan');
+                  }}
+                  className="w-full h-11 px-4 rounded-xl bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-500 hover:to-indigo-500 text-white text-xs font-black shadow-md flex items-center justify-center gap-2 cursor-pointer active:scale-98"
+                >
+                  <FileEdit className="w-4 h-4" />
+                  <span>Write Lesson Plan (P-32)</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => {
+                    setIsMobileActionsSheetOpen(false);
+                    onNavigateTab('taskmanager');
+                  }}
+                  className="w-full h-11 px-4 rounded-xl bg-gradient-to-r from-indigo-600 to-violet-600 hover:from-indigo-500 hover:to-violet-500 text-white text-xs font-black shadow-md flex items-center justify-center gap-2 cursor-pointer active:scale-98"
+                >
+                  <ListTodo className="w-4 h-4 text-purple-200" />
+                  <span>My Tasks Hub</span>
+                </button>
+              </div>
+            </div>
+
+            {/* Secondary Actions */}
+            <div className="space-y-2 pt-1 border-t border-slate-800">
+              <h5 className="text-[11px] font-bold uppercase tracking-wider text-slate-400 m-0">Secondary Actions</h5>
+              <div className="grid grid-cols-2 gap-2">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setIsMobileActionsSheetOpen(false);
+                    setShowNewTaskModal(true);
+                  }}
+                  className="h-10 px-3 rounded-xl bg-slate-950 hover:bg-slate-800 text-purple-300 border border-purple-500/40 text-xs font-bold flex items-center justify-center gap-1.5 cursor-pointer"
+                >
+                  <Plus className="w-3.5 h-3.5 text-purple-400" />
+                  <span>Add Priority Task</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => {
+                    setIsMobileActionsSheetOpen(false);
+                    onNavigateTab('workload');
+                  }}
+                  className="h-10 px-3 rounded-xl bg-slate-950 hover:bg-slate-800 text-emerald-300 border border-emerald-500/40 text-xs font-bold flex items-center justify-center gap-1.5 cursor-pointer"
+                >
+                  <Activity className="w-3.5 h-3.5 text-emerald-400" />
+                  <span>Log Activity</span>
+                </button>
+              </div>
+            </div>
+
+            {/* Timetable & Proxy Desk Tools */}
+            {(isTimetableOrDutyIncharge || isAdmin) && (
+              <div className="space-y-2 pt-1 border-t border-slate-800">
+                <h5 className="text-[11px] font-bold uppercase tracking-wider text-amber-300 m-0 flex items-center gap-1.5">
+                  <Clock className="w-3.5 h-3.5" />
+                  <span>Daily Proxy &amp; Campus Supervision Tools</span>
+                </h5>
+                <div className="grid grid-cols-2 gap-2">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setIsMobileActionsSheetOpen(false);
+                      setIsDutyProxyModalOpen(true);
+                    }}
+                    className="h-10 px-3 rounded-xl bg-amber-600 hover:bg-amber-500 text-white font-bold text-xs flex items-center justify-center gap-1.5 cursor-pointer"
+                  >
+                    <Clock className="w-3.5 h-3.5" />
+                    <span>Assign Proxy</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setIsMobileActionsSheetOpen(false);
+                      setIsDutyProxyModalOpen(true);
+                    }}
+                    className="h-10 px-3 rounded-xl bg-purple-600 hover:bg-purple-500 text-white font-bold text-xs flex items-center justify-center gap-1.5 cursor-pointer"
+                  >
+                    <Coffee className="w-3.5 h-3.5" />
+                    <span>Recess Duty</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setIsMobileActionsSheetOpen(false);
+                      setIsDutyProxyModalOpen(true);
+                    }}
+                    className="h-10 px-3 rounded-xl bg-sky-600 hover:bg-sky-500 text-white font-bold text-xs flex items-center justify-center gap-1.5 cursor-pointer"
+                  >
+                    <ShieldCheck className="w-3.5 h-3.5 text-sky-200" />
+                    <span>Morning Gate</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setIsMobileActionsSheetOpen(false);
+                      setIsDutyProxyModalOpen(true);
+                    }}
+                    className="h-10 px-3 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs flex items-center justify-center gap-1.5 cursor-pointer"
+                  >
+                    <DoorOpen className="w-3.5 h-3.5 text-emerald-200" />
+                    <span>Afternoon Gate</span>
+                  </button>
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* MOBILE BOTTOM SHEET: STATS & METRICS BREAKDOWN */}
+      {isMobileStatsSheetOpen && (
+        <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/80 backdrop-blur-xs animate-fadeIn">
+          <div className="fixed inset-0" onClick={() => setIsMobileStatsSheetOpen(false)} />
+          <div className="relative z-10 w-full max-h-[85vh] bg-slate-900 border-t border-purple-500/40 rounded-t-3xl p-4 shadow-2xl overflow-y-auto space-y-3.5 animate-slideUp">
+            <div className="w-12 h-1 bg-slate-700 rounded-full mx-auto" />
+            <div className="flex items-center justify-between border-b border-slate-800 pb-2">
+              <div className="flex items-center gap-2">
+                <TrendingUp className="w-4 h-4 text-emerald-400" />
+                <h4 className="text-sm font-bold text-white m-0">Today's Academic Metrics</h4>
+              </div>
+              <button
+                type="button"
+                onClick={() => setIsMobileStatsSheetOpen(false)}
+                className="p-1 rounded-lg text-slate-400 hover:text-white cursor-pointer"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <div className="space-y-2.5">
+              {/* Classes & Tasks summary */}
+              <div className="grid grid-cols-2 gap-2">
+                <div className="p-3 rounded-xl bg-slate-950 border border-slate-800 space-y-0.5">
+                  <span className="text-[10px] font-bold text-purple-300 uppercase">My Classes</span>
+                  <div className="text-xl font-black text-white font-mono">{myTodayClasses.length}</div>
+                  <p className="text-[10px] text-slate-400 m-0">{selectedDay} Teaching Periods</p>
+                </div>
+
+                <div className="p-3 rounded-xl bg-slate-950 border border-slate-800 space-y-0.5">
+                  <span className="text-[10px] font-bold text-indigo-300 uppercase">Priority Tasks</span>
+                  <div className="text-xl font-black text-indigo-300 font-mono">{tasks.filter(t => t.status !== 'Completed').length}</div>
+                  <p className="text-[10px] text-slate-400 m-0">{completedTasksCount}/{tasks.length} Completed</p>
+                </div>
+              </div>
+
+              {/* Attendance & Leave Balance */}
+              <div
+                onClick={() => {
+                  setIsMobileStatsSheetOpen(false);
+                  onNavigateTab('teacher_attendance');
+                }}
+                className="p-3 rounded-xl bg-slate-950 border border-slate-800 flex items-center justify-between cursor-pointer hover:border-emerald-500/40"
+              >
+                <div className="space-y-0.5">
+                  <div className="text-xs font-bold text-white flex items-center gap-1.5">
+                    <UserCheck className="w-3.5 h-3.5 text-emerald-400" />
+                    <span>Attendance &amp; Leave Ledger</span>
+                  </div>
+                  <p className="text-[10px] text-slate-400 m-0">
+                    Status: <strong className="text-emerald-300">{myAttendanceToday?.status || 'Present'}</strong> &bull; CL Balance: <strong className="text-amber-300">{myLeaveBalance ? `${myLeaveBalance.clRemaining}/${myLeaveBalance.clTotal}` : 'N/A'}</strong>
+                  </p>
+                </div>
+                <ChevronRight className="w-4 h-4 text-slate-400" />
+              </div>
+
+              {/* Pending Plans */}
+              <div
+                onClick={() => {
+                  setIsMobileStatsSheetOpen(false);
+                  onNavigateTab('lessonplan');
+                }}
+                className="p-3 rounded-xl bg-slate-950 border border-slate-800 flex items-center justify-between cursor-pointer hover:border-amber-500/40"
+              >
+                <div className="space-y-0.5">
+                  <div className="text-xs font-bold text-white flex items-center gap-1.5">
+                    <FileEdit className="w-3.5 h-3.5 text-amber-400" />
+                    <span>Pending Lesson Plans</span>
+                  </div>
+                  <p className="text-[10px] text-slate-400 m-0">
+                    <strong className="text-amber-300 font-mono">{pendingLessonPlans.length}</strong> Draft plans awaiting submission
+                  </p>
+                </div>
+                <ChevronRight className="w-4 h-4 text-slate-400" />
+              </div>
+
+              {/* Reflections */}
+              <div
+                onClick={() => {
+                  setIsMobileStatsSheetOpen(false);
+                  onNavigateTab('lessonplan');
+                }}
+                className="p-3 rounded-xl bg-slate-950 border border-slate-800 flex items-center justify-between cursor-pointer hover:border-rose-500/40"
+              >
+                <div className="space-y-0.5">
+                  <div className="text-xs font-bold text-white flex items-center gap-1.5">
+                    <AlertTriangle className="w-3.5 h-3.5 text-rose-400" />
+                    <span>Incomplete Reflections (Pg 49)</span>
+                  </div>
+                  <p className="text-[10px] text-slate-400 m-0">
+                    <strong className="text-rose-400 font-mono">{incompleteReflections.length}</strong> Post-lesson reflections needed
+                  </p>
+                </div>
+                <ChevronRight className="w-4 h-4 text-slate-400" />
+              </div>
+
+              {/* Syllabus Progress */}
+              <div
+                onClick={() => {
+                  setIsMobileStatsSheetOpen(false);
+                  onNavigateTab('syllabus');
+                }}
+                className="p-3 rounded-xl bg-slate-950 border border-slate-800 flex items-center justify-between cursor-pointer hover:border-emerald-500/40"
+              >
+                <div className="space-y-0.5">
+                  <div className="text-xs font-bold text-white flex items-center gap-1.5">
+                    <TrendingUp className="w-3.5 h-3.5 text-emerald-400" />
+                    <span>Syllabus Progress</span>
+                  </div>
+                  <p className="text-[10px] text-slate-400 m-0">
+                    <strong className="text-emerald-400 font-mono">{syllabusProgressPercent}%</strong> ({completedSyllabusChapters}/{totalSyllabusChapters} Chapters Done)
+                  </p>
+                </div>
+                <ChevronRight className="w-4 h-4 text-slate-400" />
+              </div>
+
+              {/* Approvals */}
+              <div
+                onClick={() => {
+                  setIsMobileStatsSheetOpen(false);
+                  onNavigateTab('inspection');
+                }}
+                className="p-3 rounded-xl bg-slate-950 border border-slate-800 flex items-center justify-between cursor-pointer hover:border-cyan-500/40"
+              >
+                <div className="space-y-0.5">
+                  <div className="text-xs font-bold text-white flex items-center gap-1.5">
+                    <ShieldCheck className="w-3.5 h-3.5 text-cyan-400" />
+                    <span>Approvals &amp; Stamping (P-25)</span>
+                  </div>
+                  <p className="text-[10px] text-slate-400 m-0">
+                    <strong className="text-cyan-300 font-mono">{approvedInspections.length}</strong> Official Principal stamps verified
+                  </p>
+                </div>
+                <ChevronRight className="w-4 h-4 text-slate-400" />
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };
